@@ -82,6 +82,23 @@ class TestDialogs:
         assert deduct_dlg.total_amount_spin.value() == 100
         assert deduct_dlg.btn_submit.isEnabled() is True
         
+        # Test smart balancing add mode on 5-drawer component
+        add_dlg = BulkStockDialog(component=five_drawer_comp)
+        add_dlg.radio_add.setChecked(True)
+        add_dlg.total_amount_spin.setValue(100)
+        # Verify water-filling allocation prioritizes drawer 11 (0 qty) and drawer 8 (20 qty)
+        assert add_dlg.drawer_spinboxes[11].value() > add_dlg.drawer_spinboxes[5].value()
+        assert add_dlg.drawer_spinboxes[8].value() > add_dlg.drawer_spinboxes[2].value()
+        assert sum(s.value() for s in add_dlg.drawer_spinboxes.values()) == 100
+        assert add_dlg.btn_submit.isEnabled() is True
+        
+        # Test equal distribute button
+        add_dlg.btn_equal_distribute.click()
+        assert add_dlg.drawer_spinboxes[1].value() == 20
+        assert add_dlg.drawer_spinboxes[11].value() == 20
+        assert sum(s.value() for s in add_dlg.drawer_spinboxes.values()) == 100
+
+        add_dlg.close()
         deduct_dlg.close()
         dlg.close()
 

@@ -140,11 +140,19 @@ class BulkStockDialog(QDialog):
 
         breakdown_header.addStretch()
 
-        self.btn_auto_distribute = QPushButton("توزیع خودکار / هوشمند")
+        self.btn_auto_distribute = QPushButton("⚡ توزیع هوشمند و تراز")
         self.btn_auto_distribute.setObjectName("secondaryBtn")
-        self.btn_auto_distribute.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        self.btn_auto_distribute.setStyleSheet("font-size: 11px; padding: 4px 8px; font-weight: 600;")
+        self.btn_auto_distribute.setToolTip("توزیع متوازن (شارژ بیشتر کشوهای خالی و تراز کردن موجودی کل کشوها)")
         self.btn_auto_distribute.clicked.connect(self._auto_distribute_amount)
         breakdown_header.addWidget(self.btn_auto_distribute)
+
+        self.btn_equal_distribute = QPushButton("تقسیم مساوی")
+        self.btn_equal_distribute.setObjectName("secondaryBtn")
+        self.btn_equal_distribute.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        self.btn_equal_distribute.setToolTip("تقسیم تعداد به نسبت کاملاً مساوی بین کشوها")
+        self.btn_equal_distribute.clicked.connect(self._equal_distribute_amount)
+        breakdown_header.addWidget(self.btn_equal_distribute)
 
         self.breakdown_layout.addLayout(breakdown_header)
 
@@ -152,6 +160,7 @@ class BulkStockDialog(QDialog):
         drawer_list = self.comp.drawer_list if self.comp else []
         if len(drawer_list) <= 1:
             self.btn_auto_distribute.setVisible(False)
+            self.btn_equal_distribute.setVisible(False)
             d_num = drawer_list[0] if drawer_list else 1
             lbl_single = QLabel(f"این قطعه تنها در کشوی {d_num} قرار دارد و کل عملیات روی همین کشو اعمال می‌شود.")
             lbl_single.setStyleSheet("color: #94a3b8; font-size: 12px;")
@@ -295,6 +304,70 @@ class BulkStockDialog(QDialog):
         finally:
             self._sync_lock = False
 
+    def _equal_distribute_amount(self):
+        """Divide total amount equally across drawers."""
+        if self._sync_lock or not self.comp:
+            return
+        self._sync_lock = True
+        try:
+            total = self.total_amount_spin.value()
+            drawers = self.comp.drawer_list if self.comp else []
+            if len(drawers) > 1:
+                base = total // len(drawers)
+                rem = total % len(drawers)
+                for idx, d in enumerate(drawers):
+                    if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
+                        val = base + (1 if idx < rem else 0)
+                        self.drawer_spinboxes[d].blockSignals(True)
+                        self.drawer_spinboxes[d].setValue(val)
+                        self.drawer_spinboxes[d].blockSignals(False)
+            self._validate_balance()
+        finally:
+            self._sync_lock = False
+
+    def _smart_balance_add(self, drawers: list, total: int) -> Dict[int, int]:
+        """
+        Water-filling balancing algorithm: prioritizes empty and low-stock drawers
+        first to balance out stock levels across all drawers.
+        """
+        drawer_qtys = {d: self.comp.get_drawer_qty(d) for d in drawers}
+        additions = {d: 0 for d in drawers}
+        remaining = total
+        current_levels = dict(drawer_qtys)
+
+        while remaining > 0:
+            min_val = min(current_levels.values())
+            min_drawers = [d for d, val in current_levels.items() if val == min_val]
+            other_vals = [val for val in current_levels.values() if val > min_val]
+
+            if other_vals:
+                next_min = min(other_vals)
+                step_needed = next_min - min_val
+                total_step = step_needed * len(min_drawers)
+                if remaining >= total_step:
+                    for d in min_drawers:
+                        additions[d] += step_needed
+                        current_levels[d] += step_needed
+                    remaining -= total_step
+                else:
+                    base_per_min = remaining // len(min_drawers)
+                    rem_per_min = remaining % len(min_drawers)
+                    for idx, d in enumerate(min_drawers):
+                        extra = base_per_min + (1 if idx < rem_per_min else 0)
+                        additions[d] += extra
+                        current_levels[d] += extra
+                    remaining = 0
+            else:
+                base_all = remaining // len(drawers)
+                rem_all = remaining % len(drawers)
+                for idx, d in enumerate(drawers):
+                    extra = base_all + (1 if idx < rem_all else 0)
+                    additions[d] += extra
+                    current_levels[d] += extra
+                remaining = 0
+
+        return additions
+
     def _distribute_logic(self):
         total = self.total_amount_spin.value()
         drawers = self.comp.drawer_list if self.comp else []
@@ -315,12 +388,10 @@ class BulkStockDialog(QDialog):
                     self.drawer_spinboxes[d].blockSignals(False)
                 remaining -= take
         else:
-            # Add evenly across available drawers
-            base = total // len(drawers)
-            rem = total % len(drawers)
-            for idx, d in enumerate(drawers):
+            # Smart Water-Filling balance: fill empty/low drawers first
+            balanced_additions = self._smart_balance_add(drawers, total)
+            for d, val in balanced_additions.items():
                 if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
-                    val = base + (1 if idx < rem else 0)
                     self.drawer_spinboxes[d].blockSignals(True)
                     self.drawer_spinboxes[d].setValue(val)
                     self.drawer_spinboxes[d].blockSignals(False)
