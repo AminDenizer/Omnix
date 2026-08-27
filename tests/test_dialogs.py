@@ -68,7 +68,9 @@ class TestDialogs:
         )
         deduct_dlg = BulkStockDialog(component=five_drawer_comp)
         deduct_dlg.radio_deduct.setChecked(True)
-        assert deduct_dlg.btn_auto_distribute.isVisible() is False
+        assert not deduct_dlg.btn_auto_distribute.isHidden()
+        assert "هوشمندانه" in deduct_dlg.btn_auto_distribute.text()
+        assert "تقسیم" in deduct_dlg.btn_equal_distribute.text()
         
         deduct_dlg.total_amount_spin.setValue(100)
         assert deduct_dlg.btn_submit.isEnabled() is True

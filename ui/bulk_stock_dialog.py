@@ -240,9 +240,11 @@ class BulkStockDialog(QDialog):
         if is_deduct:
             self.btn_submit.setText("تایید و کسر از موجودی")
             self.btn_submit.setStyleSheet("background-color: #b91c1c; color: #ffffff; font-weight: 700;")
-            self.btn_auto_distribute.setVisible(False)
-            self.btn_equal_distribute.setText("⚡ تقسیم کسر بین کشوها")
-            self.btn_equal_distribute.setToolTip("توزیع متناسب کسر بین تمام کشوهای دارای موجودی بدون ایجاد کسری")
+            self.btn_auto_distribute.setVisible(True)
+            self.btn_auto_distribute.setText("⚡ انتخاب هوشمندانه")
+            self.btn_auto_distribute.setToolTip("برداشت از کمترین تعداد کشوی ممکن برای سرعت و عدم نیاز به باز کردن چند کشو")
+            self.btn_equal_distribute.setText("تقسیم بین کشوها")
+            self.btn_equal_distribute.setToolTip("توزیع متناسب کسر بین تمامی کشوهای دارای موجودی بدون کسری")
             self.total_amount_spin.setMaximum(max(1, max_qty))
             if max_qty <= 0:
                 self.total_amount_spin.setValue(0)
@@ -263,6 +265,7 @@ class BulkStockDialog(QDialog):
             self.btn_submit.setStyleSheet("background-color: #15803d; color: #ffffff; font-weight: 700;")
             self.btn_auto_distribute.setVisible(True)
             self.btn_auto_distribute.setText("⚡ توزیع هوشمند و تراز")
+            self.btn_auto_distribute.setToolTip("توزیع متوازن (شارژ بیشتر کشوهای خالی و تراز کردن موجودی کل کشوها)")
             self.btn_equal_distribute.setText("تقسیم مساوی")
             self.btn_equal_distribute.setToolTip("تقسیم مساوی تعداد بین کشوها")
             self.total_amount_spin.setMaximum(1000000)
