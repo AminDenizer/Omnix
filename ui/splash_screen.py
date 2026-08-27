@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
     QGraphicsDropShadowEffect, QFrame, QGraphicsOpacityEffect
 )
-from PyQt6.QtGui import QPixmap, QColor
+from PyQt6.QtGui import QPixmap, QColor, QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve
 from config import APP_NAME, APP_SUBTITLE, DEVELOPER_CREDIT_HTML
 
@@ -31,9 +31,17 @@ class SplashScreen(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.resize(540, 360)
-
         self._init_ui()
         self._center_on_screen()
+
+        # Set window icon
+        icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+        ico_path = os.path.join(icons_dir, "app_logo.ico")
+        png_path = os.path.join(icons_dir, "app_logo.png")
+        if os.path.exists(ico_path):
+            self.setWindowIcon(QIcon(ico_path))
+        elif os.path.exists(png_path):
+            self.setWindowIcon(QIcon(png_path))
 
         # Progress update timer
         self.timer = QTimer(self)

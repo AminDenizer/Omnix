@@ -82,6 +82,16 @@ def seed_sample_data(db: Database):
             min_alert=20,
             drawers="1:120",
             description="نشانگر وضعیت تغذیه برد"
+        ),
+        Component(
+            name="پتانسیومتر مولتی‌ترن",
+            value="3296W-103 (10k)",
+            package="Through-Hole (DIP)",
+            category="Resistor",
+            quantity=250,
+            min_alert=40,
+            drawers="1:100, 2:80, 5:50, 8:20, 11:0",
+            description="پتانسیومتر ۱۰ دور دقیق برای تنظیم ولتاژ — توزیع‌شده در ۵ کشوی مجزا (۱، ۲، ۵، ۸، ۱۱)"
         )
     ]
 
@@ -92,6 +102,15 @@ def seed_sample_data(db: Database):
 
 def main():
     print(f"[INFO] Starting {APP_NAME}...")
+
+    # Set Windows Process App User Model ID so taskbar displays application icon instead of Python icon
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            myappid = "dot.omnix.inventory.system.v1"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            print(f"[WARN] Windows AppUserModelID registration notice: {e}")
 
     # Enable High-DPI scaling
     if hasattr(Qt.ApplicationAttribute, 'AA_EnableHighDpiScaling'):
@@ -109,9 +128,17 @@ def main():
     except Exception as e:
         print(f"[WARN] Icon generator notice: {e}")
 
-    logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "icons", "app_logo.png")
-    if os.path.exists(logo_path):
-        app.setWindowIcon(QIcon(logo_path))
+    # Set application icon (Taskbar and Window) with multiple resolutions
+    app_icon = QIcon()
+    icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "icons")
+    ico_path = os.path.join(icons_dir, "app_logo.ico")
+    if os.path.exists(ico_path):
+        app_icon.addFile(ico_path)
+    for size_name in ["app_logo.png", "app_logo_256.png", "app_logo_64.png", "app_logo_32.png"]:
+        p = os.path.join(icons_dir, size_name)
+        if os.path.exists(p):
+            app_icon.addFile(p)
+    app.setWindowIcon(app_icon)
 
     # Apply matte dark stylesheet
     app.setStyleSheet(DARK_STYLESHEET)

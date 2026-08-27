@@ -141,11 +141,11 @@ def generate_arrows():
     draw_radio("radio_unchecked.png", "#334155", "#0b101b")
     draw_radio("radio_unchecked_hover.png", "#38bdf8", "#0e1726")
     draw_radio("radio_checked.png", "#38bdf8", "#0b101b", "#38bdf8")
-    draw_radio("radio_checked_hover.png", "#0284c7", "#0e1726", "#38bdf8")
-
+    draw_logo(256, "app_logo_256.png")
     draw_logo(128, "app_logo.png")
     draw_logo(64, "app_logo_64.png")
     draw_logo(32, "app_logo_32.png")
+    draw_logo(128, "app_logo.ico")
 
 
 if __name__ == "__main__":

@@ -44,9 +44,16 @@ class MainWindow(QMainWindow):
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         # Set application window icon
-        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons", "app_logo.png")
-        if os.path.exists(logo_path):
-            self.setWindowIcon(QIcon(logo_path))
+        icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+        ico_path = os.path.join(icons_dir, "app_logo.ico")
+        png_path = os.path.join(icons_dir, "app_logo.png")
+        win_icon = QIcon()
+        if os.path.exists(ico_path):
+            win_icon.addFile(ico_path)
+        if os.path.exists(png_path):
+            win_icon.addFile(png_path)
+        if not win_icon.isNull():
+            self.setWindowIcon(win_icon)
 
         self._init_ui()
         self._setup_shortcuts()
@@ -167,8 +174,8 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        self.table.setColumnWidth(5, 150)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.table.setColumnWidth(5, 220)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)

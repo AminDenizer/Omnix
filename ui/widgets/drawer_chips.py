@@ -21,8 +21,8 @@ class DrawerChipsWidget(QWidget):
         self.on_toggle_expand = on_toggle_expand
         self.is_expanded = False
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(4, 2, 4, 2)
-        self.main_layout.setSpacing(4)
+        self.main_layout.setContentsMargins(2, 2, 2, 2)
+        self.main_layout.setSpacing(3)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rebuild(expanded=False)
 
@@ -50,7 +50,7 @@ class DrawerChipsWidget(QWidget):
             # Compact mode: First 3 drawers + ellipsis button (...)
             row_layout = QHBoxLayout()
             row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(5)
+            row_layout.setSpacing(4)
             row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             for d in self.drawer_list[:3]:
@@ -71,7 +71,7 @@ class DrawerChipsWidget(QWidget):
             for chunk in chunks:
                 row_layout = QHBoxLayout()
                 row_layout.setContentsMargins(0, 0, 0, 0)
-                row_layout.setSpacing(5)
+                row_layout.setSpacing(4)
                 row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 for d in chunk:
                     qty = self.comp.get_drawer_qty(d)
@@ -89,6 +89,7 @@ class DrawerChipsWidget(QWidget):
         # Chip label: raw drawer number in compact mode, or number + count in expanded mode
         label = f"{d_num} ({qty:,})" if detailed else str(d_num)
         chip = QPushButton(label)
+        chip.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
         if is_empty:
             chip.setProperty("class", "drawerChipEmpty")
