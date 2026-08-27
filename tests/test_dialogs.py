@@ -45,7 +45,7 @@ class TestDialogs:
         assert "موجودی" in dlg.windowTitle()
         assert len(dlg.drawer_spinboxes) == len(sample_component.drawer_list)
         
-        # Test spinbox manipulation
+        # Test spinbox manipulation and bidirectional sync
         first_drawer = sample_component.drawer_list[0]
         dlg.drawer_spinboxes[first_drawer].setValue(10)
         
@@ -53,6 +53,36 @@ class TestDialogs:
         assert breakdown[first_drawer] == 10
         assert is_deduct is False
         assert total_amount == dlg.total_amount_spin.value()
+        
+        # Test deduct mode with 100 units
+        five_drawer_comp = Component(
+            id=99,
+            name="پتانسیومتر مولتی‌ترن",
+            value="3296W-103 (10k)",
+            package="Through-Hole (DIP)",
+            category="Resistor",
+            quantity=250,
+            min_alert=40,
+            drawers="1:100, 2:80, 5:50, 8:20, 11:0",
+            description=""
+        )
+        deduct_dlg = BulkStockDialog(component=five_drawer_comp)
+        deduct_dlg.radio_deduct.setChecked(True)
+        deduct_dlg.total_amount_spin.setValue(100)
+        assert deduct_dlg.btn_submit.isEnabled() is True
+        
+        is_ded, total_amt, bdown = deduct_dlg.get_result()
+        assert is_ded is True
+        assert total_amt == 100
+        assert bdown[1] == 100
+        
+        # Test direct drawer input syncs back to total_amount_spin
+        deduct_dlg.drawer_spinboxes[1].setValue(50)
+        deduct_dlg.drawer_spinboxes[2].setValue(50)
+        assert deduct_dlg.total_amount_spin.value() == 100
+        assert deduct_dlg.btn_submit.isEnabled() is True
+        
+        deduct_dlg.close()
         dlg.close()
 
     def test_drawer_view_dialog(self, qapp, sample_db_with_data):

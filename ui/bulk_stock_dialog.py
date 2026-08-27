@@ -11,13 +11,13 @@ from ui.widgets import SmoothSpinBox
 
 
 class BulkStockDialog(QDialog):
-    """Dedicated bulk stock increment/decrement dialog with drawer breakdown and live validation."""
+    """Dedicated bulk stock increment/decrement dialog with bidirectional drawer sync and smart validation."""
 
     def __init__(self, parent=None, component: Optional[Component] = None):
         super().__init__(parent)
         self.comp = component
         self.setWindowTitle("کسر / افزایش کلی موجودی")
-        self.resize(520, 540)
+        self.resize(520, 560)
         self.setMinimumWidth(460)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
@@ -26,9 +26,10 @@ class BulkStockDialog(QDialog):
             self.setWindowIcon(QIcon(logo_path))
 
         self.drawer_spinboxes: Dict[int, SmoothSpinBox] = {}
+        self._sync_lock = False
 
         self._init_ui()
-        self._on_amount_changed()
+        self._on_mode_toggled()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -98,8 +99,8 @@ class BulkStockDialog(QDialog):
         self.total_amount_spin.valueChanged.connect(self._on_amount_changed)
         amount_input_layout.addWidget(self.total_amount_spin, 2)
 
-        # Quick preset buttons (+10, +50, +100, +500)
-        for quick_val in (10, 50, 100, 500):
+        # Quick preset buttons (+10, +50, +100, کل موجودی)
+        for quick_val in (10, 50, 100):
             btn = QPushButton(f"+{quick_val}")
             btn.setObjectName("secondaryBtn")
             btn.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
@@ -109,12 +110,19 @@ class BulkStockDialog(QDialog):
                 "   font-size: 11px;"
                 "   font-weight: 700;"
                 "   font-family: 'Consolas', 'Segoe UI Mono', monospace;"
-                "   min-width: 54px;"
+                "   min-width: 50px;"
                 "}"
             )
-            btn.setToolTip(f"افزودن {quick_val} عدد به تعداد کل")
-            btn.clicked.connect(lambda _, v=quick_val: self.total_amount_spin.setValue(self.total_amount_spin.value() + v))
+            btn.setToolTip(f"افزودن {quick_val} عدد به تعداد")
+            btn.clicked.connect(lambda _, v=quick_val: self._add_preset(v))
             amount_input_layout.addWidget(btn)
+
+        btn_all = QPushButton("کل موجودی")
+        btn_all.setObjectName("secondaryBtn")
+        btn_all.setStyleSheet("QPushButton { padding: 4px 8px; font-size: 11px; font-weight: 700; min-width: 70px; }")
+        btn_all.setToolTip("انتخاب تمام موجودی کل این قطعه")
+        btn_all.clicked.connect(self._set_all_stock)
+        amount_input_layout.addWidget(btn_all)
 
         amount_layout.addLayout(amount_input_layout)
         layout.addWidget(amount_card)
@@ -132,7 +140,7 @@ class BulkStockDialog(QDialog):
 
         breakdown_header.addStretch()
 
-        self.btn_auto_distribute = QPushButton("توزیع خودکار / یکنواخت")
+        self.btn_auto_distribute = QPushButton("توزیع خودکار / هوشمند")
         self.btn_auto_distribute.setObjectName("secondaryBtn")
         self.btn_auto_distribute.setStyleSheet("font-size: 11px; padding: 4px 8px;")
         self.btn_auto_distribute.clicked.connect(self._auto_distribute_amount)
@@ -148,6 +156,8 @@ class BulkStockDialog(QDialog):
             lbl_single = QLabel(f"این قطعه تنها در کشوی {d_num} قرار دارد و کل عملیات روی همین کشو اعمال می‌شود.")
             lbl_single.setStyleSheet("color: #94a3b8; font-size: 12px;")
             self.breakdown_layout.addWidget(lbl_single)
+            if drawer_list:
+                self.drawer_spinboxes[drawer_list[0]] = self.total_amount_spin
         else:
             grid = QGridLayout()
             grid.setHorizontalSpacing(10)
@@ -166,7 +176,7 @@ class BulkStockDialog(QDialog):
                 spin.setValue(0)
                 spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 spin.setStyleSheet("font-weight: 600; min-width: 80px;")
-                spin.valueChanged.connect(self._validate_balance)
+                spin.valueChanged.connect(self._on_drawer_spinbox_changed)
                 self.drawer_spinboxes[d] = spin
 
                 grid.addWidget(lbl_d_name, idx, 0)
@@ -199,66 +209,124 @@ class BulkStockDialog(QDialog):
 
         layout.addLayout(actions_layout)
 
-        # If single drawer, assign total quantity automatically
-        if len(drawer_list) == 1:
-            self.drawer_spinboxes[drawer_list[0]] = self.total_amount_spin
-        elif drawer_list:
-            self._auto_distribute_amount()
+    def _add_preset(self, val: int):
+        cur = self.total_amount_spin.value()
+        if self.radio_deduct.isChecked():
+            max_qty = self.comp.quantity if self.comp else 0
+            if max_qty > 0:
+                self.total_amount_spin.setValue(min(cur + val, max_qty))
+        else:
+            self.total_amount_spin.setValue(cur + val)
+
+    def _set_all_stock(self):
+        if self.comp:
+            target = max(1, self.comp.quantity)
+            self.total_amount_spin.setValue(target)
 
     def _on_mode_toggled(self):
         is_deduct = self.radio_deduct.isChecked()
+        max_qty = self.comp.quantity if self.comp else 0
+
         if is_deduct:
             self.btn_submit.setText("تایید و کسر از موجودی")
-            self.btn_submit.setStyleSheet("background-color: #b91c1c; color: #ffffff;")
+            self.btn_submit.setStyleSheet("background-color: #b91c1c; color: #ffffff; font-weight: 700;")
+            self.total_amount_spin.setMaximum(max(1, max_qty))
+            if max_qty <= 0:
+                self.total_amount_spin.setValue(0)
+            elif self.total_amount_spin.value() > max_qty:
+                self.total_amount_spin.setValue(max_qty)
+
+            for d, spin in self.drawer_spinboxes.items():
+                if spin is not self.total_amount_spin:
+                    cur_d_qty = self.comp.get_drawer_qty(d)
+                    spin.setMaximum(cur_d_qty)
+                    if cur_d_qty == 0:
+                        spin.setValue(0)
+                        spin.setEnabled(False)
+                    else:
+                        spin.setEnabled(True)
         else:
             self.btn_submit.setText("تایید و افزایش موجودی")
-            self.btn_submit.setStyleSheet("background-color: #15803d; color: #ffffff;")
-        self._validate_balance()
+            self.btn_submit.setStyleSheet("background-color: #15803d; color: #ffffff; font-weight: 700;")
+            self.total_amount_spin.setMaximum(1000000)
+            if self.total_amount_spin.value() == 0:
+                self.total_amount_spin.setValue(10)
+            for d, spin in self.drawer_spinboxes.items():
+                if spin is not self.total_amount_spin:
+                    spin.setMaximum(1000000)
+                    spin.setEnabled(True)
+
+        self._auto_distribute_amount()
 
     def _on_amount_changed(self):
-        if len(self.comp.drawer_list if self.comp else []) > 1:
-            self._auto_distribute_amount()
-        else:
+        if self._sync_lock or not self.comp:
+            return
+        self._sync_lock = True
+        try:
+            drawer_list = self.comp.drawer_list
+            if len(drawer_list) > 1:
+                self._distribute_logic()
             self._validate_balance()
+        finally:
+            self._sync_lock = False
+
+    def _on_drawer_spinbox_changed(self):
+        """Bidirectional sync: editing drawer amounts automatically updates the total amount."""
+        if self._sync_lock or not self.comp:
+            return
+        self._sync_lock = True
+        try:
+            current_sum = sum(spin.value() for d, spin in self.drawer_spinboxes.items() if spin is not self.total_amount_spin)
+            self.total_amount_spin.blockSignals(True)
+            self.total_amount_spin.setValue(max(0, current_sum))
+            self.total_amount_spin.blockSignals(False)
+            self._validate_balance()
+        finally:
+            self._sync_lock = False
 
     def _auto_distribute_amount(self):
         """Intelligently distribute total operation amount across drawers."""
-        if not self.comp or not self.drawer_spinboxes:
+        if self._sync_lock or not self.comp:
             return
+        self._sync_lock = True
+        try:
+            self._distribute_logic()
+            self._validate_balance()
+        finally:
+            self._sync_lock = False
 
+    def _distribute_logic(self):
         total = self.total_amount_spin.value()
-        drawers = self.comp.drawer_list
+        drawers = self.comp.drawer_list if self.comp else []
         is_deduct = self.radio_deduct.isChecked()
 
-        if not drawers:
+        if len(drawers) <= 1:
             return
 
-        # Deduct mode: prioritize drawers with higher current stock
         if is_deduct:
             remaining = total
+            # Deduct from drawers with highest stock first
             for d in sorted(drawers, key=lambda x: self.comp.get_drawer_qty(x), reverse=True):
                 cur_qty = self.comp.get_drawer_qty(d)
                 take = min(remaining, cur_qty)
-                if d in self.drawer_spinboxes:
+                if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
                     self.drawer_spinboxes[d].blockSignals(True)
                     self.drawer_spinboxes[d].setValue(take)
                     self.drawer_spinboxes[d].blockSignals(False)
                 remaining -= take
         else:
-            # Add mode: distribute evenly among available drawers
+            # Add evenly across available drawers
             base = total // len(drawers)
             rem = total % len(drawers)
             for idx, d in enumerate(drawers):
-                if d in self.drawer_spinboxes:
+                if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
                     val = base + (1 if idx < rem else 0)
                     self.drawer_spinboxes[d].blockSignals(True)
                     self.drawer_spinboxes[d].setValue(val)
                     self.drawer_spinboxes[d].blockSignals(False)
 
-        self._validate_balance()
-
     def _validate_balance(self):
-        """Validate that breakdown sum strictly equals the total amount and check stock boundaries."""
+        """Validate current state and show clear, friendly feedback."""
         if not self.comp:
             return
 
@@ -266,7 +334,18 @@ class BulkStockDialog(QDialog):
         is_deduct = self.radio_deduct.isChecked()
         drawer_list = self.comp.drawer_list
 
-        # 1. Check total available stock ceiling in deduct mode
+        if is_deduct and self.comp.quantity <= 0:
+            self.balance_status_lbl.setText("✕ این قطعه در انبار ناموجود است و امکان کسر وجود ندارد.")
+            self.balance_status_lbl.setStyleSheet("color: #f87171; font-weight: 700; font-size: 12px;")
+            self.btn_submit.setEnabled(False)
+            return
+
+        if total_req <= 0:
+            self.balance_status_lbl.setText("لطفاً تعداد عملیات را مشخص کنید (حداقل ۱ عدد)")
+            self.balance_status_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
+            self.btn_submit.setEnabled(False)
+            return
+
         if is_deduct and total_req > self.comp.quantity:
             self.balance_status_lbl.setText(
                 f"✕ خطا: تعداد درخواستی ({total_req:,}) بیشتر از کل موجودی انبار ({self.comp.quantity:,}) است!"
@@ -275,47 +354,47 @@ class BulkStockDialog(QDialog):
             self.btn_submit.setEnabled(False)
             return
 
-        # 2. Single-drawer components
-        if len(drawer_list) <= 1:
-            self.balance_status_lbl.setText("✓ آماده اعمال روی کشوی قطعه")
-            self.balance_status_lbl.setStyleSheet("color: #34d399; font-weight: 600; font-size: 11px;")
-            self.btn_submit.setEnabled(True)
-            return
-
-        # 3. Multi-drawer components: check individual drawer stock capacity
-        current_sum = 0
-        drawer_overflow = False
-        overflow_msg = ""
-
-        for d, spin in self.drawer_spinboxes.items():
-            val = spin.value()
-            current_sum += val
+        # Multi-drawer verification
+        if len(drawer_list) > 1:
+            current_sum = sum(spin.value() for d, spin in self.drawer_spinboxes.items() if spin is not self.total_amount_spin)
             if is_deduct:
-                cur_qty = self.comp.get_drawer_qty(d)
-                if val > cur_qty:
-                    drawer_overflow = True
-                    overflow_msg = f"✕ خطا: کسر {val:,} از کشو {d} غیرمجاز است (موجودی کشو فقط {cur_qty:,} است)"
-                    break
+                for d, spin in self.drawer_spinboxes.items():
+                    if spin is not self.total_amount_spin:
+                        val = spin.value()
+                        cur_d_qty = self.comp.get_drawer_qty(d)
+                        if val > cur_d_qty:
+                            self.balance_status_lbl.setText(
+                                f"✕ خطا: کسر {val:,} از کشو {d} بیشتر از موجودی آن ({cur_d_qty:,}) است."
+                            )
+                            self.balance_status_lbl.setStyleSheet("color: #f87171; font-weight: 700; font-size: 12px;")
+                            self.btn_submit.setEnabled(False)
+                            return
 
-        if drawer_overflow:
-            self.balance_status_lbl.setText(overflow_msg)
-            self.balance_status_lbl.setStyleSheet("color: #f87171; font-weight: 700; font-size: 12px;")
-            self.btn_submit.setEnabled(False)
-            return
+            diff = total_req - current_sum
+            if diff != 0:
+                direction = "کمتر" if diff > 0 else "بیشتر"
+                self.balance_status_lbl.setText(
+                    f"✕ مجموع تفکیک کشوها ({current_sum:,}) با تعداد کل ({total_req:,}) برابر نیست."
+                )
+                self.balance_status_lbl.setStyleSheet("color: #fbbf24; font-weight: 700; font-size: 11px;")
+                self.btn_submit.setEnabled(False)
+                return
 
-        # 4. Check breakdown sum equality with requested total
-        diff = total_req - current_sum
-        if diff == 0:
-            self.balance_status_lbl.setText(f"✓ مجموع تفکیک کشوها ({current_sum:,}) با تعداد کل برابر است.")
-            self.balance_status_lbl.setStyleSheet("color: #34d399; font-weight: 600; font-size: 11px;")
+        # Positive ready status
+        if is_deduct:
+            future_qty = self.comp.quantity - total_req
+            self.balance_status_lbl.setText(
+                f"✓ آماده کسر {total_req:,} عدد (موجودی انبار پس از کسر: {future_qty:,} عدد خواهد شد)"
+            )
+            self.balance_status_lbl.setStyleSheet("color: #34d399; font-weight: 600; font-size: 12px;")
             self.btn_submit.setEnabled(True)
         else:
-            direction = "کمتر" if diff > 0 else "بیشتر"
+            future_qty = self.comp.quantity + total_req
             self.balance_status_lbl.setText(
-                f"✕ اختلاف تفکیک: مجموع ورودی‌ها {abs(diff):,} عدد {direction} از تعداد کل ({total_req:,}) است."
+                f"✓ آماده افزایش {total_req:,} عدد (موجودی انبار پس از افزایش: {future_qty:,} عدد خواهد شد)"
             )
-            self.balance_status_lbl.setStyleSheet("color: #fbbf24; font-weight: 700; font-size: 11px;")
-            self.btn_submit.setEnabled(False)
+            self.balance_status_lbl.setStyleSheet("color: #34d399; font-weight: 600; font-size: 12px;")
+            self.btn_submit.setEnabled(True)
 
     def _on_submit(self):
         self.accept()
@@ -330,6 +409,9 @@ class BulkStockDialog(QDialog):
             d_num = drawer_list[0] if drawer_list else 1
             breakdown = {d_num: total_amount}
         else:
-            breakdown = {d: spin.value() for d, spin in self.drawer_spinboxes.items() if spin.value() > 0}
+            breakdown = {
+                d: spin.value() for d, spin in self.drawer_spinboxes.items()
+                if spin is not self.total_amount_spin and spin.value() > 0
+            }
 
         return is_deduct, total_amount, breakdown
