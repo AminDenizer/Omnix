@@ -100,3 +100,20 @@ class TestMainWindow:
         reverted = sample_db_with_data.get_component(comp.id)
         assert reverted.quantity == initial_qty
         win.close()
+
+    def test_main_window_empty_state(self, qapp, temp_db):
+        win = MainWindow(db=temp_db)
+        assert win.table.rowCount() == 0
+        assert not win.table.empty_overlay.isHidden()
+        assert "هنوز قطعه‌ای در انبار ثبت نشده است" in win.table.empty_overlay.title_lbl.text()
+        assert "ثبت قطعه جدید" in win.table.empty_overlay.action_btn.text()
+
+        # Test filter empty state
+        win.search_input.setText("non_existent_part")
+        win._on_filter_changed()
+        assert win.table.rowCount() == 0
+        assert not win.table.empty_overlay.isHidden()
+        assert "یافت نشد" in win.table.empty_overlay.title_lbl.text()
+        assert "پاکسازی فیلترها" in win.table.empty_overlay.action_btn.text()
+
+        win.close()

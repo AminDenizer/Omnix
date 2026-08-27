@@ -168,6 +168,8 @@ class MainWindow(QMainWindow):
         self.table.rowActivateRequested.connect(self._on_table_enter_action)
         self.table.rowExpandRequested.connect(self._toggle_row_expansion)
         self.table.rowDeselectRequested.connect(self._collapse_all_rows)
+        self.table.addRequested.connect(self._open_add_dialog)
+        self.table.resetFilterRequested.connect(self._reset_filters)
         self.table.itemDoubleClicked.connect(self._on_row_double_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
@@ -278,6 +280,14 @@ class MainWindow(QMainWindow):
         self.expanded_rows.clear()
         self.table.setRowCount(0)
         self.table.setRowCount(len(components))
+
+        is_empty = len(components) == 0
+        is_filter_active = (
+            bool(self.search_input.text().strip()) or
+            self.category_filter.currentIndex() > 0 or
+            self.stock_filter.currentIndex() > 0
+        )
+        self.table.update_empty_state(is_empty, is_filter_active)
 
         mono_font = QFont("Consolas", 10)
         mono_font.setStyleHint(QFont.StyleHint.Monospace)

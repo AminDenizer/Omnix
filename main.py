@@ -143,9 +143,8 @@ def main():
     # Apply matte dark stylesheet
     app.setStyleSheet(DARK_STYLESHEET)
 
-    # Initialize Database
+    # Initialize Database (starts clean with 0 components)
     db = Database()
-    seed_sample_data(db)
 
     # Initialize Main Window (prepared in background)
     window = MainWindow(db=db)
