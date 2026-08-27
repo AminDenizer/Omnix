@@ -21,49 +21,50 @@ class EmptyStateOverlay(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Center card container
         self.card = QFrame()
-        self.card.setObjectName("cardFrame")
+        self.card.setObjectName("emptyStateCard")
+        self.card.setMinimumWidth(540)
+        self.card.setMaximumWidth(620)
         self.card.setStyleSheet(
-            "QFrame#cardFrame {"
-            "   background-color: rgba(30, 41, 59, 0.75);"
-            "   border: 1px dashed rgba(56, 189, 248, 0.35);"
-            "   border-radius: 12px;"
-            "   padding: 24px 36px;"
-            "   min-width: 440px;"
-            "   max-width: 520px;"
+            "QFrame#emptyStateCard {"
+            "   background-color: rgba(30, 41, 59, 0.9);"
+            "   border: 1px dashed rgba(56, 189, 248, 0.45);"
+            "   border-radius: 14px;"
             "}"
         )
         card_layout = QVBoxLayout(self.card)
         card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.setContentsMargins(40, 32, 40, 32)
         card_layout.setSpacing(10)
 
         # 1. Icon badge
         self.icon_lbl = QLabel("📦")
         self.icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_lbl.setStyleSheet("font-size: 38px; background: transparent; border: none;")
+        self.icon_lbl.setStyleSheet("font-size: 42px; background: transparent; border: none;")
         card_layout.addWidget(self.icon_lbl)
+        card_layout.addSpacing(4)
 
         # 2. Main Title
         self.title_lbl = QLabel("هنوز قطعه‌ای در انبار ثبت نشده است")
         self.title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_lbl.setWordWrap(True)
+        self.title_lbl.setWordWrap(False)
         self.title_lbl.setStyleSheet(
-            "font-size: 15px; font-weight: 700; color: #f1f5f9; background: transparent; border: none;"
+            "font-size: 16px; font-weight: 700; color: #f8fafc; background: transparent; border: none;"
         )
         card_layout.addWidget(self.title_lbl)
 
         # 3. Description / Guidance
-        self.desc_lbl = QLabel("برای شروع مدیریت قطعات، اولین قطعه خود را به سیستم اضافه کنید.")
+        self.desc_lbl = QLabel("برای شروع، کلید میانبر [Ctrl+N] را بزنید یا روی دکمه زیر کلیک کنید.")
         self.desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.desc_lbl.setWordWrap(True)
+        self.desc_lbl.setWordWrap(False)
         self.desc_lbl.setStyleSheet(
-            "font-size: 12px; color: #94a3b8; background: transparent; border: none; max-width: 440px;"
+            "font-size: 12px; color: #94a3b8; background: transparent; border: none;"
         )
         card_layout.addWidget(self.desc_lbl)
+        card_layout.addSpacing(14)
 
         # 4. Action Button
         self.action_btn = QPushButton("ثبت قطعه جدید +")
@@ -74,9 +75,10 @@ class EmptyStateOverlay(QWidget):
             "   color: #ffffff;"
             "   font-size: 12px;"
             "   font-weight: 700;"
-            "   padding: 8px 22px;"
+            "   padding: 9px 28px;"
             "   border-radius: 6px;"
             "   border: none;"
+            "   min-height: 22px;"
             "}"
             "QPushButton:hover {"
             "   background-color: #0369a1;"
@@ -100,9 +102,10 @@ class EmptyStateOverlay(QWidget):
                 "   color: #e2e8f0;"
                 "   font-size: 12px;"
                 "   font-weight: 600;"
-                "   padding: 8px 20px;"
+                "   padding: 8px 24px;"
                 "   border-radius: 6px;"
                 "   border: 1px solid #475569;"
+                "   min-height: 20px;"
                 "}"
                 "QPushButton:hover {"
                 "   background-color: #475569;"
@@ -119,9 +122,10 @@ class EmptyStateOverlay(QWidget):
                 "   color: #ffffff;"
                 "   font-size: 12px;"
                 "   font-weight: 700;"
-                "   padding: 8px 22px;"
+                "   padding: 8px 24px;"
                 "   border-radius: 6px;"
                 "   border: none;"
+                "   min-height: 20px;"
                 "}"
                 "QPushButton:hover {"
                 "   background-color: #0369a1;"
