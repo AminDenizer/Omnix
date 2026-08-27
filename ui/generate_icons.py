@@ -1,11 +1,16 @@
 import os
+import sys
 from PyQt6.QtGui import (
     QPixmap, QPainter, QColor, QPen, QBrush,
     QPainterPath, QLinearGradient, QRadialGradient
 )
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
-ICONS_DIR = os.path.join(os.path.dirname(__file__), "icons")
+try:
+    from config import get_bundle_dir
+    ICONS_DIR = os.path.join(get_bundle_dir(), "ui", "icons")
+except ImportError:
+    ICONS_DIR = os.path.join(os.path.dirname(__file__), "icons")
 
 
 def generate_arrows():

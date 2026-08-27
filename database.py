@@ -6,15 +6,16 @@ from config import (
     DEFAULT_CATEGORIES,
     DEFAULT_PACKAGES,
     DEFAULT_APP_SETTINGS,
-    DEFAULT_DB_FILENAME
+    DEFAULT_DB_FILENAME,
+    get_default_db_path
 )
 
 COMMON_PACKAGES = DEFAULT_PACKAGES
 
 
 class Database:
-    def __init__(self, db_path: str = DEFAULT_DB_FILENAME):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        self.db_path = db_path if db_path is not None else get_default_db_path()
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:

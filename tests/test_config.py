@@ -16,3 +16,6 @@ class TestConfig:
         assert "SMD 0805" in config.DEFAULT_PACKAGES
         assert config.BACKUP_MAGIC_HEADER == "OMNIX_SECURE_BACKUP"
         assert config.BACKUP_SECRET_SALT is not None
+        assert config.get_app_dir() is not None
+        assert config.get_bundle_dir() is not None
+        assert config.get_default_db_path().endswith("inventory.db")

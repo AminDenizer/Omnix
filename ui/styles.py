@@ -1,6 +1,12 @@
 import os
+import sys
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+try:
+    from config import get_bundle_dir
+    CURRENT_DIR = os.path.join(get_bundle_dir(), "ui").replace("\\", "/")
+except ImportError:
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+
 UP_ARROW_PATH = f"{CURRENT_DIR}/icons/up_arrow.png"
 UP_ARROW_HOVER_PATH = f"{CURRENT_DIR}/icons/up_arrow_hover.png"
 DOWN_ARROW_PATH = f"{CURRENT_DIR}/icons/down_arrow.png"
