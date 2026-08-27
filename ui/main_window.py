@@ -22,7 +22,9 @@ from ui.category_settings_dialog import CategorySettingsDialog
 from ui.widgets import (
     auto_detect_text_direction,
     DrawerChipsWidget,
-    InventoryTableWidget
+    InventoryTableWidget,
+    StatsRibbonWidget,
+    FilterBarWidget
 )
 
 
@@ -107,73 +109,27 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(header_layout)
 
         # 2. Status ribbon pills
-        ribbon_frame = QFrame()
-        ribbon_frame.setObjectName("ribbonFrame")
-        ribbon_layout = QHBoxLayout(ribbon_frame)
-        ribbon_layout.setContentsMargins(8, 4, 8, 4)
-        ribbon_layout.setSpacing(8)
-
-        self.stat_types_pill = QLabel("قطعات: ۰ قلم")
-        self.stat_types_pill.setProperty("class", "statPill")
-        ribbon_layout.addWidget(self.stat_types_pill)
-
-        self.stat_items_pill = QLabel("موجودی کل: ۰ عدد")
-        self.stat_items_pill.setProperty("class", "statPill")
-        ribbon_layout.addWidget(self.stat_items_pill)
-
-        self.stat_drawers_pill = QLabel("کشوهای فعال: ۰")
-        self.stat_drawers_pill.setProperty("class", "statPill")
-        ribbon_layout.addWidget(self.stat_drawers_pill)
-
-        ribbon_layout.addStretch()
-
-        self.stat_instock_pill = QLabel("موجودی کافی: ۰")
-        self.stat_instock_pill.setProperty("class", "statPillSuccess")
-        ribbon_layout.addWidget(self.stat_instock_pill)
-
-        self.stat_low_pill = QLabel("کسری انبار: ۰")
-        self.stat_low_pill.setProperty("class", "statPillWarning")
-        ribbon_layout.addWidget(self.stat_low_pill)
-
-        self.stat_empty_pill = QLabel("ناموجود: ۰")
-        self.stat_empty_pill.setProperty("class", "statPillDanger")
-        ribbon_layout.addWidget(self.stat_empty_pill)
-
-        main_layout.addWidget(ribbon_frame)
+        self.stats_ribbon = StatsRibbonWidget()
+        self.stat_types_pill = self.stats_ribbon.stat_types_pill
+        self.stat_items_pill = self.stats_ribbon.stat_items_pill
+        self.stat_drawers_pill = self.stats_ribbon.stat_drawers_pill
+        self.stat_instock_pill = self.stats_ribbon.stat_instock_pill
+        self.stat_low_pill = self.stats_ribbon.stat_low_pill
+        self.stat_empty_pill = self.stats_ribbon.stat_empty_pill
+        main_layout.addWidget(self.stats_ribbon)
 
         # 3. Search and filters bar
-        filter_card = QFrame()
-        filter_card.setObjectName("cardFrame")
-        filter_layout = QHBoxLayout(filter_card)
-        filter_layout.setContentsMargins(8, 6, 8, 6)
-        filter_layout.setSpacing(8)
+        self.filter_bar = FilterBarWidget()
+        self.search_input = self.filter_bar.search_input
+        self.category_filter = self.filter_bar.category_filter
+        self.stock_filter = self.filter_bar.stock_filter
+        self.reset_filter_btn = self.filter_bar.reset_filter_btn
 
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("جستجوی پارت‌نامبر، مقدار (10k)، نام، پکیج یا شماره کشو... (کلید /)")
-        self.search_input.textChanged.connect(self._on_filter_changed)
-        self.search_input.returnPressed.connect(self._on_enter_pressed)
-        filter_layout.addWidget(self.search_input, 3)
-
-        self.category_filter = QComboBox()
         self._populate_category_filter()
-        self.category_filter.currentIndexChanged.connect(self._on_filter_changed)
-        filter_layout.addWidget(self.category_filter, 1)
-
-        self.stock_filter = QComboBox()
-        self.stock_filter.addItem("همه وضعیت‌ها")
-        self.stock_filter.addItem("موجود (کافی)")
-        self.stock_filter.addItem("کسری موجودی")
-        self.stock_filter.addItem("ناموجود (صفر)")
-        self.stock_filter.currentIndexChanged.connect(self._on_filter_changed)
-        filter_layout.addWidget(self.stock_filter, 1)
-
-        self.reset_filter_btn = QPushButton("پاکسازی فیلترها")
-        self.reset_filter_btn.setObjectName("secondaryBtn")
-        self.reset_filter_btn.setToolTip("پاک کردن فیلترها و جستجو (Escape)")
-        self.reset_filter_btn.clicked.connect(self._reset_filters)
-        filter_layout.addWidget(self.reset_filter_btn)
-
-        main_layout.addWidget(filter_card)
+        self.filter_bar.filterChanged.connect(self.refresh_data)
+        self.filter_bar.enterPressed.connect(self._on_enter_pressed)
+        self.filter_bar.resetRequested.connect(self._reset_filters)
+        main_layout.addWidget(self.filter_bar)
 
         # 4. Components table
         self.table = InventoryTableWidget()
@@ -258,21 +214,8 @@ class MainWindow(QMainWindow):
         self.more_btn.setMenu(more_menu)
 
     def _populate_category_filter(self):
-        curr = self.category_filter.currentText()
-        self.category_filter.blockSignals(True)
-        self.category_filter.clear()
-        self.category_filter.addItem("همه دسته‌ها")
         categories = self.db.get_categories()
-        for cat in categories:
-            if cat != "—":
-                self.category_filter.addItem(cat)
-        
-        idx = self.category_filter.findText(curr)
-        if idx >= 0:
-            self.category_filter.setCurrentIndex(idx)
-        else:
-            self.category_filter.setCurrentIndex(0)
-        self.category_filter.blockSignals(False)
+        self.filter_bar.set_categories(categories)
 
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+N"), self, self._open_add_dialog)
@@ -420,16 +363,9 @@ class MainWindow(QMainWindow):
 
     def _update_stats(self):
         stats = self.db.get_statistics()
-        self.stat_types_pill.setText(f"قطعات: {stats['total_types']:,} قلم")
-        self.stat_items_pill.setText(f"موجودی کل: {stats['total_items']:,} عدد")
-        self.stat_drawers_pill.setText(f"کشوهای فعال: {stats['total_drawers']:,}")
-        self.stat_instock_pill.setText(f"موجودی کافی: {stats['in_stock_count']:,}")
-        self.stat_low_pill.setText(f"کسری انبار: {stats['low_stock_count']:,}")
-        self.stat_empty_pill.setText(f"ناموجود: {stats['empty_count']:,}")
+        self.stats_ribbon.update_stats(stats)
 
     def _on_filter_changed(self):
-        text = self.search_input.text().strip()
-        auto_detect_text_direction(self.search_input, text)
         self.refresh_data()
 
     def _on_enter_pressed(self):
@@ -440,9 +376,7 @@ class MainWindow(QMainWindow):
     def _reset_filters(self):
         self.table.clearSelection()
         self._collapse_all_rows()
-        self.search_input.clear()
-        self.category_filter.setCurrentIndex(0)
-        self.stock_filter.setCurrentIndex(0)
+        self.filter_bar.reset()
         self.refresh_data()
 
     def _get_selected_component(self) -> Optional[Component]:

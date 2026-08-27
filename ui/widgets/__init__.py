@@ -6,6 +6,8 @@ from ui.widgets.custom_inputs import (
 )
 from ui.widgets.drawer_chips import DrawerChipsWidget
 from ui.widgets.inventory_table import InventoryTableWidget
+from ui.widgets.stats_ribbon import StatsRibbonWidget
+from ui.widgets.filter_bar import FilterBarWidget
 
 __all__ = [
     "SmoothSpinBox",
@@ -13,5 +15,7 @@ __all__ = [
     "DescriptionPlainTextEdit",
     "auto_detect_text_direction",
     "DrawerChipsWidget",
-    "InventoryTableWidget"
+    "InventoryTableWidget",
+    "StatsRibbonWidget",
+    "FilterBarWidget"
 ]

@@ -9,7 +9,9 @@ from ui.widgets import (
     DescriptionPlainTextEdit,
     auto_detect_text_direction,
     DrawerChipsWidget,
-    InventoryTableWidget
+    InventoryTableWidget,
+    StatsRibbonWidget,
+    FilterBarWidget
 )
 
 
@@ -93,3 +95,36 @@ class TestCustomWidgets:
         table.keyPressEvent(key_event)
         assert len(expanded_rows) == 1
         assert expanded_rows[0] == 0
+
+    def test_stats_ribbon_widget(self, qapp):
+        ribbon = StatsRibbonWidget()
+        assert ribbon is not None
+        
+        sample_stats = {
+            "total_types": 10,
+            "total_items": 500,
+            "total_drawers": 4,
+            "in_stock_count": 8,
+            "low_stock_count": 1,
+            "empty_count": 1
+        }
+        ribbon.update_stats(sample_stats)
+        assert "10" in ribbon.stat_types_pill.text()
+        assert "500" in ribbon.stat_items_pill.text()
+
+    def test_filter_bar_widget(self, qapp):
+        fb = FilterBarWidget()
+        assert fb is not None
+
+        fb.set_categories(["Resistor", "Capacitor"])
+        assert fb.category_filter.count() == 3  # "همه دسته‌ها", "Resistor", "Capacitor"
+
+        events_fired = []
+        fb.filterChanged.connect(lambda: events_fired.append("changed"))
+        
+        fb.search_input.setText("10k")
+        assert len(events_fired) >= 1
+
+        fb.reset()
+        assert fb.search_input.text() == ""
+        assert fb.category_filter.currentIndex() == 0
