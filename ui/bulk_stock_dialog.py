@@ -217,6 +217,7 @@ class BulkStockDialog(QDialog):
         actions_layout.addWidget(btn_cancel, 1)
 
         layout.addLayout(actions_layout)
+        self._on_mode_toggled()
 
     def _add_preset(self, val: int):
         cur = self.total_amount_spin.value()
@@ -239,6 +240,9 @@ class BulkStockDialog(QDialog):
         if is_deduct:
             self.btn_submit.setText("تایید و کسر از موجودی")
             self.btn_submit.setStyleSheet("background-color: #b91c1c; color: #ffffff; font-weight: 700;")
+            self.btn_auto_distribute.setVisible(False)
+            self.btn_equal_distribute.setText("⚡ تقسیم کسر بین کشوها")
+            self.btn_equal_distribute.setToolTip("توزیع متناسب کسر بین تمام کشوهای دارای موجودی بدون ایجاد کسری")
             self.total_amount_spin.setMaximum(max(1, max_qty))
             if max_qty <= 0:
                 self.total_amount_spin.setValue(0)
@@ -257,6 +261,10 @@ class BulkStockDialog(QDialog):
         else:
             self.btn_submit.setText("تایید و افزایش موجودی")
             self.btn_submit.setStyleSheet("background-color: #15803d; color: #ffffff; font-weight: 700;")
+            self.btn_auto_distribute.setVisible(True)
+            self.btn_auto_distribute.setText("⚡ توزیع هوشمند و تراز")
+            self.btn_equal_distribute.setText("تقسیم مساوی")
+            self.btn_equal_distribute.setToolTip("تقسیم مساوی تعداد بین کشوها")
             self.total_amount_spin.setMaximum(1000000)
             if self.total_amount_spin.value() == 0:
                 self.total_amount_spin.setValue(10)
@@ -304,8 +312,56 @@ class BulkStockDialog(QDialog):
         finally:
             self._sync_lock = False
 
+    def _fair_deduct_distribution(self, capacities: Dict[int, int], total_to_deduct: int) -> Dict[int, int]:
+        """
+        Distribute total_to_deduct across drawers such that no drawer exceeds its capacity,
+        and the deduction is as evenly shared among eligible drawers as possible.
+        """
+        total_avail = sum(capacities.values())
+        if total_to_deduct >= total_avail:
+            return dict(capacities)
+
+        if total_to_deduct <= 0:
+            return {d: 0 for d in capacities}
+
+        alloc = {d: 0 for d in capacities}
+        remaining = total_to_deduct
+        drawers = [d for d in capacities if capacities[d] > 0]
+
+        while remaining > 0 and drawers:
+            share = remaining // len(drawers)
+            rem = remaining % len(drawers)
+            if share == 0:
+                for d in drawers[:remaining]:
+                    alloc[d] += 1
+                remaining = 0
+                break
+
+            capped_any = False
+            remaining_drawers = []
+            for idx, d in enumerate(drawers):
+                intended = share + (1 if idx < rem else 0)
+                avail = capacities[d] - alloc[d]
+                if avail <= intended:
+                    alloc[d] += avail
+                    remaining -= avail
+                    capped_any = True
+                else:
+                    remaining_drawers.append(d)
+
+            if not capped_any:
+                for idx, d in enumerate(drawers):
+                    intended = share + (1 if idx < rem else 0)
+                    alloc[d] += intended
+                    remaining -= intended
+                break
+            else:
+                drawers = remaining_drawers
+
+        return alloc
+
     def _equal_distribute_amount(self):
-        """Divide total amount equally across drawers."""
+        """Divide total amount across drawers (fair capacity-constrained in deduct mode, uniform in add mode)."""
         if self._sync_lock or not self.comp:
             return
         self._sync_lock = True
@@ -313,14 +369,23 @@ class BulkStockDialog(QDialog):
             total = self.total_amount_spin.value()
             drawers = self.comp.drawer_list if self.comp else []
             if len(drawers) > 1:
-                base = total // len(drawers)
-                rem = total % len(drawers)
-                for idx, d in enumerate(drawers):
-                    if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
-                        val = base + (1 if idx < rem else 0)
-                        self.drawer_spinboxes[d].blockSignals(True)
-                        self.drawer_spinboxes[d].setValue(val)
-                        self.drawer_spinboxes[d].blockSignals(False)
+                if self.radio_deduct.isChecked():
+                    capacities = {d: self.comp.get_drawer_qty(d) for d in drawers}
+                    fair_alloc = self._fair_deduct_distribution(capacities, total)
+                    for d, val in fair_alloc.items():
+                        if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
+                            self.drawer_spinboxes[d].blockSignals(True)
+                            self.drawer_spinboxes[d].setValue(val)
+                            self.drawer_spinboxes[d].blockSignals(False)
+                else:
+                    base = total // len(drawers)
+                    rem = total % len(drawers)
+                    for idx, d in enumerate(drawers):
+                        if d in self.drawer_spinboxes and self.drawer_spinboxes[d] is not self.total_amount_spin:
+                            val = base + (1 if idx < rem else 0)
+                            self.drawer_spinboxes[d].blockSignals(True)
+                            self.drawer_spinboxes[d].setValue(val)
+                            self.drawer_spinboxes[d].blockSignals(False)
             self._validate_balance()
         finally:
             self._sync_lock = False

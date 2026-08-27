@@ -54,7 +54,7 @@ class TestDialogs:
         assert is_deduct is False
         assert total_amount == dlg.total_amount_spin.value()
         
-        # Test deduct mode with 100 units
+        # Test deduct mode with 100 and 150 units
         five_drawer_comp = Component(
             id=99,
             name="پتانسیومتر مولتی‌ترن",
@@ -68,6 +68,8 @@ class TestDialogs:
         )
         deduct_dlg = BulkStockDialog(component=five_drawer_comp)
         deduct_dlg.radio_deduct.setChecked(True)
+        assert deduct_dlg.btn_auto_distribute.isVisible() is False
+        
         deduct_dlg.total_amount_spin.setValue(100)
         assert deduct_dlg.btn_submit.isEnabled() is True
         
@@ -76,10 +78,22 @@ class TestDialogs:
         assert total_amt == 100
         assert bdown[1] == 100
         
+        # Test deducting 150 with fair distribution across drawers
+        deduct_dlg.total_amount_spin.setValue(150)
+        deduct_dlg.btn_equal_distribute.click()
+        assert deduct_dlg.drawer_spinboxes[1].value() == 44
+        assert deduct_dlg.drawer_spinboxes[2].value() == 43
+        assert deduct_dlg.drawer_spinboxes[5].value() == 43
+        assert deduct_dlg.drawer_spinboxes[8].value() == 20
+        assert deduct_dlg.drawer_spinboxes[11].value() == 0
+        assert sum(s.value() for s in deduct_dlg.drawer_spinboxes.values()) == 150
+        assert deduct_dlg.btn_submit.isEnabled() is True
+
         # Test direct drawer input syncs back to total_amount_spin
+        deduct_dlg.drawer_spinboxes[5].setValue(0)
         deduct_dlg.drawer_spinboxes[1].setValue(50)
         deduct_dlg.drawer_spinboxes[2].setValue(50)
-        assert deduct_dlg.total_amount_spin.value() == 100
+        assert deduct_dlg.total_amount_spin.value() == 120 # 50+50+0+20+0
         assert deduct_dlg.btn_submit.isEnabled() is True
         
         # Test smart balancing add mode on 5-drawer component
