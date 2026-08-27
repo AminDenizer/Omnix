@@ -87,14 +87,14 @@ class TestCustomWidgets:
         table.setItem(0, 0, QTableWidgetItem("Item 1"))
         table.selectRow(0)
 
-        expanded_rows = []
-        table.rowExpandRequested.connect(lambda r: expanded_rows.append(r))
+        activated_rows = []
+        table.rowActivateRequested.connect(lambda r: activated_rows.append(r))
 
         # Simulate Enter key press
         key_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
         table.keyPressEvent(key_event)
-        assert len(expanded_rows) == 1
-        assert expanded_rows[0] == 0
+        assert len(activated_rows) == 1
+        assert activated_rows[0] == 0
 
     def test_stats_ribbon_widget(self, qapp):
         ribbon = StatsRibbonWidget()

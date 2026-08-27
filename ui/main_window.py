@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._setup_shortcuts()
         self.refresh_data()
+        QTimer.singleShot(100, self._focus_search)
 
     def _init_ui(self):
         central_widget = QWidget()
@@ -91,18 +92,24 @@ class MainWindow(QMainWindow):
 
         # Main action buttons
         self.add_btn = QPushButton("+ ثبت قطعه جدید")
+        self.add_btn.setAutoDefault(False)
+        self.add_btn.setDefault(False)
         self.add_btn.setToolTip("ثبت قطعه جدید در انبار (Ctrl+N)")
         self.add_btn.clicked.connect(self._open_add_dialog)
         header_layout.addWidget(self.add_btn)
 
         self.drawer_view_btn = QPushButton("بازرسی کشوها")
         self.drawer_view_btn.setObjectName("secondaryBtn")
+        self.drawer_view_btn.setAutoDefault(False)
+        self.drawer_view_btn.setDefault(False)
         self.drawer_view_btn.setToolTip("مشاهده تمام قطعات یک کشوی خاص (Ctrl+D)")
         self.drawer_view_btn.clicked.connect(self._open_drawer_view)
         header_layout.addWidget(self.drawer_view_btn)
 
         self.more_btn = QPushButton("ابزارها")
         self.more_btn.setObjectName("secondaryBtn")
+        self.more_btn.setAutoDefault(False)
+        self.more_btn.setDefault(False)
         self._setup_more_menu()
         header_layout.addWidget(self.more_btn)
 
@@ -148,6 +155,7 @@ class MainWindow(QMainWindow):
         self.table.setAlternatingRowColors(False)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        self.table.rowActivateRequested.connect(self._open_edit_dialog_for_row)
         self.table.rowExpandRequested.connect(self._toggle_row_expansion)
         self.table.rowDeselectRequested.connect(self._collapse_all_rows)
         self.table.itemDoubleClicked.connect(self._on_row_double_clicked)
@@ -220,12 +228,18 @@ class MainWindow(QMainWindow):
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+N"), self, self._open_add_dialog)
         QShortcut(QKeySequence("Ctrl+D"), self, self._open_drawer_view)
-        QShortcut(QKeySequence("Ctrl+F"), self, lambda: self.search_input.setFocus())
-        QShortcut(QKeySequence("/"), self, lambda: (self.search_input.setFocus(), self.search_input.selectAll()))
+        QShortcut(QKeySequence("Ctrl+F"), self, self._focus_search)
+        QShortcut(QKeySequence("/"), self, self._focus_search)
         QShortcut(QKeySequence("Escape"), self, self._reset_filters)
+        QShortcut(QKeySequence(Qt.Key.Key_Return), self, self._on_global_enter)
+        QShortcut(QKeySequence(Qt.Key.Key_Enter), self, self._on_global_enter)
         QShortcut(QKeySequence("+"), self, self._quick_increment_selected)
         QShortcut(QKeySequence("="), self, self._quick_increment_selected)
         QShortcut(QKeySequence("-"), self, self._quick_decrement_selected)
+
+    def _focus_search(self):
+        self.search_input.setFocus()
+        self.search_input.selectAll()
 
     def refresh_data(self):
         query = self.search_input.text().strip()
@@ -367,6 +381,31 @@ class MainWindow(QMainWindow):
 
     def _on_filter_changed(self):
         self.refresh_data()
+
+    def _open_edit_dialog_for_row(self, row: int):
+        if 0 <= row < self.table.rowCount():
+            id_item = self.table.item(row, 0)
+            if id_item:
+                comp_id = int(id_item.text())
+                comp = self.db.get_component(comp_id)
+                if comp:
+                    self._open_edit_dialog(comp)
+
+    def _on_global_enter(self):
+        if self.search_input.hasFocus():
+            self._on_enter_pressed()
+        elif self.table.hasFocus():
+            selected = self.table.selectedItems()
+            if selected:
+                row = selected[0].row()
+                self._open_edit_dialog_for_row(row)
+            elif self.table.rowCount() > 0:
+                self.table.selectRow(0)
+        else:
+            if self.table.rowCount() > 0:
+                self.table.setFocus()
+                if not self.table.selectedItems():
+                    self.table.selectRow(0)
 
     def _on_enter_pressed(self):
         if self.table.rowCount() > 0:

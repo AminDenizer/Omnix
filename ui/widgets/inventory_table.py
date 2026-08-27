@@ -7,6 +7,7 @@ from PyQt6.QtGui import QMouseEvent, QKeyEvent
 class InventoryTableWidget(QTableWidget):
     """Custom table widget supporting keyboard navigation, expansion, and background deselection."""
 
+    rowActivateRequested = pyqtSignal(int)
     rowExpandRequested = pyqtSignal(int)
     rowDeselectRequested = pyqtSignal()
 
@@ -48,7 +49,7 @@ class InventoryTableWidget(QTableWidget):
             selected = self.selectedItems()
             if selected:
                 row = selected[0].row()
-                self.rowExpandRequested.emit(row)
+                self.rowActivateRequested.emit(row)
                 event.accept()
                 return
         elif event.key() == Qt.Key.Key_Escape:
