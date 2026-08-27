@@ -1,0 +1,34 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Database and Backup files
+*.db
+*.db-journal
+*.elecbak
+*.omnixbak
+
+# Test & cache outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Exports & temporary media
+test_export.xlsx
+test_export.csv
+*.png
+!ui/icons/*.png
+
+# IDE & OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
