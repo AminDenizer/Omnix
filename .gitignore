@@ -1,0 +1,47 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Executables & build artifacts
+*.exe
+build/
+dist/
+*.spec
+
+# Excel database files & Excel lock files
+*.xlsx
+*.xls
+*.xlsm
+~$*
+
+# Database & backup files
+*.db
+*.db-journal
+*.elecbak
+*.omnixbak
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Images & temporary media (preserve official icons)
+*.png
+!ui/icons/*.png
+*.ico
+!ui/icons/*.ico
+
+# IDE & OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
