@@ -27,6 +27,11 @@ test_export.csv
 *.png
 !ui/icons/*.png
 
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
 # IDE & OS files
 .vscode/
 .idea/
