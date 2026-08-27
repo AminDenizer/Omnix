@@ -18,6 +18,7 @@ from ui.bulk_stock_dialog import BulkStockDialog
 from ui.drawer_view import DrawerViewDialog
 from ui.dialog_utils import ask_persian_confirmation
 from ui.category_settings_dialog import CategorySettingsDialog
+from ui.widgets import auto_detect_text_direction
 
 
 class DrawerChipsWidget(QWidget):
@@ -563,16 +564,7 @@ class MainWindow(QMainWindow):
 
     def _on_filter_changed(self):
         text = self.search_input.text().strip()
-        if not text:
-            self.search_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        else:
-            for ch in text:
-                if ('\u0600' <= ch <= '\u06FF') or ('\uFB50' <= ch <= '\uFDFF') or ('\uFE70' <= ch <= '\uFEFF'):
-                    self.search_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-                    break
-                elif ch.isalpha() and ch.isascii():
-                    self.search_input.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-                    break
+        auto_detect_text_direction(self.search_input, text)
         self.refresh_data()
 
     def _on_enter_pressed(self):

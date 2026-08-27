@@ -1,65 +1,19 @@
 import os
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QSpinBox, QPlainTextEdit, QPushButton, QMessageBox,
-    QFrame, QGridLayout, QWidget, QScrollArea
+    QPushButton, QMessageBox, QFrame, QGridLayout, QWidget, QScrollArea
 )
-from PyQt6.QtGui import QPainter, QColor, QFont, QWheelEvent, QIcon
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 from typing import Optional, Dict, List
 from models import Component
 from database import Database, DEFAULT_CATEGORIES, DEFAULT_PACKAGES
-
-
-def auto_detect_text_direction(widget, text: str):
-    """Auto-detect text direction (RTL for Persian/Arabic, LTR for English/Latin)."""
-    clean = text.strip()
-    if not clean:
-        widget.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        return
-
-    for ch in clean:
-        if ('\u0600' <= ch <= '\u06FF') or ('\uFB50' <= ch <= '\uFDFF') or ('\uFE70' <= ch <= '\uFEFF'):
-            widget.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-            return
-        elif ch.isalpha() and ch.isascii():
-            widget.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-            return
-
-
-class SmoothSpinBox(QSpinBox):
-    """SpinBox that passes mouse wheel events to parent viewport to prevent accidental scrolling changes."""
-    def wheelEvent(self, event: QWheelEvent):
-        event.ignore()
-
-
-class SmoothComboBox(QComboBox):
-    """ComboBox that ignores scroll wheel events when its pop-up list is closed."""
-    def wheelEvent(self, event: QWheelEvent):
-        if not self.view().isVisible():
-            event.ignore()
-        else:
-            super().wheelEvent(event)
-
-
-class DescriptionPlainTextEdit(QPlainTextEdit):
-    """Multi-line plain text editor with custom placeholder rendering."""
-    def __init__(self, placeholder="درصد خطا، ولتاژ کاری، شرکت سازنده یا یادداشت‌های فنی...", parent=None):
-        super().__init__(parent)
-        self.custom_placeholder = placeholder
-        self.document().setDocumentMargin(8)
-        self.setFont(QFont("Segoe UI", 10))
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self.toPlainText().strip():
-            p = QPainter(self.viewport())
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setPen(QColor("#64748b"))
-            p.setFont(self.font())
-            rect = self.viewport().rect().adjusted(10, 8, -10, -8)
-            p.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, self.custom_placeholder)
-            p.end()
+from ui.widgets import (
+    SmoothSpinBox,
+    SmoothComboBox,
+    DescriptionPlainTextEdit,
+    auto_detect_text_direction
+)
 
 
 class ComponentDialog(QDialog):
@@ -387,17 +341,7 @@ class ComponentDialog(QDialog):
 
     def _on_desc_text_changed(self):
         text = self.desc_input.toPlainText().strip()
-        if not text:
-            self.desc_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-            return
-
-        for ch in text:
-            if ('\u0600' <= ch <= '\u06FF') or ('\uFB50' <= ch <= '\uFDFF') or ('\uFE70' <= ch <= '\uFEFF'):
-                self.desc_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-                return
-            elif ch.isalpha() and ch.isascii():
-                self.desc_input.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-                return
+        auto_detect_text_direction(self.desc_input, text)
 
     def _load_component_data(self, comp: Component):
         self.name_input.setText(comp.name if comp.name != "—" else "")

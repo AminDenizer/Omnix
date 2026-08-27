@@ -1,18 +1,13 @@
 import os
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QRadioButton, QButtonGroup, QFrame, QGridLayout
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QWheelEvent, QIcon
+from PyQt6.QtGui import QIcon
 from typing import Dict, Optional, Tuple
 from models import Component
-
-
-class SmoothSpinBox(QSpinBox):
-    """SpinBox that passes mouse wheel events to parent viewport to prevent unintended value changes."""
-    def wheelEvent(self, event: QWheelEvent):
-        event.ignore()
+from ui.widgets import SmoothSpinBox
 
 
 class BulkStockDialog(QDialog):
