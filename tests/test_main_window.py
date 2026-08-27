@@ -1,5 +1,6 @@
 import pytest
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeyEvent
 from ui.main_window import MainWindow
 
 
@@ -56,6 +57,31 @@ class TestMainWindow:
             win.stock_filter.setCurrentIndex(idx)
             win._on_filter_changed()
             assert win.table.rowCount() == 1
+        win.close()
+
+    def test_main_window_enter_and_keyboard_navigation(self, qapp, sample_db_with_data):
+        win = MainWindow(db=sample_db_with_data)
+        win.show()
+        qapp.processEvents()
+
+        # Trigger search and Enter key navigation
+        win.search_input.setText("10k")
+        enter_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+        qapp.sendEvent(win.search_input, enter_event)
+        qapp.processEvents()
+
+        # Check table focus and row selection
+        assert win.table.hasFocus()
+        assert len(win.table.selectedItems()) > 0
+        assert win.table.currentRow() == 0
+
+        # Test Down Arrow key from search input
+        win.search_input.setFocus()
+        down_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+        qapp.sendEvent(win.search_input, down_event)
+        qapp.processEvents()
+        assert win.table.hasFocus()
+
         win.close()
 
     def test_quick_stock_adjustments(self, qapp, sample_db_with_data):

@@ -14,6 +14,16 @@ class InventoryTableWidget(QTableWidget):
         super().__init__(parent)
         self._last_clicked_row = None
 
+    def selectRow(self, row: int):
+        """Safely select row across columns even when column 0 is hidden and RTL is active."""
+        if 0 <= row < self.rowCount():
+            target_col = 0
+            for col in range(self.columnCount()):
+                if not self.isColumnHidden(col) and self.item(row, col) is not None:
+                    target_col = col
+                    break
+            self.setCurrentCell(row, target_col)
+
     def mousePressEvent(self, event: QMouseEvent):
         item = self.itemAt(event.pos())
         if item is None:

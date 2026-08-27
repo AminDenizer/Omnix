@@ -1,7 +1,26 @@
 from typing import Optional, List
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QComboBox, QPushButton, QWidget
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QKeyEvent
 from ui.widgets.custom_inputs import auto_detect_text_direction
+
+
+class SearchLineEdit(QLineEdit):
+    """Search line edit supporting down arrow and return key list navigation."""
+
+    downPressed = pyqtSignal()
+    enterPressed = pyqtSignal()
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.enterPressed.emit()
+            event.accept()
+            return
+        elif event.key() == Qt.Key.Key_Down:
+            self.downPressed.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class FilterBarWidget(QFrame):
@@ -21,10 +40,12 @@ class FilterBarWidget(QFrame):
         filter_layout.setContentsMargins(8, 6, 8, 6)
         filter_layout.setSpacing(8)
 
-        self.search_input = QLineEdit()
+        self.search_input = SearchLineEdit()
         self.search_input.setPlaceholderText("جستجوی پارت‌نامبر، مقدار (10k)، نام، پکیج یا شماره کشو... (کلید /)")
         self.search_input.textChanged.connect(self._on_search_text_changed)
         self.search_input.returnPressed.connect(self.enterPressed.emit)
+        self.search_input.enterPressed.connect(self.enterPressed.emit)
+        self.search_input.downPressed.connect(self.enterPressed.emit)
         filter_layout.addWidget(self.search_input, 3)
 
         self.category_filter = QComboBox()

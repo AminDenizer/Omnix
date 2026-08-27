@@ -369,7 +369,8 @@ class MainWindow(QMainWindow):
         self.refresh_data()
 
     def _on_enter_pressed(self):
-        if self.current_components:
+        if self.table.rowCount() > 0:
+            self.table.setFocus()
             self.table.selectRow(0)
             self._toggle_row_expansion(0)
 
