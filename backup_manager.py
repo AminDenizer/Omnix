@@ -4,14 +4,13 @@ import hashlib
 import datetime
 from typing import Dict, Any, Tuple, Optional
 from database import Database
-
-
-# Secret cryptographic salt for signing backup files
-BACKUP_SECRET_SALT = "OMNIX_SECURE_HMAC_SALT_2026_@AGY_BASE_EDITION"
-LEGACY_BACKUP_SECRET_SALT = "ELECSTORE_SECURE_HMAC_SALT_2026_@AGY_BASE_EDITION"
-BACKUP_MAGIC_HEADER = "OMNIX_SECURE_BACKUP"
-LEGACY_MAGIC_HEADER = "ELECSTORE_SECURE_BACKUP"
-BACKUP_VERSION = "1.0"
+from config import (
+    BACKUP_SECRET_SALT,
+    LEGACY_BACKUP_SECRET_SALT,
+    BACKUP_MAGIC_HEADER,
+    LEGACY_MAGIC_HEADER,
+    BACKUP_VERSION
+)
 
 
 class BackupManager:

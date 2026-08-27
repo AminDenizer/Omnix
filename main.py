@@ -8,6 +8,7 @@ from PyQt6.QtGui import QFont, QIcon
 # Add current directory to sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from config import APP_NAME
 from database import Database
 from models import Component
 from ui.main_window import MainWindow
@@ -90,7 +91,7 @@ def seed_sample_data(db: Database):
 
 
 def main():
-    print("[INFO] Starting Omnix...")
+    print(f"[INFO] Starting {APP_NAME}...")
 
     # Enable High-DPI scaling
     if hasattr(Qt.ApplicationAttribute, 'AA_EnableHighDpiScaling'):
@@ -99,7 +100,7 @@ def main():
         QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Omnix")
+    app.setApplicationName(APP_NAME)
     app.setFont(QFont("Segoe UI", 10))
 
     # Generate vector icons and logos

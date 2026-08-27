@@ -13,6 +13,7 @@ from models import Component
 from database import Database
 from export_utils import export_to_excel, export_to_csv
 from backup_manager import BackupManager
+from config import APP_NAME, APP_SUBTITLE
 from ui.component_dialog import ComponentDialog
 from ui.bulk_stock_dialog import BulkStockDialog
 from ui.drawer_view import DrawerViewDialog
@@ -171,7 +172,7 @@ class MainWindow(QMainWindow):
         self.drawer_widgets = {}
         self.expanded_rows = set()
 
-        self.setWindowTitle("مدیریت قطعات الکترونیک | Omnix")
+        self.setWindowTitle(f"{APP_SUBTITLE} | {APP_NAME}")
         self.resize(1180, 740)
         self.setMinimumSize(950, 600)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
@@ -210,9 +211,9 @@ class MainWindow(QMainWindow):
 
         brand_text_layout = QVBoxLayout()
         brand_text_layout.setSpacing(2)
-        brand_title = QLabel("Omnix")
+        brand_title = QLabel(APP_NAME)
         brand_title.setObjectName("brandTitle")
-        brand_sub = QLabel("مدیریت قطعات الکترونیک")
+        brand_sub = QLabel(APP_SUBTITLE)
         brand_sub.setObjectName("brandSubtitle")
         brand_text_layout.addWidget(brand_title)
         brand_text_layout.addWidget(brand_sub)

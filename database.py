@@ -2,53 +2,18 @@ import sqlite3
 import datetime
 from typing import List, Optional, Dict, Any, Set
 from models import Component
-
-DEFAULT_CATEGORIES = [
-    "—",
-    "Resistor",
-    "Capacitor",
-    "Inductor",
-    "Diode / LED",
-    "Transistor / MOSFET",
-    "IC / Regulator",
-    "Microcontroller (MCU)",
-    "Connector / Terminal",
-    "Switch / Relay",
-    "Sensor / Module",
-    "Crystal / Oscillator",
-    "Protection / Fuse",
-    "Other"
-]
-
-DEFAULT_PACKAGES = [
-    "—",
-    "SMD 0402",
-    "SMD 0603",
-    "SMD 0805",
-    "SMD 1206",
-    "DIP-8",
-    "DIP-14",
-    "DIP-16",
-    "DIP-28",
-    "DIP-40",
-    "SOIC-8",
-    "SOIC-16",
-    "SOT-23",
-    "SOT-223",
-    "TO-92",
-    "TO-220",
-    "QFP / TQFP",
-    "QFN",
-    "Radial (Electrolytic)",
-    "Axial (Through-Hole)",
-    "Other"
-]
+from config import (
+    DEFAULT_CATEGORIES,
+    DEFAULT_PACKAGES,
+    DEFAULT_APP_SETTINGS,
+    DEFAULT_DB_FILENAME
+)
 
 COMMON_PACKAGES = DEFAULT_PACKAGES
 
 
 class Database:
-    def __init__(self, db_path: str = "electronics_inventory.db"):
+    def __init__(self, db_path: str = DEFAULT_DB_FILENAME):
         self.db_path = db_path
         self._init_db()
 

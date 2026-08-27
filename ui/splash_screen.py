@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QColor
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve
+from config import APP_NAME, APP_SUBTITLE, DEVELOPER_CREDIT_HTML
 
 
 class SplashScreen(QWidget):
@@ -88,13 +89,13 @@ class SplashScreen(QWidget):
         header_layout.addWidget(logo_lbl)
 
         # App Brand Title
-        title_lbl = QLabel("Omnix")
+        title_lbl = QLabel(APP_NAME)
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_lbl.setStyleSheet("font-size: 24px; font-weight: 800; color: #38bdf8; letter-spacing: 0.8px;")
         header_layout.addWidget(title_lbl)
 
-        # Persian Subtitle
-        sub_lbl = QLabel("مدیریت قطعات الکترونیک")
+        # Subtitle
+        sub_lbl = QLabel(APP_SUBTITLE)
         sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_lbl.setStyleSheet("font-size: 12px; color: #94a3b8; font-weight: 500;")
         header_layout.addWidget(sub_lbl)
@@ -118,7 +119,7 @@ class SplashScreen(QWidget):
         dev_layout.setContentsMargins(12, 8, 12, 8)
         dev_layout.setSpacing(0)
 
-        dev_title = QLabel("Developed by <font color='#38bdf8'><b>AminDenizer</b></font> from <font color='#34d399'><b>DOT</b></font>")
+        dev_title = QLabel(DEVELOPER_CREDIT_HTML)
         dev_title.setTextFormat(Qt.TextFormat.RichText)
         dev_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         dev_title.setStyleSheet("font-size: 12.5px; color: #f1f5f9; font-weight: 600;")
