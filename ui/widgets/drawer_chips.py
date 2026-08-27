@@ -26,19 +26,24 @@ class DrawerChipsWidget(QWidget):
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rebuild(expanded=False)
 
+    def _clear_layout(self, layout):
+        if layout is None:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+            l = item.layout()
+            if l is not None:
+                self._clear_layout(l)
+
     def rebuild(self, expanded: bool):
         self.is_expanded = expanded
-
-        # Clean up existing widgets
-        while self.main_layout.count():
-            item = self.main_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                while item.layout().count():
-                    sub = item.layout().takeAt(0)
-                    if sub.widget():
-                        sub.widget().deleteLater()
+        self._clear_layout(self.main_layout)
 
         if not self.drawer_list:
             lbl = QLabel("—")
@@ -66,7 +71,7 @@ class DrawerChipsWidget(QWidget):
 
             self.main_layout.addLayout(row_layout)
         else:
-            # Expanded mode: Rows of max 3 chips with detailed stock info
+            # Expanded mode: Rows of max 3 chips
             chunks = [self.drawer_list[i:i + 3] for i in range(0, len(self.drawer_list), 3)]
             for chunk in chunks:
                 row_layout = QHBoxLayout()
@@ -75,20 +80,18 @@ class DrawerChipsWidget(QWidget):
                 row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 for d in chunk:
                     qty = self.comp.get_drawer_qty(d)
-                    chip = self._create_chip(d, qty, detailed=expanded)
+                    chip = self._create_chip(d, qty)
                     row_layout.addWidget(chip)
                 self.main_layout.addLayout(row_layout)
 
-    def _create_chip(self, d_num: int, qty: int, detailed: bool = False) -> QPushButton:
+    def _create_chip(self, d_num: int, qty: int) -> QPushButton:
         num_drawers = max(1, len(self.drawer_list))
         drawer_threshold = max(2, self.comp.min_alert // num_drawers)
 
         is_empty = (qty == 0)
         is_low = (0 < qty <= drawer_threshold)
 
-        # Chip label: raw drawer number in compact mode, or number + count in expanded mode
-        label = f"{d_num} ({qty:,})" if detailed else str(d_num)
-        chip = QPushButton(label)
+        chip = QPushButton(str(d_num))
         chip.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
         if is_empty:

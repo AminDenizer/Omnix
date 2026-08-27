@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         self.table.setAlternatingRowColors(False)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.table.rowActivateRequested.connect(self._open_edit_dialog_for_row)
+        self.table.rowActivateRequested.connect(self._on_table_enter_action)
         self.table.rowExpandRequested.connect(self._toggle_row_expansion)
         self.table.rowDeselectRequested.connect(self._collapse_all_rows)
         self.table.itemDoubleClicked.connect(self._on_row_double_clicked)
@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(5, 220)
+        self.table.setColumnWidth(5, 170)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)
@@ -398,6 +398,15 @@ class MainWindow(QMainWindow):
                 if comp:
                     self._open_edit_dialog(comp)
 
+    def _on_table_enter_action(self, row: int):
+        """On Enter in table: expand drawers if multi-drawer and not expanded, otherwise open edit dialog."""
+        if row in self.drawer_widgets:
+            widget, drawer_count = self.drawer_widgets[row]
+            if drawer_count > 3 and row not in self.expanded_rows:
+                self._toggle_row_expansion(row)
+                return
+        self._open_edit_dialog_for_row(row)
+
     def _on_global_enter(self):
         if self.search_input.hasFocus():
             self._on_enter_pressed()
@@ -405,7 +414,7 @@ class MainWindow(QMainWindow):
             selected = self.table.selectedItems()
             if selected:
                 row = selected[0].row()
-                self._open_edit_dialog_for_row(row)
+                self._on_table_enter_action(row)
             elif self.table.rowCount() > 0:
                 self.table.selectRow(0)
         else:
@@ -418,7 +427,6 @@ class MainWindow(QMainWindow):
         if self.table.rowCount() > 0:
             self.table.setFocus()
             self.table.selectRow(0)
-            self._toggle_row_expansion(0)
 
     def _reset_filters(self):
         self.table.clearSelection()
