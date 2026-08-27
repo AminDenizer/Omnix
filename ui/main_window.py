@@ -85,10 +85,13 @@ class MainWindow(QMainWindow):
 
         brand_text_layout = QVBoxLayout()
         brand_text_layout.setSpacing(2)
+        brand_text_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         brand_title = QLabel(APP_NAME)
         brand_title.setObjectName("brandTitle")
+        brand_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         brand_sub = QLabel(APP_SUBTITLE)
         brand_sub.setObjectName("brandSubtitle")
+        brand_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         brand_text_layout.addWidget(brand_title)
         brand_text_layout.addWidget(brand_sub)
         brand_layout.addLayout(brand_text_layout)
