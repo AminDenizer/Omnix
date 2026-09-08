@@ -1,4 +1,4 @@
-﻿name: Build and Release Omnix
+name: Build and Release Omnix
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller pytest openpyxl
+          pip install pyinstaller pyinstaller-hooks-contrib pytest openpyxl
 
       - name: Run PyTest Test Suite
         run: |
@@ -49,7 +49,7 @@ jobs:
 
       - name: Build Standalone Executable (PyInstaller)
         run: |
-          python -m PyInstaller --noconfirm --onefile --windowed --name "Omnix" --icon "ui/icons/app_logo.ico" --add-data "ui;ui" main.py
+          python -m PyInstaller --noconfirm --onefile --windowed --name "Omnix" --icon "ui/icons/app_logo.ico" --collect-all selenium --hidden-import "selenium.webdriver.chrome.webdriver" --hidden-import "selenium.webdriver.chrome.service" --hidden-import "selenium.webdriver.chrome.options" --add-data "ui;ui" main.py
 
       - name: Generate Sample Inventory Database & Release Package
         shell: pwsh
