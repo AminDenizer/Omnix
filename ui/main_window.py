@@ -4,36 +4,48 @@ import webbrowser
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QApplication, QStatusBar, QMenu, QMessageBox
+    QApplication, QStatusBar, QMenu, QMessageBox,
+    QTabWidget, QPushButton
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut, QIcon, QPixmap
 
 from config import APP_NAME, APP_SUBTITLE, get_app_dir, get_bundle_dir
-from excel_loader import ExcelDataLoader, find_local_excel_file
+from excel_loader import ExcelDataLoader, find_local_excel_file, normalize_string
+from settings_manager import settings
 from ui.widgets import (
     InventoryTableWidget,
+    StockCellDelegate,
     StatsRibbonWidget,
-    FilterBarWidget
+    FilterBarWidget,
+    BOMAuditWidget
 )
+from ui.dialogs import SettingsDialog, OrderPreviewDialog
 
 
 class MainWindow(QMainWindow):
-    """View-Only Excel Database Browser and Instant Search Application."""
+    """
+    Omnix Main Window:
+    - Tab 1: Inventory & Stock Management with live search and editable thresholds.
+    - Tab 2: Altium BOM Project Assembly Auditor & Shortage Calculator.
+    - Automated Lion Electronic purchasing integration.
+    """
 
     def __init__(self, default_file: str = None):
         super().__init__()
         self.excel = ExcelDataLoader()
         self.current_filtered_rows = []
         self.search_query = ""
+        self.show_only_incomplete = False
         self._is_force_closing = False
+        self._is_updating_table = False
 
-        self.setWindowTitle(f"{APP_NAME} | {APP_SUBTITLE}")
-        self.resize(1180, 740)
-        self.setMinimumSize(900, 580)
+        self.setWindowTitle(f"{APP_NAME} | Inventory & Altium BOM Assembly Auditor")
+        self.resize(1260, 780)
+        self.setMinimumSize(960, 620)
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
-        # Set application icon
+        # Set application window icon
         icons_dir = os.path.join(get_bundle_dir(), "ui", "icons")
         ico_path = os.path.join(icons_dir, "app_logo.ico")
         png_path = os.path.join(icons_dir, "app_logo.png")
@@ -49,11 +61,8 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         self._setup_statusbar()
 
-        # Automatic detection of the Excel database file ONLY strictly next to application
-        target_file = default_file
-        if not target_file:
-            target_file = find_local_excel_file(get_app_dir())
-
+        # Automatic detection of the Excel database file in the app directory
+        target_file = default_file or find_local_excel_file(get_app_dir())
         if target_file and os.path.exists(target_file):
             self.load_excel_file(target_file)
         else:
@@ -68,18 +77,20 @@ class MainWindow(QMainWindow):
             self.status_state_lbl.setText("● No Excel file in directory")
             self.status_state_lbl.setStyleSheet("color: #f87171; font-weight: bold;")
 
-        QTimer.singleShot(100, self._focus_search)
+        # Focus search and trigger startup shortage audit
+        QTimer.singleShot(150, self._focus_search)
+        QTimer.singleShot(700, self._check_startup_shortages)
 
     def _init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(12)
-        main_layout.setContentsMargins(16, 14, 16, 10)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(16, 12, 16, 8)
 
-        # 1. Header with Logo and Branding
+        # 1. Top Header with Logo, Title, and Settings Button
         header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 4)
+        header_layout.setContentsMargins(0, 0, 0, 2)
 
         brand_layout = QHBoxLayout()
         brand_layout.setSpacing(10)
@@ -97,10 +108,8 @@ class MainWindow(QMainWindow):
         brand_text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         brand_title = QLabel(APP_NAME)
         brand_title.setObjectName("brandTitle")
-        brand_title.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        brand_sub = QLabel(f"{APP_SUBTITLE} — View Mode")
+        brand_sub = QLabel("Electronic Components Database & Altium BOM Assembly Auditor")
         brand_sub.setObjectName("brandSubtitle")
-        brand_sub.setAlignment(Qt.AlignmentFlag.AlignLeft)
         brand_text_layout.addWidget(brand_title)
         brand_text_layout.addWidget(brand_sub)
         brand_layout.addLayout(brand_text_layout)
@@ -108,34 +117,55 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(brand_layout)
         header_layout.addStretch()
 
+        # Settings Button
+        self.settings_btn = QPushButton("⚙️ Settings")
+        self.settings_btn.setObjectName("secondaryBtn")
+        self.settings_btn.clicked.connect(self._open_settings)
+        header_layout.addWidget(self.settings_btn)
+
         main_layout.addLayout(header_layout)
 
-        # 2. Stats Ribbon
-        self.stats_ribbon = StatsRibbonWidget()
-        main_layout.addWidget(self.stats_ribbon)
+        # 2. Main Dual-Tab Widget Container
+        self.tabs = QTabWidget()
+        self.tabs.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
-        # 3. Clean Full-Width Live Search Bar
+        # Tab 1: Inventory & Stock Management
+        self.inventory_tab = QWidget()
+        inv_layout = QVBoxLayout(self.inventory_tab)
+        inv_layout.setContentsMargins(8, 10, 8, 6)
+        inv_layout.setSpacing(10)
+
+        self.stats_ribbon = StatsRibbonWidget()
+        self.stats_ribbon.orderShortagesRequested.connect(self._open_inventory_order_dialog)
+        self.stats_ribbon.incompleteFilterRequested.connect(self._toggle_incomplete_filter)
+        inv_layout.addWidget(self.stats_ribbon)
+
         self.filter_bar = FilterBarWidget()
         self.search_input = self.filter_bar.search_input
         self.filter_bar.searchChanged.connect(self._on_search_changed)
-        main_layout.addWidget(self.filter_bar)
+        inv_layout.addWidget(self.filter_bar)
 
-        # 4. Main Dynamic Excel Database Table
         self.table = InventoryTableWidget()
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.setShowGrid(True)
-        self.table.setAlternatingRowColors(False)
         self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.horizontalHeader().setHighlightSections(False)
-
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
         self.table.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.table.itemChanged.connect(self._on_table_cell_changed)
+        inv_layout.addWidget(self.table)
 
-        main_layout.addWidget(self.table)
+        self.tabs.addTab(self.inventory_tab, "📦 Inventory & Stock Control")
+
+        # Tab 2: Altium BOM Project Assembly Auditor
+        self.bom_audit_widget = BOMAuditWidget(self.excel, self)
+        self.tabs.addTab(self.bom_audit_widget, "📋 Altium BOM Project Auditor")
+
+        main_layout.addWidget(self.tabs)
 
     def _setup_statusbar(self):
         status_bar = QStatusBar()
@@ -157,60 +187,57 @@ class MainWindow(QMainWindow):
         status_bar.addPermanentWidget(self.status_state_lbl)
 
     def _setup_shortcuts(self):
-        # Slash key [/] to focus search
         slash_sc = QShortcut(QKeySequence(Qt.Key.Key_Slash), self)
         slash_sc.activated.connect(self._focus_search)
 
-        # Ctrl+F to focus search
         ctrl_f = QShortcut(QKeySequence("Ctrl+F"), self)
         ctrl_f.activated.connect(self._focus_search)
 
-        # F5 to reload database file from disk
         f5 = QShortcut(QKeySequence(Qt.Key.Key_F5), self)
         f5.activated.connect(self.reload_database)
 
-        # Escape key handler: Deselects / Clears Search, or Prompts Exit on repeat
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self.handle_escape_key)
 
-        # Ctrl+Q to close
         ctrl_q = QShortcut(QKeySequence("Ctrl+Q"), self)
         ctrl_q.activated.connect(self.close)
 
     def _focus_search(self):
-        self.search_input.setFocus()
-        self.search_input.selectAll()
+        if self.tabs.currentIndex() == 0:
+            self.search_input.setFocus()
+            self.search_input.selectAll()
 
     def handle_escape_key(self):
-        """
-        Multi-stage Escape key handler:
-        1. If search input has text or is focused -> clears search and removes focus.
-        2. If table row or cell is selected -> deselects selection.
-        3. If state is already completely idle -> prompts confirmation dialog to exit with Yes/No.
-        """
-        # Step 1: If search input has text or has active focus
-        has_search_text = bool(self.search_input.text().strip())
-        is_search_focused = self.search_input.hasFocus()
+        """Multi-stage Escape key handler."""
+        # 1. If search input has text or focus in Tab 1
+        if self.tabs.currentIndex() == 0:
+            has_search_text = bool(self.search_input.text().strip())
+            is_search_focused = self.search_input.hasFocus()
 
-        if has_search_text or is_search_focused:
-            if has_search_text:
-                self.search_input.clear()
-            self.search_input.clearFocus()
-            self.table.setFocus()
-            return
+            if has_search_text or is_search_focused:
+                if has_search_text:
+                    self.search_input.clear()
+                self.search_input.clearFocus()
+                self.table.setFocus()
+                return
 
-        # Step 2: If table has any selection or active current item
-        has_table_selection = len(self.table.selectedItems()) > 0 or self.table.currentItem() is not None
-        if has_table_selection:
-            self.table.clearSelection()
-            self.table.setCurrentItem(None)
-            return
+            # 2. If incomplete filter is currently active
+            if self.show_only_incomplete:
+                self.show_only_incomplete = False
+                self.stats_ribbon.set_incomplete_active(False)
+                self._filter_and_render()
+                return
 
-        # Step 3: Idle state -> Prompt confirmation dialog with Yes / No
+            # 3. If table row is selected
+            if len(self.table.selectedItems()) > 0 or self.table.currentItem() is not None:
+                self.table.clearSelection()
+                self.table.setCurrentItem(None)
+                return
+
+        # 4. Prompt exit confirmation dialog
         self._prompt_exit_confirmation()
 
     def _prompt_exit_confirmation(self):
-        """Show confirmation dialog with Yes / No options."""
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Exit Confirmation")
         msg_box.setText("Do you want to exit Omnix?")
@@ -223,13 +250,11 @@ class MainWindow(QMainWindow):
         no_btn.setObjectName("secondaryBtn")
 
         msg_box.exec()
-
         if msg_box.clickedButton() == yes_btn:
             self._is_force_closing = True
             QApplication.quit()
 
     def closeEvent(self, event):
-        """Handle window close event with confirmation dialog."""
         if self._is_force_closing:
             event.accept()
             return
@@ -246,15 +271,39 @@ class MainWindow(QMainWindow):
         no_btn.setObjectName("secondaryBtn")
 
         msg_box.exec()
-
         if msg_box.clickedButton() == yes_btn:
             self._is_force_closing = True
             event.accept()
         else:
             event.ignore()
 
+    def _open_settings(self):
+        dlg = SettingsDialog(self)
+        dlg.exec()
+
+    def _on_stock_incremented_callback(self):
+        """Callback when order payment is confirmed and inventory is incremented."""
+        self._filter_and_render()
+
+    def _check_startup_shortages(self):
+        """Check if any inventory items are below minimum threshold on startup and alert the user."""
+        if not settings.get("auto_check_startup_shortage", True):
+            return
+        if self.excel.total_rows == 0:
+            return
+
+        shortages = self.excel.get_shortage_items()
+        if shortages:
+            dlg = OrderPreviewDialog(
+                orderable_items=shortages,
+                source_title=f"Startup Inventory Shortage Alert ({len(shortages)} Items Low)",
+                inventory_loader=self.excel,
+                on_stock_updated=self._on_stock_incremented_callback,
+                parent=self
+            )
+            dlg.exec()
+
     def load_excel_file(self, file_path: str):
-        """Load and render the first sheet of the Excel workbook."""
         success, msg = self.excel.load_file(file_path)
         if not success:
             self.status_state_lbl.setText(f"● Error: {msg}")
@@ -270,7 +319,6 @@ class MainWindow(QMainWindow):
         self.status_state_lbl.setStyleSheet("color: #38bdf8; font-weight: bold;")
 
     def reload_database(self):
-        """Reload or re-detect the local Excel database file strictly in the app directory."""
         target_file = find_local_excel_file(get_app_dir())
         if target_file and os.path.exists(target_file):
             self.load_excel_file(target_file)
@@ -283,16 +331,35 @@ class MainWindow(QMainWindow):
             self.current_filtered_rows = []
             self._update_table_display()
             self._update_stats_ribbon()
-            self.status_state_lbl.setText("● No Excel file in directory")
+            self.status_state_lbl.setText("● Inventory.xlsx not found")
             self.status_state_lbl.setStyleSheet("color: #f87171; font-weight: bold;")
 
     def _on_search_changed(self, query: str):
         self.search_query = query.strip()
         self._filter_and_render()
 
+    def _toggle_incomplete_filter(self):
+        self.show_only_incomplete = not self.show_only_incomplete
+        self.stats_ribbon.set_incomplete_active(self.show_only_incomplete)
+        self._filter_and_render()
+
     def _filter_and_render(self):
-        """Filter Excel rows according to query and render to table."""
-        self.current_filtered_rows = self.excel.filter_rows(self.search_query)
+        if self.show_only_incomplete:
+            incomplete_records = self.excel.get_incomplete_records()
+            incomplete_rows = [(orig_idx, row_data) for orig_idx, row_data, _ in incomplete_records]
+            if self.search_query:
+                terms = [normalize_string(t) for t in self.search_query.split() if t.strip()]
+                filtered = []
+                for orig_idx, row_data in incomplete_rows:
+                    searchable_str = " ".join(normalize_string(val) for val in row_data)
+                    if all(term in searchable_str for term in terms):
+                        filtered.append((orig_idx, row_data))
+                self.current_filtered_rows = filtered
+            else:
+                self.current_filtered_rows = incomplete_rows
+        else:
+            self.current_filtered_rows = self.excel.filter_rows(self.search_query)
+
         self._update_table_display()
         self._update_stats_ribbon()
 
@@ -301,10 +368,41 @@ class MainWindow(QMainWindow):
         filtered_rows = len(self.current_filtered_rows)
         total_cols = self.excel.total_columns
         file_name = self.excel.file_name
-        self.stats_ribbon.update_stats(total_rows, filtered_rows, total_cols, file_name)
+        shortages = self.excel.get_shortage_items() if total_rows > 0 else []
+        incomplete = self.excel.get_incomplete_records() if total_rows > 0 else []
+        self.stats_ribbon.update_stats(
+            total_rows,
+            filtered_rows,
+            total_cols,
+            file_name,
+            shortage_count=len(shortages),
+            incomplete_count=len(incomplete)
+        )
+
+    def _open_inventory_order_dialog(self):
+        if self.excel.total_rows == 0:
+            return
+        shortages = self.excel.get_shortage_items()
+        if not shortages:
+            QMessageBox.information(
+                self,
+                "No Shortages Detected",
+                "All inventory items currently meet or exceed their configured minimum stock thresholds."
+            )
+            return
+
+        dlg = OrderPreviewDialog(
+            orderable_items=shortages,
+            source_title=f"Inventory Shortage Purchase ({len(shortages)} Low Stock Items)",
+            inventory_loader=self.excel,
+            on_stock_updated=self._on_stock_incremented_callback,
+            parent=self
+        )
+        dlg.exec()
 
     def _update_table_display(self):
-        """Rebuild and populate the QTableWidget with dynamic headers and rows."""
+        """Populate the QTableWidget with dynamic headers and editable threshold cells."""
+        self._is_updating_table = True
         headers = self.excel.headers
         col_count = len(headers)
 
@@ -318,8 +416,9 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(row_count)
 
         if not headers or row_count == 0:
-            is_filter_active = bool(self.search_query and self.excel.total_rows > 0)
+            is_filter_active = bool((self.search_query or self.show_only_incomplete) and self.excel.total_rows > 0)
             self.table.update_empty_state(True, is_filter_active=is_filter_active)
+            self._is_updating_table = False
             return
 
         self.table.update_empty_state(False)
@@ -327,11 +426,29 @@ class MainWindow(QMainWindow):
         font_data = QFont("Segoe UI", 10)
         font_numbers = QFont("Consolas", 10)
 
-        for visual_row_idx, (orig_idx, row_data) in enumerate(rows):
+        # Detect editable column indexes (Min Stock and Target Stock)
+        min_stock_idx = self.excel.get_column_index(["min stock", "min_stock", "حد کسر"])
+        target_stock_idx = self.excel.get_column_index(["target stock", "target_stock", "تعداد سفارش"])
+        stock_idx = self.excel.get_column_index(["quantity in stock", "stock", "quantity", "موجودی"])
+
+        if min_stock_idx is not None:
+            self.table.setItemDelegateForColumn(min_stock_idx, StockCellDelegate(self.table))
+        if target_stock_idx is not None:
+            self.table.setItemDelegateForColumn(target_stock_idx, StockCellDelegate(self.table))
+
+        for visual_row_idx, (orig_row_idx, row_data) in enumerate(rows):
             for col_idx in range(col_count):
                 val_str = row_data[col_idx] if col_idx < len(row_data) else ""
                 item = QTableWidgetItem(val_str)
                 item.setToolTip(val_str)
+                item.setData(Qt.ItemDataRole.UserRole, orig_row_idx)
+
+                # Editable flags for Min Stock and Target Stock
+                if col_idx in [min_stock_idx, target_stock_idx]:
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    item.setBackground(QColor("rgba(56, 189, 248, 0.08)"))  # Soft cyan tint for editable cells
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
                 # Alignment and Font
                 if val_str.isdigit() or (val_str.replace('.', '', 1).isdigit() and val_str.count('.') < 2):
@@ -341,18 +458,29 @@ class MainWindow(QMainWindow):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                     item.setFont(font_data)
 
-                # Link and exact status highlighting
+                # Color Highlights & Warning Badges
                 lower_val = val_str.lower().strip()
-                if lower_val.startswith("http://") or lower_val.startswith("https://"):
+                if lower_val in ["?", "؟"]:
+                    item.setText("⚠️ Missing")
+                    item.setForeground(QColor("#fbbf24"))  # Warning amber
+                    item.setBackground(QColor("rgba(245, 158, 11, 0.15)"))
+                    item.setToolTip(f"Column '{headers[col_idx] if col_idx < len(headers) else ''}': Missing or unknown value (?)")
+                elif lower_val.startswith("http://") or lower_val.startswith("https://"):
                     item.setForeground(QColor("#38bdf8"))  # Neon cyan link
-                elif lower_val in ["in_stock", "ok", "available", "موجود"]:
-                    item.setForeground(QColor("#34d399"))  # Emerald
-                elif lower_val in ["low", "low_stock", "warning", "کسری"]:
-                    item.setForeground(QColor("#fbbf24"))  # Amber
-                elif lower_val in ["empty", "out_of_stock", "out of stock", "none", "ناموجود"]:
-                    item.setForeground(QColor("#f87171"))  # Red
+                elif col_idx == stock_idx and stock_idx is not None:
+                    # Check stock vs min stock
+                    try:
+                        cur_stk = float(val_str) if val_str else 0.0
+                        min_stk_str = row_data[min_stock_idx] if min_stock_idx is not None and min_stock_idx < len(row_data) else "0"
+                        min_stk = float(min_stk_str) if min_stk_str else 0.0
+                        if min_stk > 0 and cur_stk <= min_stk:
+                            item.setForeground(QColor("#f87171"))  # Red warning for low stock
+                        else:
+                            item.setForeground(QColor("#34d399"))  # Normal stock green
+                    except ValueError:
+                        item.setForeground(QColor("#fbbf24"))
                 else:
-                    item.setForeground(QColor("#f8fafc"))  # Default clean light text
+                    item.setForeground(QColor("#f8fafc"))
 
                 self.table.setItem(visual_row_idx, col_idx, item)
 
@@ -360,20 +488,33 @@ class MainWindow(QMainWindow):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
-        # Compact index / ID column if detected
-        if col_count > 0 and headers[0].lower() in ["id", "#", "row", "index", "ecode"]:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-
-        # Adjust column widths nicely
         for c in range(col_count):
             self.table.resizeColumnToContents(c)
             current_width = self.table.columnWidth(c)
-            if current_width < 110:
-                self.table.setColumnWidth(c, 110)
-            elif current_width > 380:
-                self.table.setColumnWidth(c, 380)
+            if current_width < 100:
+                self.table.setColumnWidth(c, 100)
+            elif current_width > 360:
+                self.table.setColumnWidth(c, 360)
 
         self.table.setSortingEnabled(True)
+        self._is_updating_table = False
+
+    def _on_table_cell_changed(self, item: QTableWidgetItem):
+        """Automatically saves edited cell value (Min Stock / Target Stock) back to Excel on disk."""
+        if self._is_updating_table or not item:
+            return
+
+        col_idx = item.column()
+        orig_row_idx = item.data(Qt.ItemDataRole.UserRole)
+        new_val = item.text().strip()
+
+        if orig_row_idx is not None:
+            ok = self.excel.save_cell_value(orig_row_idx, col_idx, new_val)
+            if ok:
+                self._update_stats_ribbon()
+                self.status_state_lbl.setText("● Saved to Excel")
+                self.status_state_lbl.setStyleSheet("color: #34d399; font-weight: bold;")
+                QTimer.singleShot(2500, lambda: self.status_state_lbl.setText(f"● Database: {self.excel.file_name}"))
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
         if not item:
@@ -393,7 +534,7 @@ class MainWindow(QMainWindow):
         copy_act.triggered.connect(lambda: QApplication.clipboard().setText(val))
 
         row_idx = item.row()
-        copy_row_act = menu.addAction("📑 Copy Entire Row (Tab-separated)")
+        copy_row_act = menu.addAction("📑 Copy Entire Row")
         def _copy_row():
             cols = [self.table.item(row_idx, c).text() if self.table.item(row_idx, c) else "" for c in range(self.table.columnCount())]
             QApplication.clipboard().setText("\t".join(cols))
