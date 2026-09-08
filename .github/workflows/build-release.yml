@@ -1,0 +1,95 @@
+﻿name: Build and Release Omnix
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag (e.g. v1.2.0)'
+        required: true
+        default: 'v1.2.0'
+      release_name:
+        description: 'Release Title'
+        required: true
+        default: 'Omnix v1.2.0 — Electronic Inventory, BOM Auditor & Lion Automation'
+      is_draft:
+        description: 'Create as Draft Release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Windows Executable & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest
+
+      - name: Run PyTest Test Suite
+        run: |
+          python -m pytest -v
+
+      - name: Build Standalone Executable (PyInstaller)
+        run: |
+          python -m PyInstaller --noconfirm --onefile --windowed --name "Omnix" --icon "ui/icons/app_logo.ico" --add-data "ui;ui" main.py
+
+      - name: Prepare Release Package
+        shell: pwsh
+        run: |
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ inputs.release_tag }}" }
+          $zipName = "Omnix-$ver-Windows-x64.zip"
+          
+          # Create a clean release staging directory
+          New-Item -ItemType Directory -Force -Path "release_pkg"
+          Copy-Item -Path "dist\Omnix.exe" -Destination "release_pkg\Omnix.exe"
+          Copy-Item -Path "Inventory.xlsx" -Destination "release_pkg\Inventory.xlsx"
+          Copy-Item -Path "README.md" -Destination "release_pkg\README.md"
+          
+          # Compress package into ZIP
+          Compress-Archive -Path "release_pkg\*" -DestinationPath $zipName -Force
+          Write-Host "Created release package: $zipName"
+
+      - name: Determine Release Metadata
+        id: meta
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            echo "tag_name=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+            echo "release_name=Omnix ${{ github.ref_name }} — Electronic Inventory, BOM Auditor & Lion Automation" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "tag_name=${{ inputs.release_tag }}" >> $env:GITHUB_OUTPUT
+            echo "release_name=${{ inputs.release_name }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          draft: ${{ inputs.is_draft || false }}
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/Omnix.exe
+            Inventory.xlsx
+            Omnix-*-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
