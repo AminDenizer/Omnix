@@ -1,6 +1,6 @@
 from typing import Optional
 from PyQt6.QtWidgets import (
-    QTableWidget, QWidget, QVBoxLayout, QLabel, QFrame
+    QTableWidget, QWidget, QVBoxLayout, QLabel, QFrame, QLineEdit, QStyledItemDelegate
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QResizeEvent
@@ -45,7 +45,7 @@ class EmptyStateOverlay(QWidget):
         card_layout.addSpacing(4)
 
         # 2. Main Title
-        self.title_lbl = QLabel("No Excel Database File Found")
+        self.title_lbl = QLabel("Inventory.xlsx Database Not Found")
         self.title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title_lbl.setStyleSheet(
             "font-size: 15px; font-weight: 700; color: #f8fafc; background: transparent; border: none;"
@@ -53,7 +53,7 @@ class EmptyStateOverlay(QWidget):
         card_layout.addWidget(self.title_lbl)
 
         # 3. Description / Guidance
-        self.desc_lbl = QLabel("Place an Excel file (.xlsx) in the app directory and restart or press F5.")
+        self.desc_lbl = QLabel("Please place 'Inventory.xlsx' in the application directory and press [F5] to reload.")
         self.desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.desc_lbl.setStyleSheet(
             "font-size: 12px; color: #94a3b8; background: transparent; border: none;"
@@ -70,8 +70,8 @@ class EmptyStateOverlay(QWidget):
             self.desc_lbl.setText("Try adjusting your search keywords or press [Esc] to clear.")
         else:
             self.icon_lbl.setText("📊")
-            self.title_lbl.setText("No Excel Database File Found")
-            self.desc_lbl.setText("Place an Excel (.xlsx) file in the app directory and press [F5] to reload.")
+            self.title_lbl.setText("Inventory.xlsx Database Not Found")
+            self.desc_lbl.setText("Please place 'Inventory.xlsx' in the application directory and press [F5] to reload.")
 
 
 class InventoryTableWidget(QTableWidget):
@@ -95,3 +95,36 @@ class InventoryTableWidget(QTableWidget):
             self.empty_overlay.show()
         else:
             self.empty_overlay.hide()
+
+
+class StockCellDelegate(QStyledItemDelegate):
+    """
+    Custom delegate for editable numeric cells (Min Stock & Target Stock).
+    Provides a spacious, centered editor with comfortable height and rounded borders.
+    """
+    def createEditor(self, parent: QWidget, option, index):
+        editor = QLineEdit(parent)
+        editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        editor.setStyleSheet("""
+            QLineEdit {
+                background-color: #0c182e;
+                color: #38bdf8;
+                border: 2px solid #38bdf8;
+                border-radius: 6px;
+                padding: 2px 6px;
+                font-size: 13px;
+                font-weight: bold;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+            }
+        """)
+        return editor
+
+    def updateEditorGeometry(self, editor: QWidget, option, index):
+        rect = option.rect
+        h = min(30, rect.height() - 4)
+        y = rect.y() + (rect.height() - h) // 2
+        w = rect.width() - 8
+        x = rect.x() + 4
+        editor.setGeometry(x, y, w, h)
+
