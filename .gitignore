@@ -1,4 +1,4 @@
-# Python bytecode & cache
+﻿# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -10,17 +10,27 @@ env/
 venv/
 ENV/
 
-# Executables & build artifacts
+# User credentials & local settings
+settings.json
+
+# Generated reports & PDF exports
+*.pdf
+BOM_Shortages_Report_*.pdf
+
+# Executables & PyInstaller build artifacts
 *.exe
 build/
 dist/
 *.spec
+_internal/
 
 # Excel database files & Excel lock files
 *.xlsx
 *.xls
 *.xlsm
 ~$*
+*.tmp
+*.log
 
 # Database & backup files
 *.db
@@ -33,7 +43,7 @@ dist/
 .coverage
 htmlcov/
 
-# Images & temporary media (preserve official icons)
+# Images & temporary media (preserve official UI icons)
 *.png
 !ui/icons/*.png
 *.ico
