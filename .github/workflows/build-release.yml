@@ -7,13 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release Tag (e.g. v1.2.0)'
+        description: 'Release Tag (e.g. v0.1.0-beta-Auto)'
         required: true
-        default: 'v1.2.0'
+        default: 'v0.1.0-beta-Auto'
       release_name:
         description: 'Release Title'
         required: true
-        default: 'Omnix v1.2.0 — Electronic Inventory, BOM Auditor & Lion Automation'
+        default: 'Omnix v0.1.0-beta-Auto — Electronic Inventory, BOM Auditor & Lion Automation'
       is_draft:
         description: 'Create as Draft Release'
         type: boolean
@@ -41,7 +41,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller pytest
+          pip install pyinstaller pytest openpyxl
 
       - name: Run PyTest Test Suite
         run: |
@@ -51,9 +51,50 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --onefile --windowed --name "Omnix" --icon "ui/icons/app_logo.ico" --add-data "ui;ui" main.py
 
-      - name: Prepare Release Package
+      - name: Generate Sample Inventory Database & Release Package
         shell: pwsh
         run: |
+          # Generate sample Inventory.xlsx using openpyxl
+          python -c "
+          import openpyxl
+          from openpyxl.styles import Font, PatternFill, Alignment
+
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = 'Inventory'
+
+          headers = ['ECODE', 'PART NAME', 'DISCRIPTION', 'Quantity in Stock', 'FOOTPRINT', 'PART NUMBER', 'LINK', 'Pisition', 'Unit Per length', 'Min Stock', 'Target Stock']
+          rows = [
+              [None, 'NE555P', 'Precision Timer IC DIP-8', 5, 'DIP-8', 'NE555P', 'https://lionelectronic.ir/products/2070-NE555P', 'IC-01', None, 20, 50],
+              [None, 'LM358N', 'Dual Operational Amplifier DIP-8', 10, 'DIP-8', 'LM358N', 'https://lionelectronic.ir/products/1932-LM358N', 'IC-02', None, 30, 60],
+              [None, 'L7805CV', 'Linear Voltage Regulator +5V 1.5A TO-220', 2, 'TO-220', 'L7805CV', 'https://lionelectronic.ir/products/1954-L7805CV', 'REG-01', None, 10, 25],
+              [None, 'BC547B', 'NPN Bipolar Transistor 45V 100mA TO-92', 15, 'TO-92', 'BC547B', 'https://lionelectronic.ir/products/1825-BC547B', 'TR-01', None, 50, 100],
+              [None, 'IRLR024NTRPBF', 'N-CH MOS 55V 17A TO-252', 0, 'TO-252', 'IRLR024NTRPBF', 'https://lionelectronic.ir/products/2686-IRLR024NTRPBF', 'TR-02', None, 10, 20],
+              [None, 'IRFU120NPBF', 'N-CH MOS 100V 9.1A TO-251', 0, 'TO-251', 'IRFU120NPBF', 'https://lionelectronic.ir/products/214-IRFU120NPBF', 'TR-03', None, 10, 20],
+              [None, 'AO4294A', 'N-CH MOS 100V 11.5A SOIC-8', 0, 'SOIC-8', 'AO4294A', 'https://lionelectronic.ir/products/4192-AO4294A', 'TR-04', None, 10, 25],
+              [None, 'ATmega328P-PU', '8-bit AVR Microcontroller 32KB DIP-28', 2, 'DIP-28', 'ATmega328P-PU', None, 'MCU-01', None, 10, 20],
+              [None, 'ESP32-WROOM-32D', 'WiFi + Bluetooth MCU Module SMD', 1, 'SMD-38', 'ESP32-WROOM-32D', 'https://javanelec.com/products/esp32-wroom-32d', 'WIFI-01', None, 10, 25],
+              [None, '1N4007', 'Standard Rectifier Diode 1000V 1A DO-41', 250, 'DO-41', '1N4007', 'https://lionelectronic.ir/products/1779-1N4007', 'D-01', None, 50, 100]
+          ]
+
+          ws.append(headers)
+          for r in rows:
+              ws.append(r)
+
+          header_font = Font(name='Segoe UI', size=11, bold=True, color='FFFFFF')
+          header_fill = PatternFill(start_color='1E3A5F', end_color='1E3A5F', fill_type='solid')
+          center_align = Alignment(horizontal='center', vertical='center')
+
+          for col_num in range(1, len(headers) + 1):
+              cell = ws.cell(row=1, column=col_num)
+              cell.font = header_font
+              cell.fill = header_fill
+              cell.alignment = center_align
+
+          wb.save('Inventory.xlsx')
+          wb.close()
+          "
+
           $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ inputs.release_tag }}" }
           $zipName = "Omnix-$ver-Windows-x64.zip"
           
