@@ -1,8 +1,53 @@
-"""
-Omnix Dark Stylesheet (Lightweight View-Only Edition)
-"""
+import os
+from config import get_bundle_dir
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPolygon
+from PyQt6.QtCore import Qt, QPoint
 
-DARK_STYLESHEET = """
+def ensure_spinbox_icons():
+    icons_dir = os.path.join(get_bundle_dir(), "ui", "icons")
+    try:
+        os.makedirs(icons_dir, exist_ok=True)
+    except Exception:
+        pass
+    
+    up_p = os.path.join(icons_dir, "spin_up.png")
+    up_h_p = os.path.join(icons_dir, "spin_up_hover.png")
+    down_p = os.path.join(icons_dir, "spin_down.png")
+    down_h_p = os.path.join(icons_dir, "spin_down_hover.png")
+
+    try:
+        if not (os.path.exists(up_p) and os.path.exists(up_h_p) and os.path.exists(down_p) and os.path.exists(down_h_p)):
+            def make_icon(direction="up", color="#38bdf8", size=32):
+                pm = QPixmap(size, size)
+                pm.fill(Qt.GlobalColor.transparent)
+                p = QPainter(pm)
+                p.setRenderHint(QPainter.RenderHint.Antialiasing)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QColor(color))
+                if direction == "up":
+                    points = [QPoint(size // 2, 8), QPoint(6, size - 9), QPoint(size - 6, size - 9)]
+                else:
+                    points = [QPoint(6, 9), QPoint(size - 6, 9), QPoint(size // 2, size - 8)]
+                p.drawPolygon(QPolygon(points))
+                p.end()
+                return pm
+
+            make_icon("up", "#38bdf8", 32).save(up_p)
+            make_icon("up", "#ffffff", 32).save(up_h_p)
+            make_icon("down", "#38bdf8", 32).save(down_p)
+            make_icon("down", "#ffffff", 32).save(down_h_p)
+    except Exception:
+        pass
+
+    return (
+        up_p.replace("\\", "/"),
+        up_h_p.replace("\\", "/"),
+        down_p.replace("\\", "/"),
+        down_h_p.replace("\\", "/")
+    )
+
+
+_RAW_DARK_STYLESHEET = """
 QMainWindow, QDialog {
     background-color: #080c14;
     color: #e2e8f0;
@@ -15,12 +60,46 @@ QWidget {
     font-size: 13px;
 }
 
+/* Tab Bar & Navigation */
+QTabWidget::pane {
+    border: 1px solid #1e293b;
+    background-color: #080c14;
+    border-radius: 8px;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background-color: #0d1424;
+    color: #94a3b8;
+    border: 1px solid #1e293b;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 9px 22px;
+    margin-right: 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QTabBar::tab:hover {
+    background-color: #131d33;
+    color: #38bdf8;
+    border-color: #2a3e61;
+}
+
+QTabBar::tab:selected {
+    background-color: #0f172a;
+    color: #38bdf8;
+    border-color: #38bdf8;
+    border-bottom: 2px solid #38bdf8;
+}
+
 /* Background panels and elevated frames */
 QFrame#cardFrame {
     background-color: #0f172a;
     border: 1.5px solid #1e293b;
     border-radius: 8px;
-    padding: 8px;
+    padding: 10px;
 }
 
 QFrame#ribbonFrame {
@@ -156,12 +235,12 @@ QToolTip {
     font-weight: 600;
 }
 
-/* Search input */
+/* Search and Text Inputs */
 QLineEdit {
     background-color: #111a2e;
     border: 1.5px solid #233352;
     border-radius: 6px;
-    padding: 9px 14px;
+    padding: 8px 12px;
     color: #f8fafc;
     font-size: 13px;
     selection-background-color: #0284c7;
@@ -176,6 +255,127 @@ QLineEdit:hover {
 QLineEdit:focus {
     border: 1.5px solid #38bdf8;
     background-color: #162440;
+    color: #ffffff;
+}
+
+/* In-place Table Cell Editors */
+QTableWidget QLineEdit,
+QAbstractItemView QLineEdit {
+    background-color: #0c182e;
+    color: #38bdf8;
+    border: 2px solid #38bdf8;
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin: 1px 3px;
+    font-size: 13px;
+    font-weight: bold;
+    qproperty-alignment: 'AlignCenter';
+    selection-background-color: #0284c7;
+    selection-color: #ffffff;
+}
+
+/* General SpinBox */
+QSpinBox {
+    background-color: #111a2e;
+    border: 1.5px solid #23385e;
+    border-radius: 6px;
+    padding: 4px 38px 4px 12px;
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Consolas', 'Segoe UI', Tahoma, monospace;
+}
+
+QSpinBox:hover, QSpinBox:focus {
+    border-color: #38bdf8;
+    background-color: #142038;
+}
+
+QSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 34px;
+    height: 16px;
+    border-left: 1.5px solid #23385e;
+    border-bottom: 1px solid #23385e;
+    border-top-right-radius: 5px;
+    background-color: #162440;
+}
+
+QSpinBox::up-button:hover {
+    background-color: #0284c7;
+    border-color: #38bdf8;
+}
+
+QSpinBox::up-arrow {
+    image: url('__SPIN_UP_ICON__');
+    width: 13px;
+    height: 13px;
+}
+
+QSpinBox::up-button:hover QSpinBox::up-arrow {
+    image: url('__SPIN_UP_HOVER_ICON__');
+}
+
+QSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 34px;
+    height: 16px;
+    border-left: 1.5px solid #23385e;
+    border-bottom-right-radius: 5px;
+    background-color: #162440;
+}
+
+QSpinBox::down-button:hover {
+    background-color: #0284c7;
+    border-color: #38bdf8;
+}
+
+QSpinBox::down-arrow {
+    image: url('__SPIN_DOWN_ICON__');
+    width: 13px;
+    height: 13px;
+}
+
+QSpinBox::down-button:hover QSpinBox::down-arrow {
+    image: url('__SPIN_DOWN_HOVER_ICON__');
+}
+
+/* CheckBox */
+QCheckBox {
+    spacing: 8px;
+    color: #e2e8f0;
+    font-size: 13px;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #334155;
+    background-color: #111a2e;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0284c7;
+    border-color: #38bdf8;
+}
+
+/* Progress Bar */
+QProgressBar {
+    background-color: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    text-align: center;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284c7, stop:1 #38bdf8);
+    border-radius: 5px;
 }
 
 /* Buttons */
@@ -195,6 +395,11 @@ QPushButton:hover {
 
 QPushButton:pressed {
     background-color: #075985;
+}
+
+QPushButton:disabled {
+    background-color: #1e293b;
+    color: #64748b;
 }
 
 QPushButton#secondaryBtn {
@@ -219,25 +424,26 @@ QPushButton#dangerBtn:hover {
     background-color: #991b1b;
 }
 
-/* Exit Confirmation Dialog (QMessageBox) */
+/* Exit Confirmation Dialog & QMessageBox */
 QMessageBox {
-    background-color: #0f172a;
+    background-color: #0d1526;
     color: #f8fafc;
     border: 1.5px solid #1e3a5f;
-    border-radius: 10px;
+    border-radius: 8px;
     font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    min-width: 420px;
 }
 
 QMessageBox QLabel {
     color: #f8fafc;
     font-size: 13px;
-    font-weight: 500;
-    min-height: 36px;
-    padding: 6px 10px;
+    font-weight: normal;
+    background-color: transparent;
+    padding: 4px 6px;
 }
 
 QMessageBox QPushButton {
-    min-width: 80px;
+    min-width: 85px;
     min-height: 28px;
     padding: 6px 18px;
     border-radius: 6px;
@@ -246,10 +452,6 @@ QMessageBox QPushButton {
 }
 
 /* Header branding */
-QLabel {
-    color: #e2e8f0;
-}
-
 QLabel#brandTitle {
     font-size: 17px;
     font-weight: 700;
@@ -343,3 +545,10 @@ QStatusBar::item {
     border: none;
 }
 """
+
+_up_icon, _up_hover, _down_icon, _down_hover = ensure_spinbox_icons()
+DARK_STYLESHEET = _RAW_DARK_STYLESHEET.replace("__SPIN_UP_ICON__", _up_icon) \
+    .replace("__SPIN_UP_HOVER_ICON__", _up_hover) \
+    .replace("__SPIN_DOWN_ICON__", _down_icon) \
+    .replace("__SPIN_DOWN_HOVER_ICON__", _down_hover)
+
