@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-ERR-005",
+  "vendor_id": "vendor_lion",
+  "workflow": "ERROR_TRIGGER",
+  "timestamp": "2026-09-16T16:36:00Z",
+  "entry_state": "FORM_SUBMITTED",
+  "url": "https://lionelectronic.ir/login",
+  "action": "Submit invalid credentials on login form",
+  "expected_observation": "Observe authentication error elements in DOM",
+  "actual_observation": "Error text appears in .help-block-error, .alert-danger, .has-error with message 'نام کاربری یا رمز عبور اشتباه است'.",
+  "selector": ".help-block-error, .alert-danger, .has-error",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-ERR-005.png",
+  "har_reference": "evidence/har/EV-LION-ERR-005.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "Terminal error requiring user credential update in settings."
+}

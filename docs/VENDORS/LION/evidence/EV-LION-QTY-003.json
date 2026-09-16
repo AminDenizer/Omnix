@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-QTY-003",
+  "vendor_id": "vendor_lion",
+  "workflow": "CONSTRAINT_PROBE",
+  "timestamp": "2026-09-16T16:15:00Z",
+  "entry_state": "INPUT_FOCUSED",
+  "url": "https://lionelectronic.ir/products/214-IRFU120NPBF",
+  "action": "Set quantity value via DOM script and trigger jQuery change event",
+  "expected_observation": "Update quantity input value and dispatch events required by Yii2 frontend",
+  "actual_observation": "Setting el.value and triggering $('#quantity-cell').trigger('input').trigger('change') successfully updates internal state.",
+  "selector": "input#quantity-cell",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-QTY-003.png",
+  "har_reference": "evidence/har/EV-LION-QTY-003.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator Runtime",
+  "notes": "Direct attribute modification plus jQuery trigger ensures total price updates."
+}

@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-006",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:50:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Inspect inquiry button and commercial inquiry form",
+  "expected_observation": "Identify elements for non-direct order inquiry",
+  "actual_observation": "Inquiry inputs identified as input#quantity-inquiry and button.add-inquiry, button.save-btn with text 'افزودن به لیست استعلام'.",
+  "selector": "button.add-inquiry, button.save-btn, input#quantity-inquiry",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-006.png",
+  "har_reference": "evidence/har/EV-LION-PDP-006.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Probe Script & LionAutomator",
+  "notes": "Present when items require manual quote or stock replenishment inquiry."
+}

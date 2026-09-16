@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-QTY-001",
+  "vendor_id": "vendor_lion",
+  "workflow": "CONSTRAINT_PROBE",
+  "timestamp": "2026-09-16T16:05:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Inspect quantity input field attributes and initial value",
+  "expected_observation": "Identify input element and default packaging quantity",
+  "actual_observation": "Input element is input#quantity-cell.counter.quantity-cell. Initial value for SMD items is 50 (or 10); for discrete DIP items is 1.",
+  "selector": "input#quantity-cell, input.quantity-cell",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-QTY-001.png",
+  "har_reference": "evidence/har/EV-LION-QTY-001.har",
+  "verification_status": "VERIFIED",
+  "verifier": "inspect_lion_step.py & LionAutomator",
+  "notes": "Initial value reflects vendor default minimum packaging increment (ضریب بسته بندی)."
+}

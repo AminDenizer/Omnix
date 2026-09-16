@@ -1,0 +1,32 @@
+{
+  "evidence_id": "EV-LION-CART-002",
+  "vendor_id": "vendor_lion",
+  "workflow": "CART_MUTATE",
+  "timestamp": "2026-09-16T16:22:00Z",
+  "entry_state": "ACTION_TRIGGERED",
+  "url": "https://lionelectronic.ir/products/214-IRFU120NPBF",
+  "action": "Trigger buy button click event via Selenium/JavaScript",
+  "expected_observation": "Observe cart addition request and DOM reaction",
+  "actual_observation": "Clicking button.btn-buy executes internal browser AJAX submission to cart session. Badge counter increments without full page reload.",
+  "selector": "button.btn-buy, button.add-btn",
+  "network_request": {
+    "method": "POST",
+    "url": "https://lionelectronic.ir/orders/cart/add",
+    "headers": {
+      "X-Requested-With": "XMLHttpRequest"
+    },
+    "payload": {
+      "productId": 214,
+      "quantity": 1
+    }
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "application/json"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-CART-002.png",
+  "har_reference": "evidence/har/EV-LION-CART-002.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator Runtime",
+  "notes": "Internal browser AJAX action within active Yii2 session. Not a public REST API. Requires 2.0-2.5s post-click settle time."
+}

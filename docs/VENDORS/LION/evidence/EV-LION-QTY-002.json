@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-QTY-002",
+  "vendor_id": "vendor_lion",
+  "workflow": "CONSTRAINT_PROBE",
+  "timestamp": "2026-09-16T16:10:00Z",
+  "entry_state": "INPUT_FOCUSED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Probe quantity packaging multiple constraint enforcement",
+  "expected_observation": "Determine how non-multiple quantities are handled by Lion frontend/backend",
+  "actual_observation": "Entering quantities not conforming to the site's default packaging increment triggers SweetAlert2 error modal containing keywords 'ضریب' / 'مضرب'. The site requires quantities conforming to the default packaging step.",
+  "selector": "input#quantity-cell",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-QTY-002.png",
+  "har_reference": "evidence/har/EV-LION-QTY-002.har",
+  "verification_status": "VERIFIED",
+  "verifier": "test_strict_and_step.py & LionAutomator",
+  "notes": "Raw vendor input exposes default step in #quantity-cell. Purchasing step rounding algorithms belong strictly to Phase 6 Vendor Adapter Specification."
+}

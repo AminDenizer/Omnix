@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-ERR-002",
+  "vendor_id": "vendor_lion",
+  "workflow": "ERROR_TRIGGER",
+  "timestamp": "2026-09-16T16:32:00Z",
+  "entry_state": "PAGE_NAVIGATED",
+  "url": "https://lionelectronic.ir/products/99999-NONEXISTENT",
+  "action": "Request non-existent product URL",
+  "expected_observation": "Observe HTTP status code and 404 page signature",
+  "actual_observation": "HTTP 404 Not Found returned. Page title or content contains 'صفحه‌ای یافت نشد' or '404'.",
+  "selector": "title:contains('404'), div:contains('صفحه‌ای یافت نشد')",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products/99999-NONEXISTENT",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 404,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-ERR-002.png",
+  "har_reference": "evidence/har/EV-LION-ERR-002.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Probe Script",
+  "notes": "Terminal error for unfulfillable part."
+}

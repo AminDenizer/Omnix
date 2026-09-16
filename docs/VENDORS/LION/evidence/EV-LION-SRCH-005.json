@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-SRCH-005",
+  "vendor_id": "vendor_lion",
+  "workflow": "SEARCH",
+  "timestamp": "2026-09-16T15:20:00Z",
+  "entry_state": "SEARCH_SUBMITTED",
+  "url": "https://lionelectronic.ir/search?q=NE555P",
+  "action": "Probe alternative search URL schemes",
+  "expected_observation": "Determine whether /search or ?q= parameters are supported",
+  "actual_observation": "https://lionelectronic.ir/search?q=NE555P returns HTTP 404 Not Found; https://lionelectronic.ir/products?q=NE555P redirects to /products/category. Only ?search= is valid.",
+  "selector": null,
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/search?q=NE555P",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 404,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-SRCH-005.png",
+  "har_reference": "evidence/har/EV-LION-SRCH-005.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Non-standard search endpoints must be avoided by the adapter."
+}

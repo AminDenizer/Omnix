@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-CART-001",
+  "vendor_id": "vendor_lion",
+  "workflow": "CART_MUTATE",
+  "timestamp": "2026-09-16T16:20:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/orders/cart",
+  "action": "Navigate to shopping cart page",
+  "expected_observation": "Inspect shopping cart URL and item list table",
+  "actual_observation": "Cart endpoint is https://lionelectronic.ir/orders/cart. Displays staged items, unit prices, quantities, and order total.",
+  "selector": ".cart-items, table.table, .order-cart-view",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/orders/cart",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-CART-001.png",
+  "har_reference": "evidence/har/EV-LION-CART-001.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "Final staged cart inspection URL."
+}

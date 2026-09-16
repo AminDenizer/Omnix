@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-ERR-006",
+  "vendor_id": "vendor_lion",
+  "workflow": "ERROR_TRIGGER",
+  "timestamp": "2026-09-16T16:38:00Z",
+  "entry_state": "NETWORK_REQUEST",
+  "url": "https://lionelectronic.ir/products?search=STM32F103C8T6",
+  "action": "Observe network transport error or SSL handshake issue",
+  "expected_observation": "Capture network error signature and retry behavior",
+  "actual_observation": "Occasional SSL/TLS handshake reset or timeout observed under rapid requests (SSLError/ConnectionPool error). Requires exponential backoff and retry.",
+  "selector": null,
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products?search=STM32F103C8T6",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 0,
+    "error": "SSL_HANDSHAKE_TIMEOUT"
+  },
+  "screenshot_reference": null,
+  "har_reference": "evidence/har/EV-LION-ERR-006.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Non-DOM transport level error. Managed by adapter retry loop."
+}

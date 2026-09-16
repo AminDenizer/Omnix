@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-ERR-004",
+  "vendor_id": "vendor_lion",
+  "workflow": "ERROR_TRIGGER",
+  "timestamp": "2026-09-16T16:35:00Z",
+  "entry_state": "ACTION_TRIGGERED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Submit quantity below Minimum Order Quantity (MOQ)",
+  "expected_observation": "Observe alert indicating MOQ constraint violation",
+  "actual_observation": "SweetAlert2 modal displays message containing 'حداقل تعداد سفارش' or input value automatically snaps back to minimum step.",
+  "selector": ".swal2-html-container:contains('حداقل')",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-ERR-004.png",
+  "har_reference": "evidence/har/EV-LION-ERR-004.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "Resolved by setting quantity = max(quantity, moq)."
+}

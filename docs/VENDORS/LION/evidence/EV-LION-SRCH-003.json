@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-SRCH-003",
+  "vendor_id": "vendor_lion",
+  "workflow": "SEARCH",
+  "timestamp": "2026-09-16T15:10:00Z",
+  "entry_state": "SEARCH_SUBMITTED",
+  "url": "https://lionelectronic.ir/products?search=0805%2010k",
+  "action": "Execute parametric multi-keyword search '0805 10k'",
+  "expected_observation": "Receive multi-product search result grid with links to candidate items",
+  "actual_observation": "HTTP 200 OK returned. 40 product links discovered (e.g. /products/1497-0805W8F9103T5E, /products/1491-SER0805F510K, /products/1377-0805W8F910KT5E).",
+  "selector": "a[href^='/products/'], .product-card, .product-title",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products?search=0805%2010k",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-SRCH-003.png",
+  "har_reference": "evidence/har/EV-LION-SRCH-003.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Product links adhere to regex /products/(\\d+)-([a-zA-Z0-9_.-]+)."
+}

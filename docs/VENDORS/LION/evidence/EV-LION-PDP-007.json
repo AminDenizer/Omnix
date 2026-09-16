@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-007",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:55:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/2070-NE555P",
+  "action": "Inspect out-of-stock DOM indicators",
+  "expected_observation": "Identify badges or text indicating 0 available inventory",
+  "actual_observation": "Out of stock items display text keywords 'اتمام موجودی', 'ناموجود', 'تمام شد' in .stock-status or page source, and buy button is disabled.",
+  "selector": ".stock-status, .product-stock, span:contains('اتمام موجودی')",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-007.png",
+  "har_reference": "evidence/har/EV-LION-PDP-007.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "Adapter must treat any of these keywords as 0 available stock."
+}

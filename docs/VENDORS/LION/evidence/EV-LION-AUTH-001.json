@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-AUTH-001",
+  "vendor_id": "vendor_lion",
+  "workflow": "AUTH",
+  "timestamp": "2026-09-16T16:26:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/login",
+  "action": "Inspect login form DOM elements",
+  "expected_observation": "Locate username input, password input, and login submission button",
+  "actual_observation": "Username input is input#loginform-username; password input is input#loginform-password; submit button is button[name='signup-button'], #login-form button[type='submit'], button.blue-btn.",
+  "selector": "input#loginform-username, input#loginform-password, button[name='signup-button']",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/login",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-AUTH-001.png",
+  "har_reference": "evidence/har/EV-LION-AUTH-001.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator & DevTools",
+  "notes": "Form ID is #login-form. Uses Yii2 ActiveForm validation."
+}

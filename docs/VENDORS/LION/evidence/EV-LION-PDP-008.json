@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-008",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T16:00:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/2070-NE555P",
+  "action": "Inspect coming soon indicators",
+  "expected_observation": "Identify badges or text indicating future restock",
+  "actual_observation": "Items in restock pipeline display text 'به زودی' in .stock-amount or input value.",
+  "selector": ".stock-amount:contains('به زودی'), input.quantity-cell[value*='به زودی']",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-008.png",
+  "har_reference": "evidence/har/EV-LION-PDP-008.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "'به زودی' must be mapped to 0 immediate purchasable inventory."
+}

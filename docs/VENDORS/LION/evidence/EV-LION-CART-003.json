@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-CART-003",
+  "vendor_id": "vendor_lion",
+  "workflow": "CART_MUTATE",
+  "timestamp": "2026-09-16T16:25:00Z",
+  "entry_state": "CART_UPDATED",
+  "url": "https://lionelectronic.ir/products/214-IRFU120NPBF",
+  "action": "Verify cart item count and session persistence",
+  "expected_observation": "Cart badge displays updated item count",
+  "actual_observation": "Cart count indicator in header navigation updates. Staged items persist across subsequent product page navigations.",
+  "selector": ".cart-badge, .header-cart-count, a[href='/orders/cart'] span",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-CART-003.png",
+  "har_reference": "evidence/har/EV-LION-CART-003.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator Batch Ordering",
+  "notes": "Session cookie preserves staged items."
+}

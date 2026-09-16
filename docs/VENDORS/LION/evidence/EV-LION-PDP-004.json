@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-004",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:40:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/214-IRFU120NPBF",
+  "action": "Locate Add to Cart primary action button",
+  "expected_observation": "Identify buy button DOM selector and disabled states",
+  "actual_observation": "Buy button identified by selector 'button.btn-buy, button.add-btn, .btn-buy'. Contains text 'افزودن به سبد خرید'.",
+  "selector": "button.btn-buy, button.add-btn, .btn-buy",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-004.png",
+  "har_reference": "evidence/har/EV-LION-PDP-004.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator & DevTools",
+  "notes": "Button carries class 'disabled' when stock is 0 or order is restricted."
+}

@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-ERR-003",
+  "vendor_id": "vendor_lion",
+  "workflow": "ERROR_TRIGGER",
+  "timestamp": "2026-09-16T16:34:00Z",
+  "entry_state": "ACTION_TRIGGERED",
+  "url": "https://lionelectronic.ir/products/214-IRFU120NPBF",
+  "action": "Request quantity exceeding available warehouse stock",
+  "expected_observation": "Observe error notice for insufficient stock",
+  "actual_observation": "SweetAlert modal or error banner rendered containing keywords 'موجودی', 'کافی نیست', 'امکان سفارش وجود ندارد'.",
+  "selector": ".swal2-html-container:contains('موجودی'), .alert-danger",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-ERR-003.png",
+  "har_reference": "evidence/har/EV-LION-ERR-003.har",
+  "verification_status": "VERIFIED",
+  "verifier": "LionAutomator",
+  "notes": "Requires capping order quantity to available stock or reporting partial fulfillment."
+}
