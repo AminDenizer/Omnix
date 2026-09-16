@@ -1,0 +1,620 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "vendor_id": "vendor_roboeq",
+    "vendor_name": "RoboEq Electronic",
+    "base_url": "https://roboeq.ir",
+    "schema_version": "1.0.0",
+    "discovery_version": "1.0.0",
+    "created_at": "2026-09-16T15:18:47.776346+00:00",
+    "updated_at": "2026-09-16T15:18:47.776346+00:00",
+    "last_verified": "2026-09-16T15:18:47.776346+00:00",
+    "verification_status": "VERIFIED"
+  },
+  "nodes": [
+    {
+      "id": "node_page_home",
+      "type": "PAGE",
+      "label": "RoboEq Homepage",
+      "description": "Main entry landing page",
+      "selectors": [
+        "sel_home_body"
+      ],
+      "url_pattern": "^https://(?:www\\.)?roboeq\\.ir/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-LAND-001"
+      ]
+    },
+    {
+      "id": "node_input_search",
+      "type": "INPUT",
+      "label": "Search Input Box",
+      "description": "Global product search query input",
+      "selectors": [
+        "sel_search_input"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-001"
+      ]
+    },
+    {
+      "id": "node_page_search_results",
+      "type": "PAGE",
+      "label": "Search Results Page",
+      "description": "Catalog grid displaying matching product results",
+      "selectors": [
+        "sel_search_results_container"
+      ],
+      "url_pattern": "^https://(?:www\\.)?roboeq\\.ir/search/\\?q=.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002",
+        "EV-ROBOEQ-SRCH-004"
+      ]
+    },
+    {
+      "id": "node_item_product_card",
+      "type": "RESULT",
+      "label": "Product Search Card Link",
+      "description": "Link to product detail page",
+      "selectors": [
+        "sel_product_card_link"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002",
+        "EV-ROBOEQ-SRCH-004"
+      ]
+    },
+    {
+      "id": "node_msg_zero_results",
+      "type": "RESULT",
+      "label": "Zero Results Empty State",
+      "description": "Marker for non-existent product queries",
+      "selectors": [
+        "sel_zero_results_marker"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-003"
+      ]
+    },
+    {
+      "id": "node_page_pdp",
+      "type": "PAGE",
+      "label": "Product Detail Page",
+      "description": "Individual product page with specs, stock, and seller prices",
+      "selectors": [
+        "sel_pdp_container"
+      ],
+      "url_pattern": "^https://(?:www\\.)?roboeq\\.ir/products/detail/\\d+/[^/]+/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-001"
+      ]
+    },
+    {
+      "id": "node_header_pdp_title",
+      "type": "RESULT",
+      "label": "Product Title Header",
+      "description": "H1 tag containing part name",
+      "selectors": [
+        "sel_pdp_title"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-002"
+      ]
+    },
+    {
+      "id": "node_table_pricing_tiers",
+      "type": "CONTAINER",
+      "label": "Multi-Seller Tier Pricing Table",
+      "description": "Table containing sellers and volume discounts",
+      "selectors": [
+        "sel_pdp_pricing_table"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-003"
+      ]
+    },
+    {
+      "id": "node_table_specs",
+      "type": "CONTAINER",
+      "label": "Technical Specifications Table",
+      "description": "Key-value layout of technical properties",
+      "selectors": [
+        "sel_pdp_specs_table"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-004"
+      ]
+    },
+    {
+      "id": "node_ctrl_quantity",
+      "type": "INPUT",
+      "label": "Quantity Stepper Controls",
+      "description": "Quantity increment/decrement buttons",
+      "selectors": [
+        "sel_qty_inc",
+        "sel_qty_dec"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-QTY-001"
+      ]
+    },
+    {
+      "id": "node_btn_add_to_cart",
+      "type": "BUTTON",
+      "label": "Add to Cart Submit Button",
+      "description": "Button to stage line item in shopping cart",
+      "selectors": [
+        "sel_btn_add_to_cart"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-005"
+      ]
+    },
+    {
+      "id": "node_page_cart",
+      "type": "PAGE",
+      "label": "Shopping Cart Page",
+      "description": "Cart overview and order review drawer",
+      "selectors": [
+        "sel_cart_container"
+      ],
+      "url_pattern": "^https://(?:www\\.)?roboeq\\.ir/(?:cart/|error/404/\\?referer=.*cart.*)$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-CART-001"
+      ]
+    },
+    {
+      "id": "node_page_auth_login",
+      "type": "PAGE",
+      "label": "CAS Authentication Login Page",
+      "description": "Centralized CAS login route",
+      "selectors": [
+        "sel_login_username"
+      ],
+      "url_pattern": "^https://auth\\.roboeq\\.ir/cas/login.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_input_login_username",
+      "type": "INPUT",
+      "label": "Login Username Input",
+      "description": "Phone number or username field",
+      "selectors": [
+        "sel_login_username"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_btn_login_submit",
+      "type": "BUTTON",
+      "label": "Login Submit Button",
+      "description": "Button submitting authentication credentials",
+      "selectors": [
+        "sel_login_submit"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_page_error_404",
+      "type": "PAGE",
+      "label": "Error 404 Not Found Page",
+      "description": "Error route for invalid resources",
+      "selectors": [
+        "sel_error_404_header"
+      ],
+      "url_pattern": "^https://(?:www\\.)?roboeq\\.ir/error/404/.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-ROBOEQ-ERR-001"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_home_to_search_input",
+      "source_node_id": "node_page_home",
+      "target_node_id": "node_input_search",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-001"
+      ]
+    },
+    {
+      "id": "edge_search_submit_to_results",
+      "source_node_id": "node_input_search",
+      "target_node_id": "node_page_search_results",
+      "relationship_type": "SUBMITS_FORM",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002"
+      ]
+    },
+    {
+      "id": "edge_search_results_to_card",
+      "source_node_id": "node_page_search_results",
+      "target_node_id": "node_item_product_card",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002"
+      ]
+    },
+    {
+      "id": "edge_search_results_to_zero_msg",
+      "source_node_id": "node_page_search_results",
+      "target_node_id": "node_msg_zero_results",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": "query_has_no_matches",
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-003"
+      ]
+    },
+    {
+      "id": "edge_card_to_pdp",
+      "source_node_id": "node_item_product_card",
+      "target_node_id": "node_page_pdp",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-001"
+      ]
+    },
+    {
+      "id": "edge_pdp_to_title",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_header_pdp_title",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-002"
+      ]
+    },
+    {
+      "id": "edge_pdp_to_pricing_table",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_table_pricing_tiers",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-003"
+      ]
+    },
+    {
+      "id": "edge_pdp_to_specs_table",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_table_specs",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-004"
+      ]
+    },
+    {
+      "id": "edge_pdp_to_qty_ctrl",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_ctrl_quantity",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-QTY-001"
+      ]
+    },
+    {
+      "id": "edge_pdp_to_add_btn",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_btn_add_to_cart",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-005"
+      ]
+    },
+    {
+      "id": "edge_add_to_cart_mutation",
+      "source_node_id": "node_btn_add_to_cart",
+      "target_node_id": "node_page_cart",
+      "relationship_type": "MUTATES_STATE",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-CART-001"
+      ]
+    },
+    {
+      "id": "edge_home_to_auth",
+      "source_node_id": "node_page_home",
+      "target_node_id": "node_page_auth_login",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_auth_to_username",
+      "source_node_id": "node_page_auth_login",
+      "target_node_id": "node_input_login_username",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_auth_to_submit",
+      "source_node_id": "node_page_auth_login",
+      "target_node_id": "node_btn_login_submit",
+      "relationship_type": "RENDERS_ELEMENT",
+      "condition": null,
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_home_to_error_404",
+      "source_node_id": "node_page_home",
+      "target_node_id": "node_page_error_404",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "invalid_route_requested",
+      "evidence_ids": [
+        "EV-ROBOEQ-ERR-001"
+      ]
+    }
+  ],
+  "selectors": {
+    "sel_home_body": {
+      "id": "sel_home_body",
+      "type": "CSS",
+      "value": "body",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-LAND-001"
+      ]
+    },
+    "sel_search_input": {
+      "id": "sel_search_input",
+      "type": "CSS",
+      "value": "input.req-field, input[placeholder*='نام محصول'], input[placeholder*='جستجو']",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-001"
+      ]
+    },
+    "sel_search_results_container": {
+      "id": "sel_search_results_container",
+      "type": "CSS",
+      "value": ".search-results, .products, .container",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002"
+      ]
+    },
+    "sel_product_card_link": {
+      "id": "sel_product_card_link",
+      "type": "CSS",
+      "value": "a[href*='/products/detail/']",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-002",
+        "EV-ROBOEQ-SRCH-004"
+      ]
+    },
+    "sel_zero_results_marker": {
+      "id": "sel_zero_results_marker",
+      "type": "TEXT",
+      "value": "بدون نتیجه",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-SRCH-003"
+      ]
+    },
+    "sel_pdp_container": {
+      "id": "sel_pdp_container",
+      "type": "CSS",
+      "value": ".product-detail, .product-main, body",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-001"
+      ]
+    },
+    "sel_pdp_title": {
+      "id": "sel_pdp_title",
+      "type": "CSS",
+      "value": "h1, .product-title",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-002"
+      ]
+    },
+    "sel_pdp_pricing_table": {
+      "id": "sel_pdp_pricing_table",
+      "type": "CSS",
+      "value": "table",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-003"
+      ]
+    },
+    "sel_pdp_specs_table": {
+      "id": "sel_pdp_specs_table",
+      "type": "CSS",
+      "value": "table tr",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-004"
+      ]
+    },
+    "sel_btn_add_to_cart": {
+      "id": "sel_btn_add_to_cart",
+      "type": "CSS",
+      "value": "button:contains('افزودن به سبد'), button.waves-effect, button[type='submit']",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-005"
+      ]
+    },
+    "sel_qty_inc": {
+      "id": "sel_qty_inc",
+      "type": "CSS",
+      "value": "button.inc-qty",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-QTY-001"
+      ]
+    },
+    "sel_qty_dec": {
+      "id": "sel_qty_dec",
+      "type": "CSS",
+      "value": "button.dec-qty",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-QTY-001"
+      ]
+    },
+    "sel_cart_container": {
+      "id": "sel_cart_container",
+      "type": "CSS",
+      "value": ".cart-container, table.cart, body",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-CART-001"
+      ]
+    },
+    "sel_login_username": {
+      "id": "sel_login_username",
+      "type": "CSS",
+      "value": "input#username, input[name='username']",
+      "priority": 1,
+      "stability": "STABLE_ID",
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    "sel_login_submit": {
+      "id": "sel_login_submit",
+      "type": "CSS",
+      "value": "input[type='submit'], button[type='submit'], button.btn-login",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-AUTH-001"
+      ]
+    },
+    "sel_error_404_header": {
+      "id": "sel_error_404_header",
+      "type": "CSS",
+      "value": "h1, .error-404, body",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-ROBOEQ-ERR-001"
+      ]
+    }
+  },
+  "extractions": [
+    {
+      "id": "ext_vendor_sku",
+      "field_name": "vendor_sku",
+      "source_node_id": "node_page_pdp",
+      "source_type": "URL_REGEX",
+      "selector_id": null,
+      "attribute": null,
+      "regex": "/products/detail/(\\d+)/",
+      "transform": "RAW",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-001"
+      ]
+    },
+    {
+      "id": "ext_mpn",
+      "field_name": "mpn",
+      "source_node_id": "node_header_pdp_title",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_pdp_title",
+      "attribute": null,
+      "regex": null,
+      "transform": "CLEAN_STRING",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-002"
+      ]
+    },
+    {
+      "id": "ext_pricing_tiers",
+      "field_name": "price_tiers",
+      "source_node_id": "node_table_pricing_tiers",
+      "source_type": "DOM_TABLE",
+      "selector_id": "sel_pdp_pricing_table",
+      "attribute": null,
+      "regex": null,
+      "transform": "RAW",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-003"
+      ]
+    },
+    {
+      "id": "ext_technical_specs",
+      "field_name": "specifications",
+      "source_node_id": "node_table_specs",
+      "source_type": "DOM_TABLE",
+      "selector_id": "sel_pdp_specs_table",
+      "attribute": null,
+      "regex": null,
+      "transform": "RAW",
+      "normalization_rule": null,
+      "required": false,
+      "evidence_ids": [
+        "EV-ROBOEQ-PDP-004"
+      ]
+    }
+  ]
+}

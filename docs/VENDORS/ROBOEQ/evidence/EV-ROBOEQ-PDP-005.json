@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-PDP-005",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "pdp_add_to_cart_button",
+  "timestamp": "2026-09-16T15:17:13.663602+00:00",
+  "url": "https://roboeq.ir/products/detail/0315001/%D8%A2%DB%8C-%D8%B3%DB%8C-%D8%AA%D8%A7%DB%8C%D9%85%D8%B1-NE555/",
+  "action": "Inspect Add to Cart submit buttons on PDP",
+  "expected_observation": "Add to cart button present for available seller options",
+  "actual_observation": "Found interactive 'افزودن به سبد' buttons inside seller pricing rows",
+  "entry_state": "PDP_LOADED",
+  "selector": "button, a.btn",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

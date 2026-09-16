@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-PDP-001",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "pdp_navigation",
+  "timestamp": "2026-09-16T15:17:13.444685+00:00",
+  "url": "https://roboeq.ir/products/detail/0315001/%D8%A2%DB%8C-%D8%B3%DB%8C-%D8%AA%D8%A7%DB%8C%D9%85%D8%B1-NE555/",
+  "action": "GET /products/detail/0315001/...",
+  "expected_observation": "PDP loads with canonical path regex /products/detail/{id}/{slug}/",
+  "actual_observation": "PDP rendered with title 'آی سی تایمر NE555 | روبوایکیو', URL conforming to canonical pattern",
+  "entry_state": "PDP_LOADED",
+  "selector": "h1, .product-detail, body",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

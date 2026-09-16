@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-QTY-001",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "quantity_controls",
+  "timestamp": "2026-09-16T15:17:13.675977+00:00",
+  "url": "https://roboeq.ir/products/detail/0315001/%D8%A2%DB%8C-%D8%B3%DB%8C-%D8%AA%D8%A7%DB%8C%D9%85%D8%B1-NE555/",
+  "action": "Inspect quantity increment / decrement stepper buttons",
+  "expected_observation": "Interactive quantity stepper buttons (.inc-qty, .dec-qty) present on PDP",
+  "actual_observation": "Quantity controls found matching selectors 'button.inc-qty' and 'button.dec-qty'",
+  "entry_state": "PDP_LOADED",
+  "selector": "button.inc-qty, button.dec-qty",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}
