@@ -35,6 +35,9 @@ LION_EVIDENCE_DIR = os.path.join("docs", "VENDORS", "LION", "evidence")
 JAVAN_GRAPH_PATH = os.path.join("docs", "VENDORS", "JAVAN", "SITE_MAP_GRAPH.json")
 JAVAN_EVIDENCE_DIR = os.path.join("docs", "VENDORS", "JAVAN", "evidence")
 
+ROBOEQ_GRAPH_PATH = os.path.join("docs", "VENDORS", "ROBOEQ", "SITE_MAP_GRAPH.json")
+ROBOEQ_EVIDENCE_DIR = os.path.join("docs", "VENDORS", "ROBOEQ", "evidence")
+
 
 class TestUniversalDiscoveryModels:
     """Verify dataclass serialization, deserialization, and schema fidelity."""
@@ -165,6 +168,16 @@ class TestSiteMapGraphValidator:
         assert report.total_checks >= 10
         assert report.vendor_id == "vendor_javan"
 
+    def test_roboeq_discovered_graph_passes_all_checks(self):
+        assert os.path.exists(ROBOEQ_GRAPH_PATH), f"RoboEq graph missing: {ROBOEQ_GRAPH_PATH}"
+        graph = SiteMapGraph.load(ROBOEQ_GRAPH_PATH)
+        report = SiteMapGraphValidator.validate_graph(graph, evidence_dir=ROBOEQ_EVIDENCE_DIR)
+
+        assert report.passed is True
+        assert report.error_count == 0
+        assert report.total_checks >= 10
+        assert report.vendor_id == "vendor_roboeq"
+
     def test_validator_detects_duplicate_node_ids(self):
         graph = SiteMapGraph(
             metadata={"vendor_id": "v", "vendor_name": "V", "base_url": "https://v.com", "schema_version": "1.0.0"},
@@ -217,17 +230,21 @@ class TestSiteMapGraphValidator:
         assert any(c.check_id == "CHK-LEAKAGE-001" and not c.passed for c in report.checks)
 
     def test_multi_vendor_discovery_neutrality(self):
-        """Ensure both reference vendor (Lion) and new vendor (Javan) validate through generic pipeline."""
+        """Ensure all 3 vendors (Lion, Javan, RoboEq) validate through generic pipeline."""
         lion_graph = SiteMapGraph.load(LION_GRAPH_PATH)
         javan_graph = SiteMapGraph.load(JAVAN_GRAPH_PATH)
+        roboeq_graph = SiteMapGraph.load(ROBOEQ_GRAPH_PATH)
 
         r_lion = SiteMapGraphValidator.validate_graph(lion_graph, evidence_dir=LION_EVIDENCE_DIR)
         r_javan = SiteMapGraphValidator.validate_graph(javan_graph, evidence_dir=JAVAN_EVIDENCE_DIR)
+        r_roboeq = SiteMapGraphValidator.validate_graph(roboeq_graph, evidence_dir=ROBOEQ_EVIDENCE_DIR)
 
         assert r_lion.passed is True
         assert r_javan.passed is True
+        assert r_roboeq.passed is True
         assert r_lion.vendor_id == "vendor_lion"
         assert r_javan.vendor_id == "vendor_javan"
+        assert r_roboeq.vendor_id == "vendor_roboeq"
 
 
 class TestUniversalDiscoveryCLI:
@@ -249,6 +266,14 @@ class TestUniversalDiscoveryCLI:
         assert "=== SITE MAP GRAPH VALIDATION REPORT: vendor_javan ===" in result.stdout
         assert "Status: PASSED" in result.stdout
 
+    def test_cli_audit_roboeq_graph_returns_exit_code_zero(self):
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = [sys.executable, "-m", "core.discovery.cli", "audit", ROBOEQ_GRAPH_PATH]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir, encoding="utf-8")
+        assert result.returncode == 0
+        assert "=== SITE MAP GRAPH VALIDATION REPORT: vendor_roboeq ===" in result.stdout
+        assert "Status: PASSED" in result.stdout
+
     def test_cli_inspect_evidence_lion(self):
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         cmd = [sys.executable, "-m", "core.discovery.cli", "inspect-evidence", LION_EVIDENCE_DIR]
@@ -264,3 +289,11 @@ class TestUniversalDiscoveryCLI:
         assert result.returncode == 0
         assert "=== DISCOVERY EVIDENCE INSPECTION:" in result.stdout
         assert "Total Evidence Records: 16" in result.stdout
+
+    def test_cli_inspect_evidence_roboeq(self):
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = [sys.executable, "-m", "core.discovery.cli", "inspect-evidence", ROBOEQ_EVIDENCE_DIR]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir, encoding="utf-8")
+        assert result.returncode == 0
+        assert "=== DISCOVERY EVIDENCE INSPECTION:" in result.stdout
+        assert "Total Evidence Records: 14" in result.stdout
