@@ -1,19 +1,28 @@
 import webbrowser
-from typing import List, Dict, Any, Optional
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
-    QTableWidgetItem, QPushButton, QProgressBar, QFrame,
-    QMessageBox, QHeaderView, QApplication
-)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from typing import Any, Dict, List, Optional
+from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
-from lion_automator import LionAutomator
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
+from core.procurement.bridge import ProcurementBridge
 from settings_manager import settings
 from ui.dialogs.settings_dialog import SettingsDialog
 
 
 class OrderWorkerThread(QThread):
-    """Background worker thread to execute batch ordering on Lion Electronic."""
+    """Background worker thread to execute multi-vendor procurement staging."""
 
     progress_signal = pyqtSignal(int, int, str, int, str)  # current, total, part_name, qty, msg
     finished_signal = pyqtSignal(dict)
@@ -21,22 +30,22 @@ class OrderWorkerThread(QThread):
     def __init__(self, items: List[Dict[str, Any]]):
         super().__init__()
         self.items = items
-        self.automator = LionAutomator()
 
     def run(self):
         def callback(current, total, part_name, qty, msg):
             self.progress_signal.emit(current, total, part_name, qty, msg)
 
-        results = self.automator.order_items_batch(self.items, progress_callback=callback)
+        results = ProcurementBridge.execute_staged_procurement_batch(
+            self.items, progress_callback=callback
+        )
         self.finished_signal.emit(results)
 
 
 class OrderPreviewDialog(QDialog):
     """
     Dialog for previewing, confirming, and executing batch purchases
-    on Lion Electronic for inventory shortages and project BOM missing parts.
-    Enforces strict Lion Electronic URL validation and allows immediate stock increment
-    upon payment confirmation.
+    across registered storefronts (Lion, Javan, RoboEq, etc.) for inventory
+    shortages and project BOM missing parts.
     """
 
     def __init__(
@@ -47,7 +56,7 @@ class OrderPreviewDialog(QDialog):
         source_title: str = "Inventory Shortage Order",
         inventory_loader=None,
         on_stock_updated=None,
-        parent=None
+        parent=None,
     ):
         super().__init__(parent)
         items_in = all_shortages if all_shortages is not None else (orderable_items or [])
@@ -59,20 +68,24 @@ class OrderPreviewDialog(QDialog):
         self.worker: Optional[OrderWorkerThread] = None
         self._has_updated_inventory = False
 
-        # Classify shortages
-        self.lion_items: List[Dict[str, Any]] = []
+        # Classify shortages dynamically via ProcurementBridge
+        self.orderable_items: List[Dict[str, Any]] = []
         self.external_items: List[Dict[str, Any]] = []
         self.blank_link_items: List[Dict[str, Any]] = []
 
         for it in self.all_shortages:
             link = str(it.get("link", "")).strip()
-            if link and "lionelectronic.ir" in link.lower():
-                self.lion_items.append(it)
-            elif link.startswith("http"):
-                self.external_items.append(it)
-            else:
+            if not link:
                 self.blank_link_items.append(it)
+            else:
+                is_orderable, _ = ProcurementBridge.is_item_orderable(it)
+                if is_orderable:
+                    self.orderable_items.append(it)
+                else:
+                    self.external_items.append(it)
 
+        # Backward compatibility aliases
+        self.lion_items = self.orderable_items
         self.invalid_items = self.external_items + self.blank_link_items
 
         self.setWindowTitle(f"Procurement & Order Confirmation — {source_title}")
@@ -92,11 +105,15 @@ class OrderPreviewDialog(QDialog):
 
         # Summary Subtitle
         summary_text = (
-            f"<b>{len(self.lion_items)}</b> of <b>{len(self.all_shortages)}</b> shortage items have valid Lion Electronic links ready for automated purchasing."
+            f"<b>{len(self.orderable_items)}</b> of <b>{len(self.all_shortages)}</b> shortage items "
+            f"have registered vendor links ready for automated purchasing."
         )
         if self.invalid_items:
-            summary_text += f" &nbsp; (❌ <b>{len(self.external_items)}</b> external non-Lion links, ⚠️ <b>{len(self.blank_link_items)}</b> blank links)."
-        
+            summary_text += (
+                f" &nbsp; (❌ <b>{len(self.external_items)}</b> unsupported links, "
+                f"⚠️ <b>{len(self.blank_link_items)}</b> blank links)."
+            )
+
         desc_lbl = QLabel(summary_text)
         desc_lbl.setTextFormat(Qt.TextFormat.RichText)
         desc_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
@@ -106,7 +123,12 @@ class OrderPreviewDialog(QDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "Part / Designator", "Part Number / Description", "Current Stock", "Shortage Needed", "Store Link", "Validation & Status"
+            "Part / Designator",
+            "Part Number / Description",
+            "Current Stock",
+            "Shortage Needed",
+            "Store Link",
+            "Validation & Status",
         ])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -132,19 +154,27 @@ class OrderPreviewDialog(QDialog):
         status_layout.setSpacing(10)
 
         # 1. Ready to Order Pill (Green)
-        pill_ready = QLabel(f"✅ Ready to Order: {len(self.lion_items)}")
+        pill_ready = QLabel(f"✅ Ready to Order: {len(self.orderable_items)}")
         pill_ready.setStyleSheet(
             "background-color: rgba(16, 185, 129, 0.12); "
             "border: 1px solid rgba(16, 185, 129, 0.35); "
             "color: #34d399; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;"
         )
-        ready_names = [it.get("part_name") or it.get("part_number") or it.get("designator", "") for it in self.lion_items]
-        pill_ready.setToolTip(f"Ready for Lion Electronic automated purchase ({len(self.lion_items)} items):\n" + "\n".join(f"• {n}" for n in ready_names[:25]))
+        ready_names = [
+            it.get("part_name") or it.get("part_number") or it.get("designator", "")
+            for it in self.orderable_items
+        ]
+        pill_ready.setToolTip(
+            f"Ready for automated procurement staging ({len(self.orderable_items)} items):
+"
+            + "
+".join(f"• {n}" for n in ready_names[:25])
+        )
         status_layout.addWidget(pill_ready)
 
-        # 2. Invalid Link (Non-Lion) Pill (Red)
+        # 2. Unsupported Link Pill (Red)
         if self.external_items:
-            pill_ext = QLabel(f"❌ Invalid Link (Non-Lion): {len(self.external_items)}")
+            pill_ext = QLabel(f"❌ Unsupported Link: {len(self.external_items)}")
             pill_ext.setStyleSheet(
                 "background-color: rgba(239, 68, 68, 0.12); "
                 "border: 1px solid rgba(239, 68, 68, 0.35); "
@@ -155,9 +185,13 @@ class OrderPreviewDialog(QDialog):
                 for it in self.external_items
             ]
             pill_ext.setToolTip(
-                f"Non-Lion Store Links ({len(self.external_items)} items):\n"
-                f"Action: Update store URLs to lionelectronic.ir in Inventory.xlsx\n\n"
-                + "\n".join(f"• {n}" for n in ext_names[:25])
+                f"Unsupported Store Links ({len(self.external_items)} items):
+"
+                f"Action: Update store URLs to supported vendors in Inventory.xlsx
+
+"
+                + "
+".join(f"• {n}" for n in ext_names[:25])
             )
             status_layout.addWidget(pill_ext)
 
@@ -169,11 +203,18 @@ class OrderPreviewDialog(QDialog):
                 "border: 1px solid rgba(245, 158, 11, 0.35); "
                 "color: #fbbf24; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;"
             )
-            blank_names = [it.get("part_name") or it.get("part_number") or it.get("designator", "") for it in self.blank_link_items]
+            blank_names = [
+                it.get("part_name") or it.get("part_number") or it.get("designator", "")
+                for it in self.blank_link_items
+            ]
             pill_blank.setToolTip(
-                f"Blank Store Links in DB ({len(self.blank_link_items)} items):\n"
-                f"Action: Add Lion Electronic product links in Inventory.xlsx\n\n"
-                + "\n".join(f"• {n}" for n in blank_names[:25])
+                f"Blank Store Links in DB ({len(self.blank_link_items)} items):
+"
+                f"Action: Add vendor product links in Inventory.xlsx
+
+"
+                + "
+".join(f"• {n}" for n in blank_names[:25])
             )
             status_layout.addWidget(pill_blank)
 
@@ -190,9 +231,13 @@ class OrderPreviewDialog(QDialog):
                 for it in self.missing_db_items
             ]
             pill_missing.setToolTip(
-                f"Items Not Found in Inventory.xlsx ({len(self.missing_db_items)} items):\n"
-                f"Action: Register these components into Inventory.xlsx\n\n"
-                + "\n".join(f"• {n}" for n in missing_names[:25])
+                f"Items Not Found in Inventory.xlsx ({len(self.missing_db_items)} items):
+"
+                f"Action: Register these components into Inventory.xlsx
+
+"
+                + "
+".join(f"• {n}" for n in missing_names[:25])
             )
             status_layout.addWidget(pill_missing)
 
@@ -201,7 +246,7 @@ class OrderPreviewDialog(QDialog):
 
         # Progress Area
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, max(len(self.lion_items), 1))
+        self.progress_bar.setRange(0, max(len(self.orderable_items), 1))
         self.progress_bar.setValue(0)
         self.progress_bar.setFixedHeight(18)
         self.progress_bar.setTextVisible(True)
@@ -248,13 +293,15 @@ class OrderPreviewDialog(QDialog):
         self.open_cart_btn = QPushButton("🛒 Open Shopping Cart in Browser")
         self.open_cart_btn.setObjectName("secondaryBtn")
         self.open_cart_btn.hide()
-        self.open_cart_btn.clicked.connect(lambda: webbrowser.open("https://lionelectronic.ir/orders/cart"))
+        self.open_cart_btn.clicked.connect(self._open_shopping_cart)
         btn_layout.addWidget(self.open_cart_btn)
 
-        self.order_btn = QPushButton(f"🛒 Order {len(self.lion_items)} Items on Lion Electronic")
+        self.order_btn = QPushButton(
+            f"🛒 Order {len(self.orderable_items)} Items Across Vendors"
+        )
         self.order_btn.clicked.connect(self._start_order)
-        if len(self.lion_items) == 0:
-            self.order_btn.setText("🛒 No Valid Lion Items to Order")
+        if len(self.orderable_items) == 0:
+            self.order_btn.setText("🛒 No Valid Items to Order")
             self.order_btn.setEnabled(False)
         btn_layout.addWidget(self.order_btn)
 
@@ -293,43 +340,49 @@ class OrderPreviewDialog(QDialog):
             item3.setForeground(QColor("#fbbf24"))  # Amber
             self.table.setItem(row_idx, 3, item3)
 
-            # 4. Link
+            # 4. Link & 5. Status
             link_val = str(it.get("link", "")).strip()
             item4 = QTableWidgetItem(link_val)
             item4.setFont(font_txt)
-            if link_val.startswith("http"):
-                if "lionelectronic.ir" in link_val.lower():
-                    item4.setForeground(QColor("#38bdf8"))  # Cyan Lion link
-                    item4.setToolTip(f"Lion Electronic link: {link_val}")
-                else:
-                    item4.setText(f"❌ Non-Lion URL ({it.get('link_domain', '')})")
-                    item4.setForeground(QColor("#f87171"))  # Red invalid
-                    item4.setToolTip(f"Invalid store link ({link_val}). Please update to lionelectronic.ir in Inventory.xlsx.")
-            else:
-                item4.setText("— Blank Store Link —")
-                item4.setForeground(QColor("#f87171"))
-                item4.setToolTip("Missing/blank store link. Please add Lion Electronic URL in Inventory.xlsx.")
-            self.table.setItem(row_idx, 4, item4)
 
-            # 5. Status
             status_item = QTableWidgetItem()
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_item.setFont(font_txt)
 
-            if link_val and "lionelectronic.ir" in link_val.lower():
-                status_item.setText("✅ Lion Ready")
-                status_item.setForeground(QColor("#34d399"))
-                status_item.setToolTip("Lion Electronic store link verified. Ready for automated purchase.")
-            elif link_val.startswith("http"):
-                domain = it.get("link_domain") or "External"
-                status_item.setText("❌ Invalid Link")
-                status_item.setForeground(QColor("#f87171"))
-                status_item.setToolTip(f"Invalid link ({domain}). Automated purchasing strictly requires lionelectronic.ir. Update in Inventory.xlsx.")
+            is_orderable, vendor_id = ProcurementBridge.is_item_orderable(it)
+
+            if link_val.startswith("http"):
+                if is_orderable:
+                    v_name = vendor_id.replace("vendor_", "").title() if vendor_id else "Vendor"
+                    item4.setForeground(QColor("#38bdf8"))
+                    item4.setToolTip(f"{v_name} product link: {link_val}")
+
+                    status_item.setText(f"✅ {v_name} Ready")
+                    status_item.setForeground(QColor("#34d399"))
+                    status_item.setToolTip(f"{v_name} store link verified. Ready for automated purchase.")
+                else:
+                    domain = it.get("link_domain") or "external"
+                    item4.setText(f"❌ Unsupported URL ({domain})")
+                    item4.setForeground(QColor("#f87171"))
+                    item4.setToolTip(
+                        f"Unsupported store link ({link_val}). Please update to a registered vendor in Inventory.xlsx."
+                    )
+
+                    status_item.setText("❌ Unsupported Link")
+                    status_item.setForeground(QColor("#f87171"))
+                    status_item.setToolTip(
+                        f"Unsupported link ({domain}). Automated purchasing requires a registered vendor. Update in Inventory.xlsx."
+                    )
             else:
+                item4.setText("— Blank Store Link —")
+                item4.setForeground(QColor("#f87171"))
+                item4.setToolTip("Missing/blank store link. Please add vendor product URL in Inventory.xlsx.")
+
                 status_item.setText("❌ Blank Link")
                 status_item.setForeground(QColor("#f87171"))
                 status_item.setToolTip("Blank store link. Component exists in inventory database but has no store URL.")
 
+            self.table.setItem(row_idx, 4, item4)
             self.table.setItem(row_idx, 5, status_item)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
@@ -345,20 +398,24 @@ class OrderPreviewDialog(QDialog):
         dlg = SettingsDialog(self)
         dlg.exec()
 
+    def _open_shopping_cart(self):
+        """Open browser to the relevant vendor shopping cart."""
+        cart_urls = {
+            "vendor_lion": "https://lionelectronic.ir/orders/cart",
+            "vendor_javan": "https://javanelec.com/cart",
+            "vendor_roboeq": "https://roboeq.ir/cart",
+        }
+        opened = set()
+        for it in self.orderable_items:
+            _, vendor_id = ProcurementBridge.is_item_orderable(it)
+            if vendor_id and vendor_id in cart_urls and vendor_id not in opened:
+                webbrowser.open(cart_urls[vendor_id])
+                opened.add(vendor_id)
+        if not opened:
+            webbrowser.open("https://lionelectronic.ir/orders/cart")
+
     def _start_order(self):
-        if not self.lion_items:
-            return
-
-        user = settings.get("lion_username", "").strip()
-        pwd = settings.get("lion_password", "").strip()
-
-        if not user or not pwd:
-            QMessageBox.warning(
-                self,
-                "Credentials Required",
-                "Please configure your Lion Electronic username and password in Settings before ordering."
-            )
-            self._open_settings()
+        if not self.orderable_items:
             return
 
         self.order_btn.setEnabled(False)
@@ -366,11 +423,9 @@ class OrderPreviewDialog(QDialog):
         self.progress_bar.show()
         self.progress_bar.setValue(0)
         self.progress_lbl.show()
-        show_browser = settings.get("show_browser", False)
-        init_msg = "Launching Chrome and authenticating..." if show_browser else "Authenticating and ordering in background..."
-        self.progress_lbl.setText(init_msg)
+        self.progress_lbl.setText("Initiating automated procurement staging across vendors...")
 
-        self.worker = OrderWorkerThread(self.lion_items)
+        self.worker = OrderWorkerThread(self.orderable_items)
         self.worker.progress_signal.connect(self._on_progress)
         self.worker.finished_signal.connect(self._on_finished)
         self.worker.start()
@@ -380,9 +435,13 @@ class OrderPreviewDialog(QDialog):
         self.progress_lbl.setText(f"[{current}/{total}] {part_name}: {msg}")
 
         # Update matching table row status using exact item identity or part_name + link
-        if 0 <= current - 1 < len(self.lion_items):
-            target_item = self.lion_items[current - 1]
-            t_name = (target_item.get("part_name") or target_item.get("part_number") or target_item.get("designator", "")).strip().lower()
+        if 0 <= current - 1 < len(self.orderable_items):
+            target_item = self.orderable_items[current - 1]
+            t_name = (
+                target_item.get("part_name")
+                or target_item.get("part_number")
+                or target_item.get("designator", "")
+            ).strip().lower()
             t_link = str(target_item.get("link", "")).strip().lower()
 
             for row in range(self.table.rowCount()):
@@ -391,7 +450,11 @@ class OrderPreviewDialog(QDialog):
                 if row_it is target_item:
                     matched = True
                 elif row_it:
-                    r_name = (row_it.get("part_name") or row_it.get("part_number") or row_it.get("designator", "")).strip().lower()
+                    r_name = (
+                        row_it.get("part_name")
+                        or row_it.get("part_number")
+                        or row_it.get("designator", "")
+                    ).strip().lower()
                     r_link = str(row_it.get("link", "")).strip().lower()
                     if r_name == t_name and r_link == t_link:
                         matched = True
@@ -403,27 +466,27 @@ class OrderPreviewDialog(QDialog):
                     if status_item:
                         if "Partial" in msg:
                             status_item.setText(f"⚠️ Partial ({qty} pcs)")
-                            status_item.setForeground(QColor("#fbbf24"))  # Amber
+                            status_item.setForeground(QColor("#fbbf24"))
                             status_item.setToolTip(f"Partial site stock added: {msg}")
                         elif "Added" in msg or "Queued" in msg:
                             status_item.setText(f"✅ Added {qty} pcs")
-                            status_item.setForeground(QColor("#34d399"))  # Green
+                            status_item.setForeground(QColor("#34d399"))
                             status_item.setToolTip(f"Successfully added to cart: {msg}")
                         elif "Insufficient" in msg:
                             status_item.setText("⚠️ Low Site Stock")
-                            status_item.setForeground(QColor("#fbbf24"))  # Amber
+                            status_item.setForeground(QColor("#fbbf24"))
                             status_item.setToolTip(f"Insufficient stock on store: {msg}")
                         elif "Inquiry" in msg or "Sale Closed" in msg:
                             status_item.setText("⚠️ Inquiry Only")
-                            status_item.setForeground(QColor("#fbbf24"))  # Amber
-                            status_item.setToolTip(f"Inquiry Only / Sale Closed on Lion: {msg}")
+                            status_item.setForeground(QColor("#fbbf24"))
+                            status_item.setToolTip(f"Inquiry Only / Sale Closed: {msg}")
                         elif "Coming Soon" in msg:
                             status_item.setText("⏳ Coming Soon")
-                            status_item.setForeground(QColor("#fbbf24"))  # Amber
+                            status_item.setForeground(QColor("#fbbf24"))
                             status_item.setToolTip(f"Coming Soon: {msg}")
                         elif "Out of stock" in msg or "0 available" in msg:
                             status_item.setText("❌ Out of Stock")
-                            status_item.setForeground(QColor("#f87171"))  # Red
+                            status_item.setForeground(QColor("#f87171"))
                             status_item.setToolTip(f"Out of stock on store: {msg}")
                         else:
                             short_txt = msg[:18] if len(msg) > 18 else msg
@@ -440,55 +503,54 @@ class OrderPreviewDialog(QDialog):
         self.confirm_payment_btn.show()
         self.confirm_payment_btn.setEnabled(True)
 
-        show_browser = settings.get("show_browser", False)
+        succ_count = results.get("successful_count", 0)
 
         if results.get("success"):
-            succ_count = results.get('successful_count', 0)
-            self.progress_lbl.setText(f"✅ Order batch completed! ({succ_count} items in cart)")
+            self.progress_lbl.setText(f"✅ Staging completed! ({succ_count} items in cart)")
             self.progress_lbl.setStyleSheet("color: #34d399; font-size: 13px; font-weight: bold;")
-            
-            if show_browser:
-                QMessageBox.information(
-                    self,
-                    "Order Processed",
-                    f"Successfully added {succ_count} items into your Lion Electronic cart!\n\n"
-                    f"The Chrome browser window has opened directly to your shopping cart. "
-                    f"Please review your items and finalize your checkout in Chrome."
-                )
-            else:
-                QMessageBox.information(
-                    self,
-                    "Order Processed",
-                    f"Successfully added {succ_count} items into your Lion Electronic cart in the background!\n\n"
-                    f"Click OK to open your shopping cart in your web browser."
-                )
-                webbrowser.open("https://lionelectronic.ir/orders/cart")
+
+            QMessageBox.information(
+                self,
+                "Procurement Staging Complete",
+                f"Successfully staged {succ_count} items into shopping carts across vendors!
+
+"
+                f"Click 'Open Shopping Cart' to review and finalize payment in your browser.",
+            )
         else:
-            self.progress_lbl.setText(f"❌ Order issue: {results.get('message', 'Unknown error')}")
+            self.progress_lbl.setText(f"❌ Procurement issue: {results.get('message', 'Unknown error')}")
             self.progress_lbl.setStyleSheet("color: #f87171; font-size: 13px; font-weight: bold;")
             QMessageBox.warning(
                 self,
-                "Order Incomplete",
-                f"Automated ordering encountered an issue:\n{results.get('message')}"
+                "Procurement Incomplete",
+                f"Automated procurement staging encountered an issue:
+{results.get('message')}",
             )
 
     def _confirm_payment_and_add_stock(self):
         if self._has_updated_inventory:
-            QMessageBox.information(self, "Already Updated", "Inventory stock has already been updated for this batch.")
+            QMessageBox.information(
+                self, "Already Updated", "Inventory stock has already been updated for this batch."
+            )
             return
 
         if not self.inventory_loader:
-            QMessageBox.warning(self, "No Database", "Active inventory database reference is not available.")
+            QMessageBox.warning(
+                self, "No Database", "Active inventory database reference is not available."
+            )
             return
 
-        # Strictly filter ONLY items that were successfully added to the cart
+        # Filter items that were successfully added to the cart
         success_items = []
-        for it in self.lion_items:
+        for it in self.orderable_items:
             if it.get("order_success") is True and (it.get("actual_ordered_qty") or 0) > 0:
                 success_items.append(it)
             elif it.get("order_success") is None:
-                # If batch ordering was not yet run, check explicit positive ordered quantity
-                qty = it.get("actual_ordered_qty") if it.get("actual_ordered_qty") is not None else it.get("qty_ordered")
+                qty = (
+                    it.get("actual_ordered_qty")
+                    if it.get("actual_ordered_qty") is not None
+                    else it.get("qty_ordered")
+                )
                 if qty is not None and qty > 0:
                     success_items.append(it)
 
@@ -496,8 +558,9 @@ class OrderPreviewDialog(QDialog):
             QMessageBox.information(
                 self,
                 "No Items Ordered",
-                "No items were successfully purchased in this batch to add to inventory.\n"
-                "(Items with insufficient stock, coming-soon status, or errors are strictly excluded)."
+                "No items were successfully staged in this batch to add to inventory.
+"
+                "(Items with insufficient stock, coming-soon status, or errors are strictly excluded).",
             )
             return
 
@@ -505,7 +568,11 @@ class OrderPreviewDialog(QDialog):
         lines = []
         for it in success_items:
             name = it.get("part_name") or it.get("part_number") or it.get("designator", "")
-            qty = it.get("actual_ordered_qty") if it.get("actual_ordered_qty") is not None else (it.get("qty_ordered") or 0)
+            qty = (
+                it.get("actual_ordered_qty")
+                if it.get("actual_ordered_qty") is not None
+                else (it.get("qty_ordered") or 0)
+            )
             if qty > 0:
                 lines.append(f"• <b>{name}</b>: +{qty} pcs")
 
@@ -517,8 +584,9 @@ class OrderPreviewDialog(QDialog):
         msg_box.setWindowTitle("Confirm Payment & Stock Update")
         msg_box.setTextFormat(Qt.TextFormat.RichText)
         msg_box.setText(
-            f"<b>Did you complete and pay for this order on Lion Electronic?</b><br><br>"
-            f"The following successfully purchased quantities (<b>{len(success_items)} item(s)</b>) will be added to <code>Quantity in Stock</code> in <code>Inventory.xlsx</code>:<br><br>"
+            f"<b>Did you complete and pay for this order on the vendor storefront(s)?</b><br><br>"
+            f"The following successfully purchased quantities (<b>{len(success_items)} item(s)</b>) "
+            f"will be added to <code>Quantity in Stock</code> in <code>Inventory.xlsx</code>:<br><br>"
             f"{items_text}<br><br>"
             f"Click <b>Yes</b> to add these quantities to your inventory now."
         )
@@ -536,12 +604,16 @@ class OrderPreviewDialog(QDialog):
             self._has_updated_inventory = True
             self.confirm_payment_btn.setText("✅ Stock Added to Inventory")
             self.confirm_payment_btn.setEnabled(False)
-            self.confirm_payment_btn.setStyleSheet("background-color: #1e293b; color: #34d399; font-weight: bold;")
+            self.confirm_payment_btn.setStyleSheet(
+                "background-color: #1e293b; color: #34d399; font-weight: bold;"
+            )
 
             QMessageBox.information(
                 self,
                 "Inventory Updated",
-                f"✅ Success!\n\n{count} item(s) have been added to your current stock in Inventory.xlsx."
+                f"✅ Success!
+
+{count} item(s) have been added to your current stock in Inventory.xlsx.",
             )
 
             if self.on_stock_updated:
@@ -550,6 +622,6 @@ class OrderPreviewDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "Update Failed",
-                f"Could not update stock in Inventory.xlsx:\n{msg}"
+                f"Could not update stock in Inventory.xlsx:
+{msg}",
             )
-

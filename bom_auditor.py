@@ -41,12 +41,46 @@ class BOMItem:
 
     @property
     def link_type(self) -> str:
-        """Returns 'LION', 'INVALID', or 'NONE'."""
+        """Returns 'LION', 'JAVAN', 'ROBOEQ', or vendor-specific string; 'INVALID', or 'NONE'."""
         if not self.link or not self.link.strip():
             return "NONE"
-        if "lionelectronic.ir" in self.link.lower():
-            return "LION"
+        try:
+            from core.procurement.registry import VendorRegistry
+            vendor_id = VendorRegistry.get_default_registry().get_vendor_for_url(self.link)
+            if vendor_id == "vendor_lion":
+                return "LION"
+            elif vendor_id == "vendor_javan":
+                return "JAVAN"
+            elif vendor_id == "vendor_roboeq":
+                return "ROBOEQ"
+            elif vendor_id:
+                return vendor_id.replace("vendor_", "").upper()
+        except Exception:
+            if "lionelectronic.ir" in self.link.lower():
+                return "LION"
         return "INVALID"
+
+    @property
+    def is_orderable(self) -> bool:
+        """Returns True if the link maps to any registered vendor adapter."""
+        if not self.link or not self.link.strip():
+            return False
+        try:
+            from core.procurement.registry import VendorRegistry
+            return VendorRegistry.get_default_registry().get_vendor_for_url(self.link) is not None
+        except Exception:
+            return "lionelectronic.ir" in self.link.lower()
+
+    @property
+    def vendor_id(self) -> Optional[str]:
+        """Returns the registered vendor identifier or None."""
+        if not self.link or not self.link.strip():
+            return None
+        try:
+            from core.procurement.registry import VendorRegistry
+            return VendorRegistry.get_default_registry().get_vendor_for_url(self.link)
+        except Exception:
+            return "vendor_lion" if "lionelectronic.ir" in self.link.lower() else None
 
     @property
     def link_domain(self) -> str:
@@ -76,6 +110,9 @@ class BOMItem:
             "link": self.link,
             "link_type": self.link_type,
             "link_domain": self.link_domain,
+            "is_orderable": self.is_orderable,
+            "is_lion_orderable": self.is_orderable,
+            "vendor_id": self.vendor_id,
             "db_part_name": self.db_part_name
         }
 
@@ -114,17 +151,19 @@ class BOMAuditResult:
                     "link": it.link,
                     "link_type": it.link_type,
                     "link_domain": it.link_domain,
-                    "is_lion_orderable": it.link_type == "LION"
+                    "is_orderable": it.is_orderable,
+                    "vendor_id": it.vendor_id,
+                    "is_lion_orderable": it.is_orderable
                 })
         return shortages
 
     def get_orderable_shortages(self) -> List[Dict[str, Any]]:
-        """Return list of shortage items that have valid Lion Electronic URLs."""
-        return [s for s in self.get_all_shortages() if s["is_lion_orderable"]]
+        """Return list of shortage items that have valid registered vendor URLs."""
+        return [s for s in self.get_all_shortages() if s.get("is_orderable") or s.get("is_lion_orderable")]
 
     def get_unsupported_shortages(self) -> List[Dict[str, Any]]:
         """Return list of shortage items with external or missing store links."""
-        return [s for s in self.get_all_shortages() if not s["is_lion_orderable"]]
+        return [s for s in self.get_all_shortages() if not (s.get("is_orderable") or s.get("is_lion_orderable"))]
 
 
 class BOMAuditor:

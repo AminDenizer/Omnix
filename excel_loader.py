@@ -397,17 +397,37 @@ class ExcelDataLoader:
 
                 link_type = "NONE"
                 link_domain = ""
+                vendor_id = None
+                is_orderable = False
                 if link and link.strip():
-                    if "lionelectronic.ir" in link.lower():
-                        link_type = "LION"
-                    else:
-                        link_type = "INVALID"
-                        try:
-                            from urllib.parse import urlparse
-                            p = urlparse(link)
-                            link_domain = (p.netloc or link).replace("www.", "")
-                        except Exception:
-                            link_domain = link
+                    try:
+                        from urllib.parse import urlparse
+                        p = urlparse(link)
+                        link_domain = (p.netloc or link).replace("www.", "")
+                    except Exception:
+                        link_domain = link
+
+                    try:
+                        from core.procurement.registry import VendorRegistry
+                        vendor_id = VendorRegistry.get_default_registry().get_vendor_for_url(link)
+                        if vendor_id == "vendor_lion":
+                            link_type = "LION"
+                        elif vendor_id == "vendor_javan":
+                            link_type = "JAVAN"
+                        elif vendor_id == "vendor_roboeq":
+                            link_type = "ROBOEQ"
+                        elif vendor_id:
+                            link_type = vendor_id.replace("vendor_", "").upper()
+                        else:
+                            link_type = "INVALID"
+                        is_orderable = vendor_id is not None
+                    except Exception:
+                        if "lionelectronic.ir" in link.lower():
+                            link_type = "LION"
+                            vendor_id = "vendor_lion"
+                            is_orderable = True
+                        else:
+                            link_type = "INVALID"
 
                 shortages.append({
                     "orig_row_idx": orig_row_idx,
@@ -421,7 +441,9 @@ class ExcelDataLoader:
                     "link": link,
                     "link_type": link_type,
                     "link_domain": link_domain,
-                    "is_lion_orderable": link_type == "LION"
+                    "vendor_id": vendor_id,
+                    "is_orderable": is_orderable,
+                    "is_lion_orderable": is_orderable
                 })
 
         return shortages

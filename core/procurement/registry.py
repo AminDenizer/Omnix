@@ -287,5 +287,18 @@ class VendorRegistry:
             return ""
 
 
+    @classmethod
+    def get_default_registry(cls) -> "VendorRegistry":
+        """Retrieve the global default singleton with production adapters registered."""
+        global _default_registry_initialized
+        if not _default_registry_initialized:
+            with default_registry._lock:
+                if not _default_registry_initialized:
+                    default_registry.register_default_adapters()
+                    _default_registry_initialized = True
+        return default_registry
+
+
 # Module-level default singleton registry
 default_registry = VendorRegistry()
+_default_registry_initialized = False

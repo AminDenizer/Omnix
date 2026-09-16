@@ -435,18 +435,19 @@ class BOMAuditWidget(QWidget):
                 status_item.setForeground(QColor("#34d399"))
                 status_item.setToolTip("Sufficient stock in database for this assembly batch.")
             elif it.status == "SHORTAGE":
-                if it.link_type == "LION":
+                if it.is_orderable:
+                    v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
                     status_item.setText(f"⚠️ SHORTAGE (-{it.shortage_qty})")
                     status_item.setForeground(QColor("#fbbf24"))
-                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. Lion Electronic link ready for automated purchase.")
+                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. {v_name} link ready for automated purchase.")
                 elif it.link_type == "INVALID":
                     status_item.setText(f"❌ INVALID LINK (-{it.shortage_qty})")
                     status_item.setForeground(QColor("#f87171"))
-                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. Store link is not from Lion Electronic ({it.link_domain}). Please update link to lionelectronic.ir in Inventory.xlsx.")
+                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. Store link ({it.link_domain}) is not a registered vendor. Please update in Inventory.xlsx.")
                 else:
                     status_item.setText(f"❌ BLANK LINK (-{it.shortage_qty})")
                     status_item.setForeground(QColor("#f87171"))
-                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. Component exists in database but has no store link. Please add Lion Electronic URL in Inventory.xlsx.")
+                    status_item.setToolTip(f"Shortage of {it.shortage_qty} pcs. Component exists in database but has no store link. Please add vendor URL in Inventory.xlsx.")
             else:
                 status_item.setText("🔴 NOT IN DB")
                 status_item.setForeground(QColor("#f87171"))
@@ -501,25 +502,26 @@ class BOMAuditWidget(QWidget):
             item8.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item8.setFont(font_num)
             if it.shortage_qty > 0:
-                item8.setForeground(QColor("#fbbf24") if it.link_type == "LION" else QColor("#f87171"))
+                item8.setForeground(QColor("#fbbf24") if it.is_orderable else QColor("#f87171"))
             self.table.setItem(row_idx, 8, item8)
 
             # 9. Store Link
             item9 = QTableWidgetItem()
             item9.setFont(font_txt)
-            if it.link_type == "LION":
+            if it.is_orderable:
+                v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
                 item9.setText(it.link)
                 item9.setForeground(QColor("#38bdf8"))
-                item9.setToolTip(f"Lion Electronic link (Auto-Order Ready): {it.link}")
+                item9.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
             elif it.link_type == "INVALID":
-                item9.setText(f"❌ Non-Lion URL ({it.link_domain})")
+                item9.setText(f"❌ Unsupported URL ({it.link_domain})")
                 item9.setForeground(QColor("#f87171"))
-                item9.setToolTip(f"Invalid store link ({it.link}). Please update to lionelectronic.ir in Inventory.xlsx.")
+                item9.setToolTip(f"Unsupported store link ({it.link}). Please update to a registered vendor in Inventory.xlsx.")
             else:
                 if it.status == "SHORTAGE":
                     item9.setText("❌ Blank Store Link")
                     item9.setForeground(QColor("#f87171"))
-                    item9.setToolTip("Component is in inventory database but store link is blank. Please add Lion Electronic URL in Inventory.xlsx.")
+                    item9.setToolTip("Component is in inventory database but store link is blank. Please add vendor URL in Inventory.xlsx.")
                 else:
                     item9.setText("— Not in DB —" if it.status == "NOT_IN_DB" else it.link)
                     item9.setForeground(QColor("#64748b"))
@@ -536,13 +538,13 @@ class BOMAuditWidget(QWidget):
         self.table.setSortingEnabled(True)
 
         # Update order button count and label
-        lion_items = res.get_orderable_shortages()
+        orderable_items = res.get_orderable_shortages()
         all_shortages = res.get_all_shortages()
-        if len(lion_items) > 0:
-            self.order_btn.setText(f"🛒 Order Shortages ({len(lion_items)} Lion Items / {len(all_shortages)} Total)")
+        if len(orderable_items) > 0:
+            self.order_btn.setText(f"🛒 Order Shortages ({len(orderable_items)} Items Ready / {len(all_shortages)} Total)")
             self.order_btn.setEnabled(True)
         elif len(all_shortages) > 0:
-            self.order_btn.setText(f"❌ Shortages Missing Lion Links ({len(all_shortages)} Items)")
+            self.order_btn.setText(f"❌ Shortages Missing Vendor Links ({len(all_shortages)} Items)")
             self.order_btn.setEnabled(True)
         else:
             self.order_btn.setText("✅ All Components in Stock")
