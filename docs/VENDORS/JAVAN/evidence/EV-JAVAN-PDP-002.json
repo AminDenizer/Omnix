@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-PDP-002",
+  "vendor_id": "vendor_javan",
+  "workflow": "PDP_WORKFLOW",
+  "timestamp": "2026-09-16T14:26:33.100589+00:00",
+  "url": "https://www.javanelec.com/shop/product/17930/texas-instruments/ne555p",
+  "action": "Deep inspection of Javan PDP DOM, specifications, and controls",
+  "expected_observation": "Extracted headings, specifications table, stock and quantity controls",
+  "actual_observation": "PDP title: NE555P. Found 2 tables and 15 interactive controls.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_pdp_ne555.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Deep PDP extraction evidence."
+}

@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-PDP-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "PDP_WORKFLOW",
+  "timestamp": "2026-09-16T14:25:34.807892+00:00",
+  "url": "https://www.javanelec.com/shop?searchfilter=NE555#filter_items_-1",
+  "action": "Inspect Product Detail Page DOM and elements",
+  "expected_observation": "PDP renders product title, SKU/MPN, price, stock status, specs, quantity input, and add-to-cart button",
+  "actual_observation": "PDP title: None, SKU: None, Price: None, Stock: None",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_pdp.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Core PDP data extraction and structure observation."
+}

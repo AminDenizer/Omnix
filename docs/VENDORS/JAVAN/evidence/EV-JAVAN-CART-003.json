@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-CART-003",
+  "vendor_id": "vendor_javan",
+  "workflow": "CART_WORKFLOW",
+  "timestamp": "2026-09-16T14:27:59.360447+00:00",
+  "url": "https://www.javanelec.com/shoppingcarts/createindex",
+  "action": "Inspect Cart staging POST endpoint target and payload fields",
+  "expected_observation": "Form POST to /shoppingcarts/createindex with Cart and ViewBasketType parameters",
+  "actual_observation": "Observed form action https://www.javanelec.com/shoppingcarts/createindex accepting POST requests with hidden state fields.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_cart_active.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Cart submission endpoint observation."
+}

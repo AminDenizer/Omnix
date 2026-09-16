@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-ERR-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "ERROR_HANDLING_WORKFLOW",
+  "timestamp": "2026-09-16T14:25:55.389695+00:00",
+  "url": "https://www.javanelec.com/home/notfound",
+  "action": "Navigate to non-existent route to observe 404 error handling",
+  "expected_observation": "Site renders 404 Not Found error page or redirects safely to home/error page",
+  "actual_observation": "Navigated to invalid path. Received response with title 'جوان الکترونیک - Not Found', page heading 'فروشگاه اینترنتی جوان الکترونیک'.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_error_404.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "HTTP 404 Not Found / invalid URL observation."
+}

@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-PDP-004",
+  "vendor_id": "vendor_javan",
+  "workflow": "PDP_WORKFLOW",
+  "timestamp": "2026-09-16T14:27:30.724075+00:00",
+  "url": "https://www.javanelec.com/shop/product/18299/stmicroelectronics/lm358d",
+  "action": "Inspect secondary PDP (LM358) for price tiers and specification consistency",
+  "expected_observation": "Consistent PDP structure with H1 title, specifications table, and tiered pricing",
+  "actual_observation": "Extracted LM358 PDP with title 'LM358D'. Verified price tables: 2 tables.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_pdp_lm358.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Secondary PDP verification."
+}

@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-QTY-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "PDP_WORKFLOW",
+  "timestamp": "2026-09-16T14:27:59.359279+00:00",
+  "url": "https://www.javanelec.com/shop/product/17930/texas-instruments/ne555p",
+  "action": "Observe quantity step, packaging tiers, and price breaks in PDP pricing table",
+  "expected_observation": "Tiered pricing table defines volume discounts (e.g., 50, 200, 500, 1000 pcs) with corresponding unit prices in Rials",
+  "actual_observation": "PDP tiered price table extracted: Tier 1: 50 pcs @ 78,100 IRR, Tier 2: 200 pcs @ 77,300 IRR, Tier 3: 500 pcs @ 76,500 IRR, Tier 4: 1000 pcs @ 74,900 IRR.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_pdp_ne555.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Empirical volume price tier extraction."
+}

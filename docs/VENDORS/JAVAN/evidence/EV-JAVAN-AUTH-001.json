@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-AUTH-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "AUTHENTICATION_WORKFLOW",
+  "timestamp": "2026-09-16T14:24:57.153222+00:00",
+  "url": "https://www.javanelec.com/",
+  "action": "Navigate to Javan Electronic landing page",
+  "expected_observation": "Landing page loads with main navigation, search bar, and cart badge",
+  "actual_observation": "Page loaded with title 'فروشگاه اینترنتی جوان الکترونیک', status HTTP 200, landing page rendered fully.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_landing.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Landing page entry point for Javan Electronic discovery."
+}

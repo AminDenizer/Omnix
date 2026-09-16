@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-CART-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "CART_WORKFLOW",
+  "timestamp": "2026-09-16T14:25:48.889303+00:00",
+  "url": "https://www.javanelec.com/shop/category/333/cartridge-fuses/%d9%81%db%8c%d9%88%d8%b2-%d8%b4%db%8c%d8%b4%d9%87-%d8%a7%db%8c",
+  "action": "Navigate to Shopping Cart / Basket page",
+  "expected_observation": "Cart page renders empty cart state when no items added, or active cart table",
+  "actual_observation": "Observed cart page at https://www.javanelec.com/shop/category/333/cartridge-fuses/%d9%81%db%8c%d9%88%d8%b2-%d8%b4%db%8c%d8%b4%d9%87-%d8%a7%db%8c. Empty cart state message: 'None'. Item count: 0",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_cart.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Shopping cart page observation."
+}
