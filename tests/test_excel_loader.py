@@ -110,3 +110,55 @@ class TestExcelDataLoader:
         stock_col = loader.get_column_index(['quantity in stock'])
         assert ne555_row[stock_col] == '55'
         assert irlr_row[stock_col] == '0'
+
+    def test_load_multi_vendor_shortages(self, tmp_path):
+        file_path = str(tmp_path / 'Inventory_Multi.xlsx')
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Inventory'
+
+        headers = [
+            'ECODE', 'PART NAME', 'DISCRIPTION', 'Quantity in Stock',
+            'FOOTPRINT', 'PART NUMBER', 'LINK', 'Pisition', 'Unit Per length',
+            'Min Stock', 'Target Stock'
+        ]
+        rows = [
+            [None, 'NE555P', 'Timer IC', 5, 'DIP-8', 'NE555P', 'https://lionelectronic.ir/products/2070-NE555P', 'IC-01', None, 20, 50],
+            [None, 'LM358N', 'Op-Amp', 2, 'DIP-8', 'LM358N', 'https://javanelec.com/product/123/LM358N', 'IC-02', None, 10, 20],
+            [None, 'ATmega328P', 'MCU', 1, 'DIP-28', 'ATmega328P', 'https://roboeq.ir/products/detail/0101001/', 'MCU-01', None, 5, 10],
+            [None, 'CustomModule', 'Module', 0, 'MOD-4', 'CustomModule', 'https://unsupported.com/mod/1', 'M-01', None, 5, 10],
+            [None, 'Resistor10k', 'Resistor', 100, '0805', 'RC0805-10K', 'https://lionelectronic.ir/products/100', 'R-01', None, 50, 100],
+        ]
+
+        ws.append(headers)
+        for r in rows:
+            ws.append(r)
+        wb.save(file_path)
+        wb.close()
+
+        loader = ExcelDataLoader()
+        ok, msg = loader.load_file(file_path)
+        assert ok is True
+
+        shortages = loader.get_shortage_items()
+        assert len(shortages) == 4  # 4 rows below min_stock
+
+        s_lion = next(s for s in shortages if s['part_name'] == 'NE555P')
+        assert s_lion['is_orderable'] is True
+        assert s_lion['vendor_id'] == 'vendor_lion'
+        assert s_lion['link_type'] == 'LION'
+
+        s_javan = next(s for s in shortages if s['part_name'] == 'LM358N')
+        assert s_javan['is_orderable'] is True
+        assert s_javan['vendor_id'] == 'vendor_javan'
+        assert s_javan['link_type'] == 'JAVAN'
+
+        s_robo = next(s for s in shortages if s['part_name'] == 'ATmega328P')
+        assert s_robo['is_orderable'] is True
+        assert s_robo['vendor_id'] == 'vendor_roboeq'
+        assert s_robo['link_type'] == 'ROBOEQ'
+
+        s_unsupported = next(s for s in shortages if s['part_name'] == 'CustomModule')
+        assert s_unsupported['is_orderable'] is False
+        assert s_unsupported['vendor_id'] is None
+        assert s_unsupported['link_type'] == 'INVALID'

@@ -70,3 +70,60 @@ class TestBOMAuditor:
         assert len(orderable) == 1
         assert orderable[0]['part_number'] == 'LM358N'
         assert orderable[0]['needed_qty'] == 15
+        assert orderable[0]['is_orderable'] is True
+
+    def test_bom_audit_multi_vendor_links(self, tmp_path):
+        inv_path = os.path.join(str(tmp_path), 'Inventory_Multi.xlsx')
+        inv_wb = openpyxl.Workbook()
+        ws_inv = inv_wb.active
+        ws_inv.title = 'Inventory'
+        ws_inv.append(['ECODE', 'PART NAME', 'DISCRIPTION', 'Quantity in Stock', 'FOOTPRINT', 'PART NUMBER', 'LINK'])
+        ws_inv.append([None, 'NE555P', 'Timer IC', 0, 'DIP-8', 'NE555P', 'https://lionelectronic.ir/products/2070-NE555P'])
+        ws_inv.append([None, 'LM358N', 'Op-Amp', 0, 'DIP-8', 'LM358N', 'https://javanelec.com/product/123/LM358N'])
+        ws_inv.append([None, 'ATmega328P', 'MCU', 0, 'DIP-28', 'ATmega328P', 'https://roboeq.ir/products/detail/0101001/'])
+        ws_inv.append([None, 'CustomIC', 'Custom', 0, 'QFN-32', 'CustomIC', 'https://unknownstore.com/item/1'])
+        inv_wb.save(inv_path)
+        inv_wb.close()
+
+        bom_path = os.path.join(str(tmp_path), 'Sample_BOM_Multi.xlsx')
+        bom_wb = openpyxl.Workbook()
+        ws_bom = bom_wb.active
+        ws_bom.append(['Designator', 'Quantity', 'Comment', 'Footprint', 'Description', 'Part Number'])
+        ws_bom.append(['U1', 1, 'NE555P', 'DIP-8', 'Timer', 'NE555P'])
+        ws_bom.append(['U2', 1, 'LM358N', 'DIP-8', 'Op-Amp', 'LM358N'])
+        ws_bom.append(['U3', 1, 'ATmega328P', 'DIP-28', 'MCU', 'ATmega328P'])
+        ws_bom.append(['U4', 1, 'CustomIC', 'QFN-32', 'Custom', 'CustomIC'])
+        bom_wb.save(bom_path)
+        bom_wb.close()
+
+        inv_loader = ExcelDataLoader()
+        inv_loader.load_file(inv_path)
+
+        ok, msg, res = BOMAuditor.audit_bom(bom_path, inv_loader, board_multiplier=1)
+        assert ok is True
+        assert res.total_items_count == 4
+
+        shortages = res.get_all_shortages()
+        assert len(shortages) == 4
+
+        orderable = res.get_orderable_shortages()
+        unsupported = res.get_unsupported_shortages()
+
+        assert len(orderable) == 3  # Lion, Javan, RoboEq
+        assert len(unsupported) == 1  # unknownstore.com
+
+        ne555 = next(s for s in orderable if s['part_number'] == 'NE555P')
+        assert ne555['link_type'] == 'LION'
+        assert ne555['vendor_id'] == 'vendor_lion'
+
+        lm358 = next(s for s in orderable if s['part_number'] == 'LM358N')
+        assert lm358['link_type'] == 'JAVAN'
+        assert lm358['vendor_id'] == 'vendor_javan'
+
+        mcu = next(s for s in orderable if s['part_number'] == 'ATmega328P')
+        assert mcu['link_type'] == 'ROBOEQ'
+        assert mcu['vendor_id'] == 'vendor_roboeq'
+
+        custom = unsupported[0]
+        assert custom['link_type'] == 'INVALID'
+        assert custom['vendor_id'] is None
