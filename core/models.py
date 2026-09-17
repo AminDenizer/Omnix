@@ -19,6 +19,52 @@ class AdapterConfig:
 
 
 @dataclass
+class VendorSettings:
+    """
+    Structured configuration settings for an individual vendor adapter.
+    Governing GAP: GAP-11.
+    """
+    vendor_id: str
+    enabled: bool = True
+    username: str = ""
+    password: str = ""
+    timeout_seconds: float = 10.0
+    headless: bool = True
+    extra_options: Dict[str, Any] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        masked_pwd = "***" if self.password else ""
+        return (
+            f"VendorSettings(vendor_id='{self.vendor_id}', enabled={self.enabled}, "
+            f"username='{self.username}', password='{masked_pwd}', "
+            f"timeout_seconds={self.timeout_seconds}, headless={self.headless})"
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "vendor_id": self.vendor_id,
+            "enabled": self.enabled,
+            "username": self.username,
+            "password": self.password,
+            "timeout_seconds": self.timeout_seconds,
+            "headless": self.headless,
+            "extra_options": dict(self.extra_options),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "VendorSettings":
+        return cls(
+            vendor_id=data.get("vendor_id", ""),
+            enabled=data.get("enabled", True),
+            username=data.get("username", ""),
+            password=data.get("password", ""),
+            timeout_seconds=float(data.get("timeout_seconds", 10.0)),
+            headless=data.get("headless", True),
+            extra_options=data.get("extra_options", {}),
+        )
+
+
+@dataclass
 class AdapterStatus:
     vendor_id: str
     is_ready: bool
@@ -137,6 +183,10 @@ class AuthCredentials:
     password: str
     extra_fields: Dict[str, str] = field(default_factory=dict)
 
+    def __repr__(self) -> str:
+        masked_pwd = "***" if self.password else ""
+        return f"AuthCredentials(username='{self.username}', password='{masked_pwd}', extra_fields={self.extra_fields})"
+
 
 @dataclass
 class AuthResult:
@@ -144,6 +194,8 @@ class AuthResult:
     success: bool
     message: str
     session_token: Optional[str] = None
+    requires_interactive: bool = False
+    challenge_context: Optional[Any] = None
 
 
 @dataclass
@@ -153,6 +205,7 @@ class SessionStatus:
     username: Optional[str] = None
     session_valid: bool = False
     message: str = ""
+    requires_interactive: bool = False
 
 
 @dataclass

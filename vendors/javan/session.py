@@ -1,10 +1,11 @@
 """
 Javan Electronic Browser & Session Manager
 Encapsulates Chrome WebDriver lifecycle, options, headers, cookies, and DOM execution helpers.
+Governing GAP: GAP-09, GAP-17.
 """
 
 import time
-from typing import Optional, Any
+from typing import Optional, Dict, Any, List
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -12,12 +13,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from core.models import AdapterConfig
+from core.procurement.challenge_handler import SessionContinuityMode, SessionPromotionResult
 from vendors.javan.selectors import JavanSelectors
 
 
 class JavanSessionManager:
     """
     Manages active Chrome session, options, and JavaScript evaluation for Javan Electronic.
+    Supports session promotion (headless <-> headful) with explicit continuity tracking.
     """
 
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -64,6 +67,127 @@ class JavanSessionManager:
         if self.driver is None:
             return self.create_driver()
         return self.driver
+
+    def promote_to_headful(self) -> SessionPromotionResult:
+        """
+        Transition session from headless to visible/headful mode for interactive user resolution.
+        Governing Invariant: GAP-09 Session Continuity.
+        """
+        if self.driver is not None and not self.config.headless:
+            return SessionPromotionResult(
+                success=True,
+                continuity_mode=SessionContinuityMode.SAME_CONTEXT_PRESERVED,
+                message="Browser is already in visible/headful mode.",
+                active_url=getattr(self.driver, "current_url", None),
+            )
+
+        if self.driver is None:
+            self.config.headless = False
+            self.create_driver()
+            return SessionPromotionResult(
+                success=True,
+                continuity_mode=SessionContinuityMode.BROWSER_RECREATED_UNAUTHENTICATED,
+                message="Created new visible headful browser driver.",
+            )
+
+        # Extract state from active headless session
+        cookies = []
+        cur_url = None
+        try:
+            cookies = self.driver.get_cookies()
+            cur_url = self.driver.current_url
+        except Exception:
+            pass
+
+        # Terminate headless driver
+        try:
+            self.driver.quit()
+        except Exception:
+            pass
+        self.driver = None
+
+        # Recreate headful driver
+        self.config.headless = False
+        driver = self.create_driver()
+
+        transferred_count = 0
+        if cur_url and not cur_url.startswith("data:") and not cur_url.startswith("about:"):
+            try:
+                driver.get(cur_url)
+                for c in cookies:
+                    try:
+                        driver.add_cookie(c)
+                        transferred_count += 1
+                    except Exception:
+                        pass
+                driver.refresh()
+                time.sleep(0.8)
+            except Exception:
+                pass
+
+            return SessionPromotionResult(
+                success=True,
+                continuity_mode=SessionContinuityMode.STATE_TRANSFERRED if transferred_count > 0 else SessionContinuityMode.BROWSER_RECREATED_UNAUTHENTICATED,
+                message=f"Promoted to headful mode with {transferred_count} cookies transferred.",
+                cookies_transferred=transferred_count,
+                active_url=cur_url,
+            )
+
+        return SessionPromotionResult(
+            success=True,
+            continuity_mode=SessionContinuityMode.BROWSER_RECREATED_UNAUTHENTICATED,
+            message="Promoted to headful mode (no active URL/cookies to transfer).",
+            cookies_transferred=0,
+        )
+
+    def demote_to_headless(self) -> SessionPromotionResult:
+        """
+        Transition session back to headless mode after interactive resolution.
+        """
+        if self.driver is not None and self.config.headless:
+            return SessionPromotionResult(
+                success=True,
+                continuity_mode=SessionContinuityMode.SAME_CONTEXT_PRESERVED,
+                message="Browser is already in headless mode.",
+                active_url=getattr(self.driver, "current_url", None),
+            )
+
+        cookies = []
+        cur_url = None
+        if self.driver is not None:
+            try:
+                cookies = self.driver.get_cookies()
+                cur_url = self.driver.current_url
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+
+        self.config.headless = True
+        driver = self.create_driver()
+
+        transferred_count = 0
+        if cur_url and not cur_url.startswith("data:") and not cur_url.startswith("about:"):
+            try:
+                driver.get(cur_url)
+                for c in cookies:
+                    try:
+                        driver.add_cookie(c)
+                        transferred_count += 1
+                    except Exception:
+                        pass
+                driver.refresh()
+                time.sleep(0.5)
+            except Exception:
+                pass
+
+        return SessionPromotionResult(
+            success=True,
+            continuity_mode=SessionContinuityMode.STATE_TRANSFERRED if transferred_count > 0 else SessionContinuityMode.BROWSER_RECREATED_UNAUTHENTICATED,
+            message=f"Demoted to headless mode with {transferred_count} cookies transferred.",
+            cookies_transferred=transferred_count,
+            active_url=cur_url,
+        )
 
     def wait_for_presence(self, selector: str, by: By = By.CSS_SELECTOR, timeout: Optional[float] = None):
         """Wait for element presence in DOM."""

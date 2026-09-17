@@ -449,26 +449,28 @@ class UniversalProcurementOrchestrator:
         request: ProcurementRequest,
         vendor_ids: Optional[List[str]] = None,
     ) -> List[str]:
-        """Resolve list of target vendor IDs for a request."""
+        """Resolve list of target vendor IDs for a request, respecting vendor enabled state (GAP-11)."""
         # 1. Explicit vendor ID
         if request.explicit_vendor_id:
             if self.registry.has_vendor(request.explicit_vendor_id):
-                return [request.explicit_vendor_id]
+                if self.registry.is_vendor_enabled(request.explicit_vendor_id):
+                    return [request.explicit_vendor_id]
+                return []  # Explicit vendor is disabled
             raise UnknownVendorError(f"Requested vendor '{request.explicit_vendor_id}' is not registered.", vendor_id=request.explicit_vendor_id)
 
         # 2. Explicit vendor URL
         if request.explicit_vendor_url:
-            resolved_vid = self.registry.get_vendor_for_url(request.explicit_vendor_url)
+            resolved_vid = self.registry.get_vendor_for_url(request.explicit_vendor_url, enabled_only=True)
             if resolved_vid:
                 return [resolved_vid]
             return []
 
-        # 3. Caller-specified vendor IDs
+        # 3. Caller-specified vendor IDs (filtered by enabled state)
         if vendor_ids:
-            return [v for v in vendor_ids if self.registry.has_vendor(v)]
+            return [v for v in vendor_ids if self.registry.has_vendor(v) and self.registry.is_vendor_enabled(v)]
 
-        # 4. Default: all registered vendors
-        return self.registry.list_vendors()
+        # 4. Default: all enabled registered vendors
+        return self.registry.get_enabled_vendors()
 
     def _inspect_explicit_url(
         self,

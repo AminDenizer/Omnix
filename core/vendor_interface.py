@@ -106,9 +106,15 @@ class IVendorAdapter(ABC):
         pass
 
     @abstractmethod
-    def authenticate(self, credentials: Optional[AuthCredentials] = None) -> AuthResult:
+    def authenticate(
+        self,
+        credentials: Optional[AuthCredentials] = None,
+        challenge_handler: Optional[Any] = None,
+    ) -> AuthResult:
         """
-        Authenticate browser session using provided or configured credentials.
+        Authenticate browser session using provided or configured credentials,
+        with optional interactive challenge handler for CAPTCHA/OTP resolution.
+        Governing GAPs: GAP-09, GAP-17.
         """
         pass
 

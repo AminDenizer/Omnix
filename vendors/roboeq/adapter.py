@@ -406,7 +406,26 @@ class RoboEqVendorAdapter(IVendorAdapter):
                 raise
             raise RoboEqErrorTranslator.translate_transport_exception(e, {"operation": "inspect_cart"})
 
-    def authenticate(self, credentials: Optional[AuthCredentials] = None) -> AuthResult:
+    def authenticate(
+        self,
+        credentials: Optional[AuthCredentials] = None,
+        challenge_handler: Optional[Any] = None,
+    ) -> AuthResult:
+        """
+        Authenticate browser session using provided credentials,
+        with optional interactive challenge handler for CAPTCHA/OTP resolution (GAP-09, GAP-17).
+        """
+        from core.procurement.challenge_handler import ChallengeType, ChallengeState, ChallengeContext
+
+        if not credentials:
+            try:
+                from settings_manager import settings
+                v_cfg = settings.get_vendor_settings(self.VENDOR_ID)
+                if v_cfg and v_cfg.username:
+                    credentials = AuthCredentials(username=v_cfg.username, password=v_cfg.password)
+            except Exception:
+                pass
+
         if not credentials or not credentials.username:
             return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Credentials not provided.")
 
@@ -415,6 +434,39 @@ class RoboEqVendorAdapter(IVendorAdapter):
             driver.get(RoboEqSelectors.LOGIN_URL)
             self.session.wait_for_settle(1.5)
 
+            # Upfront challenge detection (Turnstile, reCAPTCHA, WAF, OTP)
+            challenge_type = self._detect_challenge_on_page(driver)
+            if challenge_type is not None:
+                ctx = ChallengeContext(
+                    vendor_id=self.VENDOR_ID,
+                    challenge_type=challenge_type,
+                    prompt_message=f"RoboEq Electronic requires security challenge resolution ({challenge_type.value}).",
+                    target_url=driver.current_url or RoboEqSelectors.LOGIN_URL,
+                )
+                if challenge_handler is not None:
+                    if challenge_type in (ChallengeType.TURNSTILE, ChallengeType.RECAPTCHA, ChallengeType.HCAPTCHA, ChallengeType.CUSTOM, ChallengeType.CAPTCHA):
+                        self.session.promote_to_headful()
+
+                    res = challenge_handler.handle_challenge(ctx)
+                    if res.state == ChallengeState.SOLVED:
+                        status = self.validate_session()
+                        if status.is_authenticated:
+                            self._is_authenticated = True
+                            self._current_user = credentials.username
+                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
+                    elif res.state == ChallengeState.CANCELLED:
+                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
+                    else:
+                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Challenge resolution failed: {res.message}")
+                else:
+                    return AuthResult(
+                        vendor_id=self.VENDOR_ID,
+                        success=False,
+                        message=f"Security challenge encountered ({challenge_type.value}) but no challenge handler configured.",
+                        requires_interactive=True,
+                        challenge_context=ctx,
+                    )
+
             user_input = driver.find_element(By.ID, RoboEqSelectors.LOGIN_USERNAME_ID)
             user_input.send_keys(credentials.username)
 
@@ -422,10 +474,66 @@ class RoboEqVendorAdapter(IVendorAdapter):
             submit_btn.click()
             self.session.wait_for_settle(2.0)
 
+            # Check post-submit challenge
+            post_challenge = self._detect_challenge_on_page(driver)
+            if post_challenge is not None:
+                ctx = ChallengeContext(
+                    vendor_id=self.VENDOR_ID,
+                    challenge_type=post_challenge,
+                    prompt_message=f"RoboEq Electronic presented a post-login challenge ({post_challenge.value}).",
+                    target_url=driver.current_url or RoboEqSelectors.LOGIN_URL,
+                )
+                if challenge_handler is not None:
+                    self.session.promote_to_headful()
+                    res = challenge_handler.handle_challenge(ctx)
+                    if res.state == ChallengeState.SOLVED:
+                        status = self.validate_session()
+                        if status.is_authenticated:
+                            self._is_authenticated = True
+                            self._current_user = credentials.username
+                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
+                    elif res.state == ChallengeState.CANCELLED:
+                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
+                    return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Post-login challenge not resolved: {res.state.value}")
+                else:
+                    return AuthResult(
+                        vendor_id=self.VENDOR_ID,
+                        success=False,
+                        message=f"Post-login challenge encountered ({post_challenge.value}) but no challenge handler configured.",
+                        requires_interactive=True,
+                        challenge_context=ctx,
+                    )
+
+            status = self.validate_session()
+            if status.is_authenticated:
+                self._is_authenticated = True
+                self._current_user = credentials.username
+                return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Login successful.")
+
             return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="CAS authentication staged.")
         except Exception as e:
             err = RoboEqErrorTranslator.translate_transport_exception(e, {"operation": "authenticate"})
             return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Login error: {err.message}")
+
+    @staticmethod
+    def _detect_challenge_on_page(driver: Any) -> Optional[Any]:
+        """Detect whether the current browser DOM contains known security challenges."""
+        from core.procurement.challenge_handler import ChallengeType
+        try:
+            page_src = driver.page_source.lower()
+            if "cf-turnstile" in page_src or "challenges.cloudflare.com" in page_src:
+                return ChallengeType.TURNSTILE
+            if "g-recaptcha" in page_src or "recaptcha" in page_src:
+                return ChallengeType.RECAPTCHA
+            if "h-captcha" in page_src or "hcaptcha" in page_src:
+                return ChallengeType.HCAPTCHA
+            if "just a moment" in page_src or "ray id:" in page_src or "cf-challenge" in page_src:
+                return ChallengeType.CUSTOM
+            if "کد تایید" in page_src or "one-time password" in page_src or "enter otp" in page_src:
+                return ChallengeType.OTP
+        except Exception:
+            pass
+        return None
 
     def validate_session(self) -> SessionStatus:
         driver = self.session.get_driver()
