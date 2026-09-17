@@ -142,6 +142,24 @@ class ProcurementBridge:
         description = str(item.get("description") or item.get("comment") or "")
         exact_mpn = item.get("exact_mpn_required", False if explicit_url else True)
 
+        if explicit_url:
+            package = str(item.get("package") or "").strip() or None if item.get("package_required") else None
+            footprint = str(item.get("footprint") or "").strip() or None if item.get("footprint_required") else None
+            manufacturer = (
+                str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+                if item.get("manufacturer_required")
+                else None
+            )
+        else:
+            package = str(item.get("package") or "").strip() or None
+            footprint = str(item.get("footprint") or "").strip() or None
+            manufacturer = str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+
+        allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
+        is_mfg_any = bool(item.get("is_manufacturer_any", False))
+        req_specs = item.get("required_specs") or {}
+        req_dims = item.get("required_dimensions") or {}
+
         metadata = {
             k: v
             for k, v in item.items()
@@ -154,6 +172,13 @@ class ProcurementBridge:
             description=description,
             explicit_vendor_id=target_vendor,
             explicit_vendor_url=explicit_url,
+            manufacturer=manufacturer,
+            allowed_manufacturers=allowed_mfg,
+            is_manufacturer_any=is_mfg_any,
+            package=package,
+            footprint=footprint,
+            required_specs=req_specs,
+            required_dimensions=req_dims,
             exact_mpn_required=exact_mpn,
             source=str(lid),
             metadata=metadata,

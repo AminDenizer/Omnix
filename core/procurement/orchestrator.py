@@ -9,6 +9,8 @@ from typing import List, Optional, Dict, Any
 from core.errors import OmnixVendorError, UnknownVendorError
 from core.models import CartMutationResult, ProductReference, OrderConstraints
 from core.procurement.models import (
+    EvaluationState,
+    normalize_constraint_string,
     PriceTier,
     ProcurementRequest,
     VendorProcurementCandidate,
@@ -112,24 +114,173 @@ class UniversalProcurementOrchestrator:
         required_quantity: int,
         exact_mpn_required: bool = True,
         requested_part_number: str = "",
+        requested_package: Optional[str] = None,
+        requested_footprint: Optional[str] = None,
+        requested_manufacturer: Optional[str] = None,
+        allowed_manufacturers: Optional[List[str]] = None,
+        is_manufacturer_any: bool = False,
+        required_specs: Optional[Dict[str, str]] = None,
+        required_dimensions: Optional[Dict[str, str]] = None,
+        request: Optional[ProcurementRequest] = None,
     ) -> CandidateEvaluation:
         """
-        Evaluate candidate eligibility, effective quantity, and total cost.
+        Evaluate candidate eligibility, effective quantity, hard technical constraints, and total cost.
+        Governing GAPs: GAP-04, GAP-05, GAP-06.
         """
+        # Resolve request parameters if request object passed
+        if request is not None:
+            required_quantity = request.required_quantity
+            exact_mpn_required = request.exact_mpn_required
+            requested_part_number = request.part_number
+            if requested_package is None:
+                requested_package = request.package
+            if requested_footprint is None:
+                requested_footprint = request.footprint
+            if requested_manufacturer is None:
+                requested_manufacturer = request.manufacturer
+            if allowed_manufacturers is None:
+                allowed_manufacturers = request.allowed_manufacturers
+            if not is_manufacturer_any:
+                is_manufacturer_any = request.is_manufacturer_any
+            if required_specs is None:
+                required_specs = request.required_specs
+            if required_dimensions is None:
+                required_dimensions = request.required_dimensions
+
         reasons: List[str] = []
+        unknown_params: List[str] = []
+        primary_failures: List[EvaluationState] = []
 
-        # 1. Stock and orderability
-        if not candidate.can_order:
-            reasons.append("Item is not orderable (inquiry-only, coming-soon, or sale closed).")
-        if not candidate.in_stock:
-            reasons.append("Item is out of stock.")
-
-        # 2. MPN matching
+        # -------------------------------------------------------------
+        # 1. MPN matching
+        # -------------------------------------------------------------
         is_exact = self._check_mpn_match(candidate.part_number, requested_part_number)
         if exact_mpn_required and requested_part_number and not is_exact:
             reasons.append(f"MPN mismatch: '{candidate.part_number}' != '{requested_part_number}'")
+            primary_failures.append(EvaluationState.INCOMPATIBLE_MPN)
 
-        # 3. Effective quantity calculation
+        # -------------------------------------------------------------
+        # 2. Manufacturer / Brand Constraint (GAP-06)
+        # -------------------------------------------------------------
+        effective_any = is_manufacturer_any or (
+            requested_manufacturer is not None and requested_manufacturer.strip().upper() == "ANY"
+        ) or (
+            allowed_manufacturers is not None and any(m.strip().upper() == "ANY" for m in allowed_manufacturers if m)
+        )
+        if not effective_any:
+            if allowed_manufacturers:
+                if not candidate.manufacturer or not candidate.manufacturer.strip():
+                    unknown_params.append("manufacturer")
+                    reasons.append("Candidate manufacturer is unlisted/unknown on vendor store.")
+                    primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+                else:
+                    cand_m_norm = normalize_constraint_string(candidate.manufacturer)
+                    allowed_m_norms = [normalize_constraint_string(m) for m in allowed_manufacturers if m]
+                    if cand_m_norm not in allowed_m_norms:
+                        reasons.append(
+                            f"Manufacturer mismatch: '{candidate.manufacturer}' not in approved list ({allowed_manufacturers})"
+                        )
+                        primary_failures.append(EvaluationState.INCOMPATIBLE_MANUFACTURER)
+            elif requested_manufacturer and requested_manufacturer.strip():
+                if not candidate.manufacturer or not candidate.manufacturer.strip():
+                    unknown_params.append("manufacturer")
+                    reasons.append(f"Required manufacturer '{requested_manufacturer}' is unlisted/unknown on candidate.")
+                    primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+                else:
+                    cand_m_norm = normalize_constraint_string(candidate.manufacturer)
+                    req_m_norm = normalize_constraint_string(requested_manufacturer)
+                    if cand_m_norm != req_m_norm:
+                        reasons.append(
+                            f"Manufacturer mismatch: '{candidate.manufacturer}' != '{requested_manufacturer}'"
+                        )
+                        primary_failures.append(EvaluationState.INCOMPATIBLE_MANUFACTURER)
+
+        # -------------------------------------------------------------
+        # 3. Package Constraint (GAP-04)
+        # -------------------------------------------------------------
+        if requested_package and requested_package.strip():
+            if not candidate.package or not candidate.package.strip():
+                unknown_params.append("package")
+                reasons.append(f"Required package '{requested_package}' is unlisted/unknown on vendor candidate.")
+                primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+            else:
+                cand_pkg_norm = normalize_constraint_string(candidate.package)
+                req_pkg_norm = normalize_constraint_string(requested_package)
+                if cand_pkg_norm != req_pkg_norm:
+                    reasons.append(f"Package mismatch: '{candidate.package}' != '{requested_package}'")
+                    primary_failures.append(EvaluationState.INCOMPATIBLE_PACKAGE)
+
+        # -------------------------------------------------------------
+        # 4. Footprint Constraint (GAP-04) - Evaluated Independently
+        # -------------------------------------------------------------
+        if requested_footprint and requested_footprint.strip():
+            cand_fp = candidate.footprint or candidate.specs.get("footprint")
+            if not cand_fp or not str(cand_fp).strip():
+                unknown_params.append("footprint")
+                reasons.append(f"Required footprint '{requested_footprint}' is unlisted/unknown on vendor candidate.")
+                primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+            else:
+                cand_fp_norm = normalize_constraint_string(str(cand_fp))
+                req_fp_norm = normalize_constraint_string(requested_footprint)
+                if cand_fp_norm != req_fp_norm:
+                    reasons.append(f"Footprint mismatch: '{cand_fp}' != '{requested_footprint}'")
+                    primary_failures.append(EvaluationState.INCOMPATIBLE_FOOTPRINT)
+
+        # -------------------------------------------------------------
+        # 5. Generic Technical Specifications (GAP-05)
+        # -------------------------------------------------------------
+        if required_specs:
+            for spec_key, req_val in required_specs.items():
+                if not req_val or not str(req_val).strip():
+                    continue
+                cand_spec_val = candidate.specs.get(spec_key) or candidate.specs.get(spec_key.lower())
+                if not cand_spec_val or not str(cand_spec_val).strip():
+                    unknown_params.append(spec_key)
+                    reasons.append(f"Required parameter '{spec_key}' ({req_val}) is unlisted/unknown on candidate.")
+                    primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+                else:
+                    if normalize_constraint_string(str(cand_spec_val)) != normalize_constraint_string(str(req_val)):
+                        reasons.append(
+                            f"Parameter mismatch for '{spec_key}': '{cand_spec_val}' != '{req_val}'"
+                        )
+                        primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+
+        # -------------------------------------------------------------
+        # 6. Physical Dimensions (GAP-05)
+        # -------------------------------------------------------------
+        if required_dimensions:
+            for dim_key, req_val in required_dimensions.items():
+                if not req_val or not str(req_val).strip():
+                    continue
+                cand_dim_val = (
+                    candidate.dimensions.get(dim_key)
+                    or candidate.specs.get(dim_key)
+                    or candidate.specs.get(f"dim_{dim_key}")
+                )
+                if not cand_dim_val or not str(cand_dim_val).strip():
+                    unknown_params.append(f"dimension:{dim_key}")
+                    reasons.append(f"Required physical dimension '{dim_key}' ({req_val}) is unlisted/unknown on candidate.")
+                    primary_failures.append(EvaluationState.UNKNOWN_REQUIRED_PARAMETER)
+                else:
+                    if normalize_constraint_string(str(cand_dim_val)) != normalize_constraint_string(str(req_val)):
+                        reasons.append(
+                            f"Physical dimension mismatch for '{dim_key}': '{cand_dim_val}' != '{req_val}'"
+                        )
+                        primary_failures.append(EvaluationState.INCOMPATIBLE_DIMENSIONS)
+
+        # -------------------------------------------------------------
+        # 7. Stock and Orderability
+        # -------------------------------------------------------------
+        if not candidate.can_order:
+            reasons.append("Item is not orderable (inquiry-only, coming-soon, or sale closed).")
+            primary_failures.append(EvaluationState.UNORDERABLE)
+        if not candidate.in_stock:
+            reasons.append("Item is out of stock.")
+            primary_failures.append(EvaluationState.OUT_OF_STOCK)
+
+        # -------------------------------------------------------------
+        # 8. Effective Quantity Calculation
+        # -------------------------------------------------------------
         effective_qty = required_quantity
         try:
             effective_qty = calculate_effective_quantity(
@@ -140,19 +291,49 @@ class UniversalProcurementOrchestrator:
             )
         except Exception as e:
             reasons.append(str(e))
+            primary_failures.append(EvaluationState.UNORDERABLE)
 
         # Check stock quantity sufficiency if site reported positive integer stock
         if candidate.stock_quantity > 0 and candidate.stock_quantity < effective_qty:
-            reasons.append(f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} needed).")
+            reasons.append(
+                f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} needed)."
+            )
+            primary_failures.append(EvaluationState.OUT_OF_STOCK)
 
-        # 4. Pricing
+        # -------------------------------------------------------------
+        # 9. Pricing
+        # -------------------------------------------------------------
         unit_p = effective_unit_price(candidate, effective_qty)
         total_p = effective_total_price(candidate, effective_qty)
 
         if unit_p is None:
             reasons.append("Price is unavailable or unlisted on vendor store.")
+            primary_failures.append(EvaluationState.PRICE_UNAVAILABLE)
 
-        is_eligible = (len(reasons) == 0)
+        # -------------------------------------------------------------
+        # Final State Determination
+        # -------------------------------------------------------------
+        if not primary_failures and not reasons and not unknown_params:
+            final_state = EvaluationState.ELIGIBLE
+            is_eligible = True
+        else:
+            is_eligible = False
+            state_priority = [
+                EvaluationState.INCOMPATIBLE_MPN,
+                EvaluationState.INCOMPATIBLE_MANUFACTURER,
+                EvaluationState.INCOMPATIBLE_PACKAGE,
+                EvaluationState.INCOMPATIBLE_FOOTPRINT,
+                EvaluationState.INCOMPATIBLE_DIMENSIONS,
+                EvaluationState.UNKNOWN_REQUIRED_PARAMETER,
+                EvaluationState.UNORDERABLE,
+                EvaluationState.OUT_OF_STOCK,
+                EvaluationState.PRICE_UNAVAILABLE,
+            ]
+            final_state = EvaluationState.UNORDERABLE
+            for st in state_priority:
+                if st in primary_failures:
+                    final_state = st
+                    break
 
         return CandidateEvaluation(
             candidate=candidate,
@@ -162,7 +343,9 @@ class UniversalProcurementOrchestrator:
             effective_total_price_irr=total_p,
             is_eligible=is_eligible,
             is_exact_mpn=is_exact,
+            state=final_state,
             rejection_reasons=reasons,
+            unknown_parameters=unknown_params,
         )
 
     def select_best_candidate(
@@ -213,6 +396,7 @@ class UniversalProcurementOrchestrator:
                     required_quantity=req.required_quantity,
                     exact_mpn_required=req.exact_mpn_required,
                     requested_part_number=req.part_number,
+                    request=req,
                 )
                 for c in cands
             ]
@@ -299,6 +483,9 @@ class UniversalProcurementOrchestrator:
             stock = adapter.inspect_stock(pref)
             constraints = adapter.determine_order_constraints(pref)
 
+            raw_specs = getattr(details, "specs", {}) or {}
+            raw_dims = getattr(details, "dimensions", {}) or {}
+
             return VendorProcurementCandidate(
                 vendor_id=vendor_id,
                 part_number=details.mpn or pref.vendor_sku,
@@ -311,7 +498,10 @@ class UniversalProcurementOrchestrator:
                 order_constraints=constraints or details.order_constraints or OrderConstraints(),
                 manufacturer=details.manufacturer,
                 package=details.package_raw,
+                footprint=getattr(details, "footprint_raw", None) or getattr(details, "footprint", None) or raw_specs.get("footprint"),
+                dimensions=raw_dims,
                 raw_status_text=details.raw_status_text,
+                specs=raw_specs,
             )
         except Exception:
             return None
@@ -321,6 +511,6 @@ class UniversalProcurementOrchestrator:
         """Normalize and compare MPNs."""
         if not candidate_mpn or not requested_mpn:
             return False
-        c_norm = candidate_mpn.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
-        r_norm = requested_mpn.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+        c_norm = normalize_constraint_string(candidate_mpn)
+        r_norm = normalize_constraint_string(requested_mpn)
         return c_norm == r_norm or r_norm in c_norm or c_norm in r_norm

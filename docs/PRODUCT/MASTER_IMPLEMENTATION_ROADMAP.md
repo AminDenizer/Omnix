@@ -1,0 +1,443 @@
+# MASTER ARCHITECTURE GAP AUDIT & IMPLEMENTATION ROADMAP
+## Omnix — Deterministic Multi-Vendor Electronics Procurement Platform
+
+**Document Reference:** `DOC-OMNIX-ROADMAP-001`  
+**Version:** `2.0.0-RECONCILED`  
+**Status:** Approved Master Architecture Gap Audit & Authoritative Implementation Roadmap  
+**Repository:** `D:\management-elec\autom\atom`  
+**Branch:** `Auto`  
+**Automated Tests:** 208 / 208 PASSED (7.40s)  
+**Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
+**Phase 9 Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
+**Canonical Registry Reference:** `docs/PRODUCT/CANONICAL_GAP_REGISTRY.md` (`DOC-OMNIX-REGISTRY-001`)  
+**Audit Date:** September 17, 2026  
+
+---
+
+## 1. EXECUTIVE SUMMARY & POSTURE
+
+This document establishes the authoritative **Master Implementation Roadmap** for transforming Omnix into a production-grade, deterministic multi-vendor electronics procurement platform.
+
+### 1.1 Canonical Alignment
+All GAP definitions, numbering schemes, classifications, and task allocations in this roadmap are strictly governed by and reconciled with [`docs/PRODUCT/CANONICAL_GAP_REGISTRY.md`](file:///d:/management-elec/autom/atom/docs/PRODUCT/CANONICAL_GAP_REGISTRY.md) and [`docs/PRODUCT/MASTER_PRODUCT_COMPLETION_GAP_ANALYSIS.md`](file:///d:/management-elec/autom/atom/docs/PRODUCT/MASTER_PRODUCT_COMPLETION_GAP_ANALYSIS.md) (v3.0.0-FINAL-FORENSIC-EXPANSION).
+
+### 1.2 Authoritative Architectural Facts
+1. **Production Datastore Baseline:** `Inventory.xlsx` is the active, authoritative component and inventory datastore on disk. `ExcelDataLoader` and `BOMAuditor` are the active data access layer.
+2. **Current Sourcing Data Pipeline:**
+   $$\text{Inventory.xlsx} \longrightarrow \text{ExcelDataLoader / BOMAuditor} \longrightarrow \text{ProcurementBridge} \longrightarrow \text{ProcurementRequest} \longrightarrow \text{UniversalProcurementOrchestrator} \longrightarrow \text{Vendor Adapters} \longrightarrow \text{Storefront Shopping Cart}$$
+3. **Zero Database Migration Invariant:** `GAP-14` (SQLite ACID Repository Layer) is an open architectural evolution path and is **DEFERRED** to post-release milestones. The current Excel-based data pipeline is preserved without modification or disruption.
+4. **Task A1 Completed and Verified:** `GAP-04` (Package & Footprint), `GAP-05` (UNKNOWN_REQUIRED_PARAMETER & Specs), and `GAP-06` (Manufacturer/Brand Rules) are fully implemented and verified in Core with 208 passing automated tests.
+
+---
+
+## 2. CANONICAL GAP REGISTRY SUMMARY
+
+All 18 product and architectural GAPs are summarized below with their canonical IDs and blocking classifications:
+
+| ID | Domain | Requirement Title | Current Implementation State | Blocking? | Target Task | Status |
+|---|---|---|---|:---:|:---:|:---:|
+| **`GAP-01`** | UI / Workflow | Dual Procurement Modes (Mode A vs Mode B) | Inventory subtraction hardcoded; Mode B direct catalog BOM search missing. | **YES** | `TASK-A3` | `PARTIAL` |
+| **`GAP-02`** | UI / Workflow | Direct MPN Procurement Quick Order Dialog | Search supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `PARTIAL` |
+| **`GAP-03`** | UI / Workflow | Direct URL Procurement Quick Order Dialog | URL routing supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `PARTIAL` |
+| **`GAP-04`** | Matching | Package & Footprint Hard Constraints (`OD-001` OPEN) | Fully implemented in Core models and orchestrator with conservative normalization. | **YES** | `TASK-A1` | `VERIFIED` |
+| **`GAP-05`** | Matching | `UNKNOWN_REQUIRED_PARAMETER` & Spec Engine | Typed `EvaluationState` enum, 4-state spec engine, and dimension validator implemented. | **YES** | `TASK-A1` | `VERIFIED` |
+| **`GAP-06`** | Matching | Manufacturer / Brand Constraint Engine | `ANY` vs explicit approved manufacturer list filtering implemented in Core. | **YES** | `TASK-A1` | `VERIFIED` |
+| **`GAP-07`** | UI / Preview | Multi-Candidate Alternative Selection UI | Core evaluates candidate list; `OrderPreviewDialog` renders flat list without candidate override. | No | `TASK-A5` | `PARTIAL` |
+| **`GAP-08`** | Sourcing | Split-Vendor Line Item Sourcing Allocation | Line items allocated to single vendor; split sourcing across multiple vendors deferred. | No | Post-Release | `DEFERRED` |
+| **`GAP-09`** | Authentication | Interactive Authentication & Headful Fallback | Adapters run headless only; fails on CAPTCHA/OTP without human interactive recovery. | **YES** | `TASK-A2` | `MISSING` |
+| **`GAP-10`** | Security | Encrypted Keyring Credential Storage | Plaintext JSON in `settings.json`; OS keyring encryption deferred. | No | Post-Release | `DEFERRED` |
+| **`GAP-11`** | Vendor Mgmt | Multi-Vendor Settings & Dynamic Enable/Disable | Settings UI only configures Lion; multi-vendor tabs and enable/disable toggles missing. | **YES** | `TASK-A2` | `PARTIAL` |
+| **`GAP-12`** | Runtime | Finite State Machine Job Lifecycle Engine | Coarse string statuses (`"RESOLVED"`); explicit lifecycle FSM deferred. | No | Post-Release | `DEFERRED` |
+| **`GAP-13`** | Runtime | Multi-Vendor Cart Idempotency & Delta Sync | Unconditional cart addition; pre-inspection and delta staging missing. | **YES** | `TASK-A4` | `MISSING` |
+| **`GAP-14`** | Persistence | Embedded ACID Relational Persistence (SQLite) | `Inventory.xlsx` production datastore active; SQLite migration deferred. | No | Post-Release | `DEFERRED` |
+| **`GAP-15`** | Audit | Append-Only Persistent Audit Trail Event Log | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `DEFERRED` |
+| **`GAP-16`** | Altium Contract| Extended Parameter Ingestion Parser | Ingests 7 standard BOM columns; extended 20-parameter contract ingestion missing. | No | `TASK-A3` | `PARTIAL` |
+| **`GAP-17`** | Security | Universal Challenge / CAPTCHA Handler Subsystem | Scattered error handling; unified `ChallengeHandler` subsystem missing. | **YES** | `TASK-A2` | `MISSING` |
+| **`GAP-18`** | Reporting | Multi-Vendor Deterministic Export Pipeline | Basic Lion shortage export; multi-vendor PDF/CSV/XLSX export pipeline missing. | No | `TASK-A6` | `PARTIAL` |
+
+---
+
+## 3. RELEASE-BLOCKING GAPS
+
+The following **EXACTLY 8 GAPS** are strictly release-blocking:
+1. **`GAP-01` (Dual Procurement Modes):** Enables Mode A (Database-Aware) and Mode B (Direct BOM Sourcing).
+2. **`GAP-04` (Package & Footprint Hard Constraints):** Prevents purchasing physically incompatible SMD/through-hole parts. *(VERIFIED in Core via Task A1)*
+3. **`GAP-05` (`UNKNOWN_REQUIRED_PARAMETER` & Spec Engine):** Flags unlisted/unknown specs to prevent unsafe auto-ordering. *(VERIFIED in Core via Task A1)*
+4. **`GAP-06` (Manufacturer / Brand Constraint Engine):** Enforces brand rules (`ANY` vs approved list) over lower pricing. *(VERIFIED in Core via Task A1)*
+5. **`GAP-09` (Interactive Authentication & Headful Fallback):** Enables human challenge resolution on Iranian storefronts.
+6. **`GAP-11` (Multi-Vendor Settings & Enable/Disable Subsystem):** Enables dynamic activation and credentials for Lion, Javan, and RoboEq.
+7. **`GAP-13` (Multi-Vendor Cart Idempotency & Delta Synchronization):** Prevents duplicate item accumulation in vendor carts.
+8. **`GAP-17` (Universal Security Challenge Handler Subsystem):** Modular handling of CAPTCHA, Turnstile, and OTP challenges.
+
+---
+
+## 4. PROCUREMENT MODES ARCHITECTURE (`GAP-01`)
+
+```
+                                  [ Altium BOM Upload ]
+                                            │
+                                            ▼
+                        Mode Selection (BOM Audit View Toggle)
+                                            │
+                    ┌───────────────────────┴───────────────────────┐
+                    ▼                                               ▼
+        [ MODE A: DATABASE-AWARE ]                      [ MODE B: DIRECT BOM ]
+                    │                                               │
+        Read `Inventory.xlsx` on disk                   Bypass `Inventory.xlsx` completely
+                    │                                               │
+        Match BOM against Database Stock                BOM is the sole source of requirements
+                    │                                               │
+        Calculate Net Shortages:                        Required Quantity =
+        Needed = max(0, Q_BOM * M - Stock)              Q_BOM * M (Full batch demand)
+                    │                                               │
+        Link Source: Database Link Column               Link Source: Dynamic Catalog Search
+                    │                                               │
+                    └───────────────────────┬───────────────────────┘
+                                            ▼
+                             [ ProcurementRequest Model ]
+                                            │
+                                            ▼
+                          [ UniversalProcurementOrchestrator ]
+```
+
+---
+
+## 5. BOM BRAND CONSTRAINT ARCHITECTURE (`GAP-06`)
+
+### 5.1 Semantics (Verified in Task A1 Core)
+1. **Rule: `is_manufacturer_any == True` or `ANY`:**
+   - No brand or manufacturer constraint is enforced.
+   - Any candidate satisfying MPN, Package, and Footprint is eligible.
+   - Mutually exclusive with explicit brand selections.
+2. **Rule: Explicit Approved Brand Set (`allowed_manufacturers = [...]`):**
+   - User specifies one or more approved brands (e.g. `["Texas Instruments", "STMicroelectronics"]`).
+   - Sourcing engine evaluates: $cand.manufacturer \in allowed\_manufacturers$.
+   - Unapproved brands or candidates with unknown manufacturers evaluate as `EvaluationState.INCOMPATIBLE_MANUFACTURER`.
+
+### 5.2 Data Pipeline Flow
+$$\text{BOM Table Brand Combobox (Task A3/A5)} \longrightarrow \text{ProcurementRequest.allowed_manufacturers} \longrightarrow \text{orchestrator.evaluate_candidate()}$$
+
+---
+
+## 6. VENDOR RUNTIME & SETTINGS ARCHITECTURE (`GAP-11`)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    VENDOR RUNTIME ARCHITECTURE                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ [ SettingsManager (`settings.json` / Keyring) ]
+        │
+        ├── vendor_lion:   { enabled: true,  username: "...", password: "..." }
+        ├── vendor_javan:  { enabled: true,  username: "...", password: "..." }
+        └── vendor_roboeq: { enabled: false, username: "...", password: "..." }
+        │
+        ▼
+ [ VendorRegistry (`core/procurement/registry.py`) ]
+        │
+        ├── get_enabled_vendors() ──► ["vendor_lion", "vendor_javan"]
+        ├── get_adapter(vendor_id) ──► Instantiates IVendorAdapter with credentials
+        └── get_vendor_for_url(url) ──► Resolves domain (returns None if vendor disabled)
+```
+
+---
+
+## 7. AUTHENTICATION & SESSION RESUMPTION ARCHITECTURE (`GAP-09`)
+
+```
+  1. Adapter starts Headless Browser Session
+                    │
+  2. Attempt automated form submission (`authenticate()`)
+                    │
+  3. Validate Session State (`validate_session()`)
+                    │
+         ┌──────────┴──────────┐
+         ▼                     ▼
+   [ SUCCESS ]           [ CHALLENGE DETECTED ] (WAF / CAPTCHA / OTP)
+         │                     │
+   Proceed to Cart       4. Switch Browser to Visible / Headful Mode
+         │                     │
+         │               5. Emit `interactive_login_required` Signal to GUI
+         │                     │
+         │               6. Display Modal in Omnix GUI:
+         │                  "Please complete login in the opened browser window"
+         │                     │
+         │               7. User completes challenge and clicks "I Have Logged In"
+         │                     │
+         │               8. Adapter verifies cookies (`validate_session() == True`)
+         │                     │
+         │               9. Hide/Minimize visible browser window
+         │                     │
+         └───────────────► 10. Resume exact staged procurement job
+```
+
+---
+
+## 8. UNIVERSAL CHALLENGE HANDLER ARCHITECTURE (`GAP-17`)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 UNIVERSAL CHALLENGE HANDLER SUBSYSTEM                            │
+├────────────────────────────────┬────────────────────────────────┬────────────────────────────────┤
+│ Component                      │ Role & Responsibilities        │ Concrete Subtypes              │
+├────────────────────────────────┼────────────────────────────────┼────────────────────────────────┤
+│ `IChallengeHandler`            │ Core interface invoked by      │ `InteractiveWindowHandler`,    │
+│                                │ vendor adapters upon challenge │ `InAppImageChallengeHandler`   │
+├────────────────────────────────┼────────────────────────────────┼────────────────────────────────┤
+│ `ChallengeType` Enum           │ Formal classification of       │ `IMAGE_CAPTCHA`, `TEXT_CAPTCHA`│
+│                                │ detected security hurdle       │ `CLOUDFLARE_TURNSTILE`, `HCAP` │
+│                                │                                │ `SMS_OTP`, `VENDOR_CUSTOM`     │
+├────────────────────────────────┼────────────────────────────────┼────────────────────────────────┤
+│ `ChallengeContext`             │ Context payload passed to GUI  │ Target URL, vendor ID, image   │
+│                                │ for human solving              │ base64, session cookies        │
+└────────────────────────────────┴────────────────────────────────┴────────────────────────────────┘
+```
+
+---
+
+## 9. DECISION HIERARCHY & CONSTRAINTS PRECEDENCE
+
+`UniversalProcurementOrchestrator` enforces deterministic candidate qualification before price ranking:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                    DETERMINISTIC EVALUATION PIPELINE                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+                       [ Vendor Candidate Offer ]
+                                   │
+                                   ▼
+                1. MPN Match (Exact / Normalized) ──► Fail? ──► INCOMPATIBLE_MPN
+                                   │ (Pass)
+                                   ▼
+                2. Brand / Manufacturer Match    ──► Fail? ──► INCOMPATIBLE_MANUFACTURER
+                                   │ (Pass)
+                                   ▼
+                3. Package Compatibility (OD-001)──► Fail? ──► INCOMPATIBLE_PACKAGE
+                                   │ (Pass)
+                                   ▼
+                4. Footprint Compatibility       ──► Fail? ──► INCOMPATIBLE_FOOTPRINT
+                                   │ (Pass)
+                                   ▼
+                5. Technical Specs & Dimensions  ──► Fail/Missing? ──► UNKNOWN_REQUIRED_PARAMETER
+                                   │ (Pass)
+                                   ▼
+                6. Stock & Orderability Check    ──► Fail? ──► OUT_OF_STOCK / UNORDERABLE
+                                   │ (Pass)
+                                   ▼
+                7. Effective Quantity (MOQ/Step)
+                                   │
+                                   ▼
+                8. Tiered Unit & Total Price Calculation
+                                   │
+                                   ▼
+                       [ ELIGIBLE Candidate Pool ]
+                                   │
+                                   ▼
+                  Deterministic Sorter (Price Ascending)
+                                   │
+                                   ▼
+                       [ Optimal Candidate Selected ]
+```
+
+---
+
+## 10. ALTIUM / BOM PARAMETER CONTRACT (`GAP-16`)
+
+### 10.1 Scope Boundary
+- **External Altium Component Library Database:** **OUT OF CURRENT SCOPE (`OOS-001`).**
+- **Omnix Component Parameter Contract:** **IN SCOPE (`DOC-OMNIX-ALTIUM-CONTRACT-001`).**
+
+### 10.2 Parameter Contract Specification
+```
+Canonical_Component_ID    [Mandatory]  Unique CAD library identifier
+Description               [Mandatory]  Technical description
+Manufacturer              [Mandatory]  Primary manufacturer name
+MPN                       [Mandatory]  Manufacturer Part Number
+Approved_Manufacturers    [Optional]   Comma-separated approved second sources
+Manufacturer_Rule         [Mandatory]  Enum: EXACT, APPROVED_LIST, ANY
+Package                   [Mandatory]  Physical case code (e.g. 0805, DIP-8, SOIC-8)
+Package_Family            [Mandatory]  Enum: SMD, THROUGH_HOLE, BGA, CONNECTOR
+Footprint_ID              [Mandatory]  Altium PCB footprint reference
+Pin_Count                 [Mandatory]  Physical pin/pad count
+Value                     [Parametric] Resistance, Capacitance, Inductance
+Tolerance                 [Parametric] Tolerance rating (e.g. 1%, 5%)
+Voltage_Rating            [Parametric] Maximum voltage rating (e.g. 50V)
+Current_Rating            [Parametric] Maximum current rating (e.g. 2A)
+Power_Rating              [Parametric] Power dissipation (e.g. 0.25W)
+Lifecycle_Status          [Mandatory]  Enum: ACTIVE, NRND, EOL, OBSOLETE
+Library_Version           [Mandatory]  Semantic version of library asset
+```
+
+---
+
+## 11. CART STAGING IDEMPOTENCY ARCHITECTURE (`GAP-13`)
+
+1. **Pre-Staging Inspection:** Adapter invokes `inspect_cart()` on the active vendor session.
+2. **Delta Calculation:**
+   $$\text{staged\_qty} = \sum_{\text{item} \in \text{cart}} \text{item.quantity} \quad (\text{where item.sku} == \text{target.sku})$$
+   $$\Delta Q = \max(0, Q_{\text{target}} - \text{staged\_qty})$$
+3. **Execution Decision:**
+   - If $\Delta Q == 0$: Skip mutation; return `CartMutationResult(success=True, actual_quantity_staged=0, raw_vendor_message="Already staged")`.
+   - If $\Delta Q > 0$: Add only $\Delta Q$ units to the cart.
+
+---
+
+## 12. OPEN ARCHITECTURAL DECISIONS (PRESERVED)
+
+The following decisions remain **OPEN** and are strictly preserved:
+- **`OD-001` (Package Standardization Taxonomy):** Standardizing vendor package strings (`SOIC-8` vs `SOP-8`) vs IPC-7351B standards. (Task A1 verified with conservative string normalization only).
+- **`OD-002` (Multi-Vendor Sourcing Metric):** Lowest aggregate purchase cost vs minimum number of vendor shipments vs delivery speed. (`GAP-08` deferred).
+- **`OD-003` (Safety Stock Formula & Persistence Evolution):** Fixed minimum threshold delta vs target replenishment buffer; SQLite ACID persistence migration (`GAP-14` deferred).
+
+---
+
+## 13. OUT OF CURRENT SCOPE
+
+1. **External Altium Component Library Implementation (`OOS-001`):** Database creation, schematic symbol drawing, and 3D step model generation.
+2. **Automated Payment & Checkout (`OOS-002`):** Payment gateway completion (CVV2, OTP, Shetab) is strictly retained as a human manual step.
+3. **Autonomous AI/LLM Purchasing Agents (`OOS-003`):** Non-deterministic generative loops are prohibited in production runtime.
+
+---
+
+## 14. TOPOLOGICAL DEPENDENCY GRAPH
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 TOPOLOGICAL IMPLEMENTATION DAG                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+ [ LAYER 0: CONTRACTS & ENUMS ]
+ ├── GAP-05: UNKNOWN_REQUIRED_PARAMETER EvaluationState Enum (VERIFIED)
+ └── GAP-16: Altium Component Parameter Contract Schema
+       │
+       ▼
+ [ LAYER 1: TECHNICAL MATCHING & CONSTRAINTS ENGINE ]
+ ├── GAP-04: Package & Footprint Constraint Checking (VERIFIED)
+ └── GAP-06: Brand Constraint Rules in Core (VERIFIED)
+       │
+       ▼
+ [ LAYER 2: SETTINGS, AUTHENTICATION & CHALLENGE RECOVERY ] (TASK-A2)
+ ├── GAP-11: Multi-Vendor Settings Dialog & Dynamic Enable/Disable
+ ├── GAP-17: Universal Security Challenge & CAPTCHA Handler Subsystem
+ └── GAP-09: Interactive Authentication & Headful Browser Fallback
+       │
+       ▼
+ [ LAYER 3: WORKFLOW MODES & CAD INGESTION ] (TASK-A3)
+ ├── GAP-01: Dual Procurement Modes (Mode A vs Mode B)
+ └── GAP-16: Extended Altium Parameter Ingestion Parser
+       │
+       ▼
+ [ LAYER 4: CART RUNTIME IDEMPOTENCY ] (TASK-A4)
+ └── GAP-13: Multi-Vendor Cart Idempotency & Delta Staging (ΔQ Synchronization)
+       │
+       ▼
+ [ LAYER 5: DESKTOP UI WORKFLOWS & PRESENTATION ] (TASK-A5)
+ ├── GAP-07: Multi-Candidate Comparison & Selection in OrderPreviewDialog
+ ├── GAP-02: Direct MPN Quick Order Dialog
+ └── GAP-03: Direct URL Quick Order Dialog
+       │
+       ▼
+ [ LAYER 6: DETERMINISTIC REPORTING & AUDIT ] (TASK-A6)
+ └── GAP-18: Multi-Vendor Deterministic Export Pipeline (PDF / CSV / Excel)
+       │
+       ▼
+ [ LAYER 7: RELEASE HARDENING & PACKAGING ] (TASK-A7 / PHASE 10)
+ └── End-to-End Live Multi-Vendor Desktop Validation & Nuitka Binary Compilation
+```
+
+---
+
+## 15. ORDERED IMPLEMENTATION SEQUENCE (TASKS A1 THROUGH A7)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                  ORDERED IMPLEMENTATION TASKS                                    │
+├───────────┬───────────────────────────────────┬───────────────────────────────┬──────────────────┤
+│ Task ID   │ Title                             │ Target GAPs                   │ Status           │
+├───────────┼───────────────────────────────────┼───────────────────────────────┼──────────────────┤
+│ TASK-A1   │ Core Technical Matching & Brands  │ GAP-04, GAP-05, GAP-06        │ VERIFIED         │
+│ TASK-A2   │ Multi-Vendor Settings & Challenge │ GAP-11, GAP-17, GAP-09        │ NEXT_IN_SEQUENCE │
+│ TASK-A3   │ Dual Modes & Altium Ingestion     │ GAP-01, GAP-16                │ READY            │
+│ TASK-A4   │ Multi-Vendor Cart Idempotency     │ GAP-13                        │ READY            │
+│ TASK-A5   │ Desktop UI & Multi-Candidate      │ GAP-07, GAP-02, GAP-03        │ READY            │
+│ TASK-A6   │ Deterministic Export Pipeline     │ GAP-18                        │ READY            │
+│ TASK-A7   │ Phase 10 Release & Nuitka Binary  │ End-to-End Validation         │ READY            │
+└───────────┴───────────────────────────────────┴───────────────────────────────┴──────────────────┘
+```
+
+### Detailed Task Specifications:
+
+#### TASK-A1: Core Technical Matching, Package/Footprint Constraints & Brand Rules
+- **Target GAPs:** `GAP-04`, `GAP-05`, `GAP-06`.
+- **Status:** `COMPLETED_AND_VERIFIED` (208 / 208 unit/contract tests passing).
+- **Deliverables:** `EvaluationState` enum, `normalize_constraint_string()`, independent package/footprint validation, brand rule engine (`ANY` vs approved list), and hard-constraint precedence over price in candidate selection.
+
+#### TASK-A2: Multi-Vendor Settings, Universal Security Challenge Handler & Interactive Auth
+- **Target GAPs:** `GAP-11`, `GAP-17`, `GAP-09`.
+- **Status:** `NEXT_TASK_FOR_EXECUTION`.
+- **Scope:**
+  1. `SettingsDialog` and `SettingsManager` multi-vendor tabs for Lion, Javan, and RoboEq (credentials, enable/disable checkboxes, timeouts).
+  2. Dynamic vendor filtering in `VendorRegistry` (disabled vendors bypassed).
+  3. `core/procurement/challenge_handler.py` (`IChallengeHandler`, `ChallengeType` classification, dual-mode solving: visible window vs in-app CAPTCHA image dialog).
+  4. Headless-to-headful authentication fallback in adapters and session resumption.
+- **Affected Files:** `ui/dialogs/settings_dialog.py`, `settings_manager.py`, `core/procurement/registry.py`, `core/procurement/challenge_handler.py` (NEW), `vendors/*/session.py`, `vendors/*/adapter.py`, `ui/dialogs/challenge_dialog.py` (NEW).
+
+#### TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion
+- **Target GAPs:** `GAP-01`, `GAP-16`.
+- **Scope:**
+  1. Add Mode A (Database-Aware) vs Mode B (Direct BOM Sourcing) toggle to `BOMAuditWidget`.
+  2. Implement Mode B sourcing workflow querying all enabled vendors directly from BOM.
+  3. Extend `BOMAuditor` to ingest extended Altium Parameter Contract columns (`DOC-OMNIX-ALTIUM-CONTRACT-001`).
+- **Affected Files:** `ui/widgets/bom_audit_widget.py`, `bom_auditor.py`, `core/procurement/bridge.py`.
+
+#### TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization
+- **Target GAPs:** `GAP-13`.
+- **Scope:**
+  1. Cart pre-inspection via `inspect_cart()` across all vendor adapters.
+  2. Calculate missing delta: $\Delta Q = \max(0, Q_{\text{target}} - Q_{\text{staged}})$.
+  3. Stage only $\Delta Q$ units (0 units added if already satisfied).
+- **Affected Files:** `core/procurement/bridge.py`, `vendors/*/adapter.py`.
+
+#### TASK-A5: Desktop UI Workflows & Multi-Candidate Preview
+- **Target GAPs:** `GAP-07`, `GAP-02`, `GAP-03`.
+- **Scope:**
+  1. Expand `OrderPreviewDialog` to display multi-candidate alternative offers, selection rationales, and candidate switching.
+  2. Create `QuickOrderDialog` for standalone Direct MPN and Direct URL procurement.
+- **Affected Files:** `ui/dialogs/order_preview_dialog.py`, `ui/dialogs/quick_order_dialog.py` (NEW), `ui/main_window.py`.
+
+#### TASK-A6: Multi-Vendor Deterministic Export Pipeline
+- **Target GAPs:** `GAP-18`.
+- **Scope:**
+  1. Implement multi-vendor procurement report generation in PDF, CSV, and Excel formats.
+  2. Include complete decision audit trail, pricing breakdown, and unverified parameter warnings.
+- **Affected Files:** `ui/widgets/bom_audit_widget.py`, `core/reporting/` (NEW).
+
+#### TASK-A7: Phase 10 Release Packaging & Nuitka Hardening
+- **Target Scope:** End-to-end live multi-vendor validation on Windows host, application-level packaging, and production Nuitka binary compilation.
+- **Prerequisites:** Tasks A1 through A6 completed.
+
+---
+
+## 16. MASTER ROADMAP AUDIT SUMMARY
+
+```
+================================================================================
+MASTER IMPLEMENTATION ROADMAP RECONCILIATION SUMMARY
+================================================================================
+Document Reference:      DOC-OMNIX-ROADMAP-001
+Version:                 2.0.0-RECONCILED
+Governing Registry:      docs/PRODUCT/CANONICAL_GAP_REGISTRY.md (DOC-OMNIX-REGISTRY-001)
+Repository:              D:\management-elec\autom\atom
+Branch:                  Auto
+Automated Tests:         208 / 208 PASSED (7.40s)
+Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
+Canonical GAPs Count:    18 GAPs (GAP-01 through GAP-18)
+Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17)
+Verified GAPs:           3 GAPs (GAP-04, GAP-05, GAP-06 in TASK-A1)
+Active Next Task:        TASK-A2 (GAP-11, GAP-17, GAP-09)
+Task Sequence:           TASK-A1 -> TASK-A2 -> TASK-A3 -> TASK-A4 -> TASK-A5 -> TASK-A6 -> TASK-A7
+Current Datastore:       Inventory.xlsx (Production Datastore Preserved)
+SQLite Status:           DEFERRED (GAP-14 gated on OD-003)
+================================================================================
+```

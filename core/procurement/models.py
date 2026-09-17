@@ -5,10 +5,47 @@ Governing Document: docs/PROCUREMENT/PHASE9_CONTRACT_GAP_ANALYSIS.md Section 14
 
 import math
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional, Dict, Any
 
 from core.errors import MaxQuantityExceededError
 from core.models import ProductReference, OrderConstraints
+
+
+class EvaluationState(str, Enum):
+    """
+    Deterministic qualification state of a vendor candidate against a ProcurementRequest.
+    Governing GAPs: GAP-04, GAP-05, GAP-06.
+    """
+    ELIGIBLE = "ELIGIBLE"
+    INCOMPATIBLE_MPN = "INCOMPATIBLE_MPN"
+    INCOMPATIBLE_MANUFACTURER = "INCOMPATIBLE_MANUFACTURER"
+    INCOMPATIBLE_PACKAGE = "INCOMPATIBLE_PACKAGE"
+    INCOMPATIBLE_FOOTPRINT = "INCOMPATIBLE_FOOTPRINT"
+    INCOMPATIBLE_DIMENSIONS = "INCOMPATIBLE_DIMENSIONS"
+    UNKNOWN_REQUIRED_PARAMETER = "UNKNOWN_REQUIRED_PARAMETER"
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+    UNORDERABLE = "UNORDERABLE"
+    PRICE_UNAVAILABLE = "PRICE_UNAVAILABLE"
+
+
+def normalize_constraint_string(s: Optional[str]) -> str:
+    """
+    Conservative string normalization for technical constraints (MPN, package, footprint, brand, specs).
+    Rules:
+    - Strip leading/trailing whitespace
+    - Lowercase
+    - Remove hyphen '-'
+    - Remove underscore '_'
+    - Remove spaces ' '
+    
+    Invariants:
+    - 'SOIC-8', 'SOIC_8', ' SOIC 8 ' -> 'soic8' (Match)
+    - 'DIP-8' ('dip8') vs 'PDIP-8' ('pdip8') -> Mismatch (OD-001 preserved OPEN).
+    """
+    if not s or not isinstance(s, str):
+        return ""
+    return s.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
 
 
 @dataclass
@@ -34,6 +71,12 @@ class ProcurementRequest:
     explicit_vendor_id: Optional[str] = None
     explicit_vendor_url: Optional[str] = None
     manufacturer: Optional[str] = None
+    allowed_manufacturers: Optional[List[str]] = None
+    is_manufacturer_any: bool = False
+    package: Optional[str] = None
+    footprint: Optional[str] = None
+    required_specs: Dict[str, str] = field(default_factory=dict)
+    required_dimensions: Dict[str, str] = field(default_factory=dict)
     exact_mpn_required: bool = True
     source: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -44,6 +87,12 @@ class ProcurementRequest:
         if self.required_quantity < 1:
             raise ValueError(f"required_quantity must be >= 1 (got {self.required_quantity}).")
         self.part_number = self.part_number.strip()
+        if self.package:
+            self.package = self.package.strip()
+        if self.footprint:
+            self.footprint = self.footprint.strip()
+        if self.manufacturer:
+            self.manufacturer = self.manufacturer.strip()
 
 
 @dataclass
@@ -61,13 +110,15 @@ class VendorProcurementCandidate:
     order_constraints: OrderConstraints = field(default_factory=OrderConstraints)
     manufacturer: Optional[str] = None
     package: Optional[str] = None
+    footprint: Optional[str] = None
+    dimensions: Dict[str, str] = field(default_factory=dict)
     raw_status_text: str = ""
     specs: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class CandidateEvaluation:
-    """Deterministic evaluation of a candidate against a specific required quantity."""
+    """Deterministic evaluation of a candidate against a specific required quantity and constraints."""
     candidate: VendorProcurementCandidate
     required_quantity: int
     effective_quantity: int
@@ -75,7 +126,9 @@ class CandidateEvaluation:
     effective_total_price_irr: Optional[int] = None
     is_eligible: bool = False
     is_exact_mpn: bool = False
+    state: EvaluationState = EvaluationState.ELIGIBLE
     rejection_reasons: List[str] = field(default_factory=list)
+    unknown_parameters: List[str] = field(default_factory=list)
 
 
 @dataclass

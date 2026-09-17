@@ -146,3 +146,75 @@ class TestPriceTierEvaluation:
         )
         assert effective_unit_price(candidate, 10) is None
         assert effective_total_price(candidate, 10) is None
+
+
+class TestTaskA1ModelExtensions:
+    """Verify Task A1 model fields, EvaluationState enum, and string normalization."""
+
+    def test_evaluation_state_enum_members(self):
+        from core.procurement.models import EvaluationState
+        assert EvaluationState.ELIGIBLE == "ELIGIBLE"
+        assert EvaluationState.INCOMPATIBLE_MPN == "INCOMPATIBLE_MPN"
+        assert EvaluationState.INCOMPATIBLE_MANUFACTURER == "INCOMPATIBLE_MANUFACTURER"
+        assert EvaluationState.INCOMPATIBLE_PACKAGE == "INCOMPATIBLE_PACKAGE"
+        assert EvaluationState.INCOMPATIBLE_FOOTPRINT == "INCOMPATIBLE_FOOTPRINT"
+        assert EvaluationState.INCOMPATIBLE_DIMENSIONS == "INCOMPATIBLE_DIMENSIONS"
+        assert EvaluationState.UNKNOWN_REQUIRED_PARAMETER == "UNKNOWN_REQUIRED_PARAMETER"
+        assert EvaluationState.OUT_OF_STOCK == "OUT_OF_STOCK"
+        assert EvaluationState.UNORDERABLE == "UNORDERABLE"
+        assert EvaluationState.PRICE_UNAVAILABLE == "PRICE_UNAVAILABLE"
+
+    def test_conservative_string_normalization(self):
+        from core.procurement.models import normalize_constraint_string
+        # Case folding, whitespace trim, hyphen, underscore, space removal
+        assert normalize_constraint_string("SOIC-8") == "soic8"
+        assert normalize_constraint_string("SOIC_8") == "soic8"
+        assert normalize_constraint_string(" SOIC 8 ") == "soic8"
+        assert normalize_constraint_string("  soic-8  ") == "soic8"
+
+        # OD-001 preserved OPEN: no package family equivalence
+        assert normalize_constraint_string("DIP-8") == "dip8"
+        assert normalize_constraint_string("PDIP-8") == "pdip8"
+        assert normalize_constraint_string("DIP-8") != normalize_constraint_string("PDIP-8")
+        assert normalize_constraint_string("DIP-8") != normalize_constraint_string("SOP-8")
+        assert normalize_constraint_string("SOIC-8") != normalize_constraint_string("SOP-8")
+
+        # None / empty handling
+        assert normalize_constraint_string(None) == ""
+        assert normalize_constraint_string("") == ""
+        assert normalize_constraint_string("   ") == ""
+
+    def test_procurement_request_with_constraints(self):
+        req = ProcurementRequest(
+            part_number="STM32F103C8T6",
+            required_quantity=25,
+            manufacturer="STMicroelectronics",
+            allowed_manufacturers=["STMicroelectronics", "Texas Instruments"],
+            package="LQFP-48",
+            footprint="LQFP-48",
+            required_specs={"voltage": "3.3V", "frequency": "72MHz"},
+            required_dimensions={"lead_pitch": "0.5mm"},
+        )
+        assert req.package == "LQFP-48"
+        assert req.footprint == "LQFP-48"
+        assert req.manufacturer == "STMicroelectronics"
+        assert len(req.allowed_manufacturers) == 2
+        assert req.required_specs["voltage"] == "3.3V"
+        assert req.required_dimensions["lead_pitch"] == "0.5mm"
+
+    def test_vendor_candidate_with_constraints(self):
+        candidate = VendorProcurementCandidate(
+            vendor_id="vendor_lion",
+            part_number="STM32F103C8T6",
+            product_ref=ProductReference("vendor_lion", "SKU100", "https://lion.ir/100"),
+            manufacturer="STMicroelectronics",
+            package="LQFP-48",
+            footprint="LQFP-48",
+            dimensions={"lead_pitch": "0.5mm"},
+            specs={"voltage": "3.3V", "frequency": "72MHz"},
+        )
+        assert candidate.package == "LQFP-48"
+        assert candidate.footprint == "LQFP-48"
+        assert candidate.dimensions["lead_pitch"] == "0.5mm"
+        assert candidate.specs["voltage"] == "3.3V"
+
