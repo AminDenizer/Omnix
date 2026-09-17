@@ -6,10 +6,11 @@
 **Status:** Authoritative Single Source of Truth for Project GAPs  
 **Repository:** `D:\management-elec\autom\atom`  
 **Branch:** `Auto`  
-**Automated Tests:** 208 / 208 PASSED (7.40s)  
+**Automated Tests:** 241 / 241 PASSED  
 **Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
 **Phase 9 Certification Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
 **Task A1 Status:** `COMPLETED_AND_VERIFIED`  
+**Task A2 Status:** `COMPLETED_AND_VERIFIED`  
 **Audit Date:** September 17, 2026  
 
 ---
@@ -53,15 +54,15 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 | **`GAP-06`** | Manufacturer / Brand Constraint Engine | `CORE_ENGINE` | `ANY` vs explicit approved manufacturer list filtering implemented in Core. | **YES** | `TASK-A1` | `GAP-05` | `VERIFIED` |
 | **`GAP-07`** | Multi-Candidate Alternative Selection UI | `UI` | Core evaluates candidate list; `OrderPreviewDialog` renders flat list without candidate override. | No | `TASK-A5` | `GAP-04`, `GAP-05`, `GAP-06` | `PARTIAL` |
 | **`GAP-08`** | Split-Vendor Line Item Sourcing Allocation | `CORE_ENGINE` | Line items allocated to single vendor; split sourcing across multiple vendors deferred. | No | Post-Release | `OD-002` | `DEFERRED` |
-| **`GAP-09`** | Interactive Authentication & Headful Fallback | `AUTHENTICATION` | Adapters run headless only; fails on CAPTCHA/OTP without human interactive recovery. | **YES** | `TASK-A2` | `GAP-11`, `GAP-17` | `MISSING` |
+| **`GAP-09`** | Interactive Authentication & Headful Fallback | `AUTHENTICATION` | Session promotion with explicit cookie transfer qualification and adapter challenge escalation implemented. | **YES** | `TASK-A2` | `GAP-11`, `GAP-17` | `VERIFIED` |
 | **`GAP-10`** | Encrypted Keyring Credential Storage | `SECURITY` | Plaintext JSON in `settings.json`; OS keyring encryption deferred. | No | Post-Release | None | `DEFERRED` |
-| **`GAP-11`** | Multi-Vendor Settings & Dynamic Enable/Disable | `UI / SETTINGS` | Settings UI only configures Lion; multi-vendor tabs and enable/disable toggles missing. | **YES** | `TASK-A2` | None | `PARTIAL` |
+| **`GAP-11`** | Multi-Vendor Settings & Dynamic Enable/Disable | `UI / SETTINGS` | Multi-vendor settings, isolated schema, dynamic registry filtering, and 4-tab UI dialog implemented. | **YES** | `TASK-A2` | None | `VERIFIED` |
 | **`GAP-12`** | Finite State Machine Job Lifecycle Engine | `RUNTIME` | Coarse string statuses (`"RESOLVED"`); explicit lifecycle FSM deferred. | No | Post-Release | None | `DEFERRED` |
 | **`GAP-13`** | Multi-Vendor Cart Idempotency & Delta Sync | `RUNTIME` | Unconditional cart addition; pre-inspection and delta staging missing. | **YES** | `TASK-A4` | None | `MISSING` |
 | **`GAP-14`** | Embedded ACID Relational Persistence (SQLite) | `PERSISTENCE` | `Inventory.xlsx` production datastore active; SQLite migration deferred. | No | Post-Release | `OD-003` | `DEFERRED` |
 | **`GAP-15`** | Append-Only Persistent Audit Trail Event Log | `AUDIT` | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `GAP-14` | `DEFERRED` |
 | **`GAP-16`** | Extended Altium Parameter Ingestion Parser | `CAD_INTEGRATION` | Ingests 7 standard BOM columns; extended 20-parameter contract ingestion missing. | No | `TASK-A3` | None | `PARTIAL` |
-| **`GAP-17`** | Universal Security Challenge / CAPTCHA Handler | `SECURITY / AUTH` | Scattered error handling; unified `ChallengeHandler` subsystem missing. | **YES** | `TASK-A2` | None | `MISSING` |
+| **`GAP-17`** | Universal Security Challenge / CAPTCHA Handler | `SECURITY / AUTH` | Unified `IChallengeHandler` subsystem with 8 challenge types, callback handler, and Qt dialog implemented. | **YES** | `TASK-A2` | None | `VERIFIED` |
 | **`GAP-18`** | Multi-Vendor Deterministic Export Pipeline | `REPORTING` | Basic Lion shortage export; multi-vendor PDF/CSV/XLSX export pipeline missing. | No | `TASK-A6` | `GAP-01`, `GAP-07` | `PARTIAL` |
 
 ---
@@ -80,31 +81,28 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 │ GAP-04   │ Package & Footprint Hard Constraints        │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-05   │ UNKNOWN_REQUIRED_PARAMETER & Spec Engine    │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-06   │ Manufacturer / Brand Constraint Engine      │ TASK-A1      │ VERIFIED (Core Verified) │
-│ GAP-09   │ Interactive Auth & Headful Fallback         │ TASK-A2      │ MISSING                  │
-│ GAP-11   │ Multi-Vendor Settings & Enable/Disable      │ TASK-A2      │ PARTIAL                  │
+│ GAP-09   │ Interactive Auth & Headful Fallback         │ TASK-A2      │ VERIFIED (Auth Verified) │
+│ GAP-11   │ Multi-Vendor Settings & Enable/Disable      │ TASK-A2      │ VERIFIED (Settings Ver.) │
 │ GAP-13   │ Multi-Vendor Cart Idempotency & Delta Sync  │ TASK-A4      │ MISSING                  │
-│ GAP-17   │ Universal Security Challenge Handler        │ TASK-A2      │ MISSING                  │
+│ GAP-17   │ Universal Security Challenge Handler        │ TASK-A2      │ VERIFIED (Handler Ver.)  │
 └──────────┴─────────────────────────────────────────────┴──────────────┴──────────────────────────┘
 ```
 
 ---
 
-## 4. TASK-A1 IMPLEMENTATION & VERIFICATION EVIDENCE
+## 4. TASK-A1 & TASK-A2 IMPLEMENTATION & VERIFICATION EVIDENCE
 
-TASK-A1 addressed **`GAP-04`**, **`GAP-05`**, and **`GAP-06`** in the core procurement layer.
+### 4.1 Task A1 Verification Evidence (GAP-04, GAP-05, GAP-06)
+- **`GAP-04`**: `normalize_constraint_string()`, independent package/footprint matching ([`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py), [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py)).
+- **`GAP-05`**: `EvaluationState` enum, 4-state spec engine, dimension validator, `UNKNOWN_REQUIRED_PARAMETER` exclusion ([`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py), [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py)).
+- **`GAP-06`**: `ANY` vs approved manufacturer set filtering ([`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py), [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py)).
 
-### 4.1 Forensic Implementation Traceability
-
+### 4.2 Task A2 Verification Evidence (GAP-11, GAP-17, GAP-09)
 | GAP ID | Implemented Features | Source Code Location | Forensic Verification |
 |---|---|---|---|
-| **`GAP-04`** | • `normalize_constraint_string()` function<br>• Independent `package` compatibility evaluation<br>• Independent `footprint` compatibility evaluation<br>• Conservative normalization (strips `-`, `_`, spaces; lowercases)<br>• Preservation of `OD-001` (DIP-8 != PDIP-8; SOIC-8 != SOP-8) | [`core/procurement/models.py:32-48`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L32-L48)<br>[`core/procurement/orchestrator.py:199-228`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L199-L228) | Passed 8 dedicated package/footprint unit tests in [`tests/test_phase10_task_a1_constraints.py:56-146`](file:///d:/management-elec/autom/atom/tests/test_phase10_task_a1_constraints.py#L56-L146). |
-| **`GAP-05`** | • `EvaluationState` typed enum (`ELIGIBLE`, `INCOMPATIBLE_*`, `UNKNOWN_REQUIRED_PARAMETER`, `OUT_OF_STOCK`, `UNORDERABLE`, `PRICE_UNAVAILABLE`)<br>• 4-state technical parameter validator (`MATCH`, `MISMATCH`, `UNKNOWN_REQUIRED_PARAMETER`, `NOT_REQUIRED`)<br>• Physical dimensions independent validator<br>• Missing/unlisted required specs flagged as `UNKNOWN_REQUIRED_PARAMETER` and excluded from automated ordering | [`core/procurement/models.py:15-30`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L15-L30)<br>[`core/procurement/orchestrator.py:230-310`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L230-L310) | Passed 8 dedicated spec and dimension tests in [`tests/test_phase10_task_a1_constraints.py:200-280`](file:///d:/management-elec/autom/atom/tests/test_phase10_task_a1_constraints.py#L200-L280). |
-| **`GAP-06`** | • `is_manufacturer_any` boolean flag<br>• `allowed_manufacturers` approved set filtering<br>• Mutual exclusivity semantics (`ANY` vs explicit brand set)<br>• Rejection of unapproved brands (`INCOMPATIBLE_MANUFACTURER`) even if cheaper | [`core/procurement/models.py:73-75`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L73-L75)<br>[`core/procurement/orchestrator.py:163-197`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L163-L197) | Passed 6 dedicated brand constraint tests in [`tests/test_phase10_task_a1_constraints.py:148-198`](file:///d:/management-elec/autom/atom/tests/test_phase10_task_a1_constraints.py#L148-L198). |
-
-### 4.2 Decision Hierarchy Verification
-`select_best_candidate()` in [`core/procurement/orchestrator.py:351-378`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L351-L378) enforces the governing invariant:
-$$\text{Exact / Normalized MPN} \longrightarrow \text{Brand Compliance} \longrightarrow \text{Package Match} \longrightarrow \text{Footprint Match} \longrightarrow \text{Specs / Dimensions Completeness} \longrightarrow \text{Price / Cost Optimization}$$
-A cheaper candidate failing any hard compatibility constraint or having unknown required specs is disqualified and **NEVER** selected over an eligible candidate.
+| **`GAP-11`** | • `VendorSettings` dataclass with masked `__repr__`<br>• `SettingsManager` multi-vendor storage & legacy synchronization<br>• `VendorRegistry` dynamic filtering (`is_vendor_enabled`)<br>• `UniversalProcurementOrchestrator` bypassed disabled vendors<br>• `SettingsDialog` 4-tab UI with enable toggles & credentials | [`core/models.py:27-58`](file:///d:/management-elec/autom/atom/core/models.py#L27-L58)<br>[`settings_manager.py:30-140`](file:///d:/management-elec/autom/atom/settings_manager.py#L30-L140)<br>[`core/procurement/registry.py:80-120`](file:///d:/management-elec/autom/atom/core/procurement/registry.py#L80-L120)<br>[`core/procurement/orchestrator.py:90-110`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L90-L110)<br>[`ui/dialogs/settings_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/settings_dialog.py) | Passed 11 dedicated multi-vendor settings tests in [`tests/test_multi_vendor_settings.py`](file:///d:/management-elec/autom/atom/tests/test_multi_vendor_settings.py). |
+| **`GAP-17`** | • `ChallengeType` enum (8 types: Turnstile, reCAPTCHA, hCaptcha, Image CAPTCHA, OTP, SMS, Password, Custom)<br>• `ChallengeState` enum (Solved, Cancelled, TimedOut, Unsupported, Failed)<br>• `ChallengeContext` & `ChallengeResult` dataclasses<br>• `IChallengeHandler` interface & `CallbackChallengeHandler`<br>• `UniversalChallengeDialog` & `QtChallengeHandler` | [`core/procurement/challenge_handler.py`](file:///d:/management-elec/autom/atom/core/procurement/challenge_handler.py)<br>[`ui/dialogs/challenge_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/challenge_dialog.py) | Passed 12 dedicated challenge handler tests in [`tests/test_challenge_handler.py`](file:///d:/management-elec/autom/atom/tests/test_challenge_handler.py). |
+| **`GAP-09`** | • Headless-to-headful promotion (`promote_to_headful`)<br>• Qualified session continuity (`SessionContinuityMode`)<br>• Cookie capture, headless teardown, headful recreation, cookie re-application<br>• `IVendorAdapter.authenticate(credentials, challenge_handler)` integration across Lion, Javan, and RoboEq | [`vendors/lion/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/lion/session.py#L100-L145)<br>[`vendors/javan/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/javan/session.py#L100-L145)<br>[`vendors/roboeq/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/roboeq/session.py#L100-L145)<br>[`vendors/lion/adapter.py:540-630`](file:///d:/management-elec/autom/atom/vendors/lion/adapter.py#L540-L630)<br>[`vendors/javan/adapter.py:570-710`](file:///d:/management-elec/autom/atom/vendors/javan/adapter.py#L570-L710)<br>[`vendors/roboeq/adapter.py:440-520`](file:///d:/management-elec/autom/atom/vendors/roboeq/adapter.py#L440-L520) | Passed 10 dedicated interactive auth and session promotion tests in [`tests/test_interactive_authentication.py`](file:///d:/management-elec/autom/atom/tests/test_interactive_authentication.py). |
 
 ---
 
@@ -113,8 +111,8 @@ A cheaper candidate failing any hard compatibility constraint or having unknown 
 ```mermaid
 flowchart TD
     A1["TASK-A1 [VERIFIED]: Core Technical Matching, Package/Footprint & Brand Rules (GAP-04, GAP-05, GAP-06)"]
-    A2["TASK-A2 [NEXT]: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth (GAP-11, GAP-17, GAP-09)"]
-    A3["TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
+    A2["TASK-A2 [VERIFIED]: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth (GAP-11, GAP-17, GAP-09)"]
+    A3["TASK-A3 [NEXT]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
     A4["TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
     A5["TASK-A5: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
     A6["TASK-A6: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
@@ -132,17 +130,12 @@ flowchart TD
 
 #### TASK-A1: Core Technical Matching, Package/Footprint Constraints & Brand Rules
 - **Target GAPs:** `GAP-04`, `GAP-05`, `GAP-06`
-- **Status:** `COMPLETED_AND_VERIFIED` (208 / 208 tests passing).
-- **Scope Accomplished:** `EvaluationState` enum, `normalize_constraint_string`, independent package and footprint matching, brand constraint filtering (`ANY` vs approved set), `UNKNOWN_REQUIRED_PARAMETER` flagging, and hard-constraint precedence over price in `select_best_candidate`.
+- **Status:** `COMPLETED_AND_VERIFIED` (208 tests passing baseline).
 
 #### TASK-A2: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth
 - **Target GAPs:** `GAP-11`, `GAP-17`, `GAP-09`
-- **Status:** `NEXT_TASK_FOR_EXECUTION`
-- **Scope:**
-  1. `SettingsDialog` and `SettingsManager` multi-vendor tabs for Lion, Javan, and RoboEq (credentials, enable/disable checkboxes, timeouts).
-  2. Dynamic vendor filtering in `VendorRegistry` (disabled vendors bypassed).
-  3. `core/procurement/challenge_handler.py` (`IChallengeHandler`, `ChallengeType` classification, dual-mode solving: visible window vs in-app CAPTCHA image dialog).
-  4. Headless-to-headful authentication fallback in adapters and session resumption.
+- **Status:** `COMPLETED_AND_VERIFIED` (241 tests passing total, +33 new tests).
+- **Scope Accomplished:** Multi-vendor isolated settings schema, dynamic vendor enable/disable in `VendorRegistry` & `UniversalProcurementOrchestrator`, `IChallengeHandler` subsystem with 8 challenge types and UI dialog, session promotion (`SessionContinuityMode`) with cookie transfer, and adapter challenge escalation for Lion, Javan, and RoboEq.
 
 #### TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion
 - **Target GAPs:** `GAP-01`, `GAP-16`
