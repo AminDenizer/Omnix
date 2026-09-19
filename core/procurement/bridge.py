@@ -17,6 +17,7 @@ from core.models import CartMutationResult
 from core.procurement.models import (
     BOMProcurementPlan,
     CandidateEvaluation,
+    ProcurementMode,
     ProcurementRequest,
     RequestProcurementResult,
     VendorProcurementCandidate,
@@ -86,11 +87,22 @@ class ProcurementBridge:
         registry: Optional[VendorRegistry] = None
     ) -> Tuple[bool, Optional[str]]:
         """
-        Determines whether a shortage item dictionary contains an automated-orderable link.
+        Determines whether a shortage or direct BOM item dictionary contains an automated-orderable request.
+
+        In Mode B (DIRECT_BOM): Returns True if item has valid non-empty MPN and is marked valid.
+        In Mode A (DATABASE_AWARE): Returns True if item has a valid registered vendor URL.
 
         Returns:
             (is_orderable, vendor_id)
         """
+        mode = item.get("mode")
+        if mode == ProcurementMode.DIRECT_BOM or mode == "DIRECT_BOM":
+            pn = item.get("part_number") or ""
+            is_valid = item.get("is_valid", True)
+            if is_valid and str(pn).strip():
+                return True, None
+            return False, None
+
         link = str(item.get("link", "")).strip()
         _, _, vendor_id = ProcurementBridge.classify_link(link, registry)
         return vendor_id is not None, vendor_id
@@ -99,36 +111,50 @@ class ProcurementBridge:
     def item_to_request(
         item: Dict[str, Any],
         line_item_id: Optional[str] = None,
-        registry: Optional[VendorRegistry] = None
+        registry: Optional[VendorRegistry] = None,
+        mode: Optional[ProcurementMode] = None,
     ) -> ProcurementRequest:
         """
-        Converts an inventory shortage or BOM shortage item dictionary into a
-        formal immutable ProcurementRequest.
+        Converts an inventory shortage or BOM line item dictionary into a
+        formal immutable ProcurementRequest with strict MPN integrity and explicit mode branching.
+
+        Rules:
+        - Strict MPN: Never fall back to Comment or Part Name!
+        - Mode B: Inventory links and DB stock are ignored; queries broadcast across all enabled vendors.
+        - Mode A: Reconciles against inventory link.
         """
-        part_number = (
-            item.get("part_number")
-            or item.get("comment")
-            or item.get("part_name")
-            or ""
-        )
+        # Determine effective mode
+        if mode is not None:
+            eff_mode = mode if isinstance(mode, ProcurementMode) else ProcurementMode(mode)
+        else:
+            item_mode = item.get("mode")
+            if isinstance(item_mode, ProcurementMode):
+                eff_mode = item_mode
+            elif isinstance(item_mode, str) and item_mode in ProcurementMode.__members__:
+                eff_mode = ProcurementMode(item_mode)
+            elif item_mode == "DIRECT_BOM":
+                eff_mode = ProcurementMode.DIRECT_BOM
+            else:
+                eff_mode = ProcurementMode.DATABASE_AWARE
+
+        # Strict MPN validation: Missing MPN must NEVER fall back to Comment
+        raw_pn = item.get("part_number") or item.get("part_name")
+        if not raw_pn or not isinstance(raw_pn, str) or not raw_pn.strip():
+            raise ValueError("part_number must be a non-empty string. Fallback to comment is prohibited.")
+        part_number = raw_pn.strip()
+
         try:
             req_qty = int(
                 item.get("needed_qty")
                 or item.get("shortage_qty")
+                or item.get("total_needed_qty")
+                or item.get("total_needed")
                 or item.get("unit_qty")
                 or 1
             )
         except (ValueError, TypeError):
             req_qty = 1
         req_qty = max(1, req_qty)
-
-        raw_link = str(item.get("link", "")).strip()
-        explicit_url = raw_link if raw_link.startswith("http") else None
-
-        # Determine target vendor if link is registered
-        target_vendor = None
-        if explicit_url:
-            _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
 
         if line_item_id:
             lid = line_item_id
@@ -137,28 +163,48 @@ class ProcurementBridge:
         elif "orig_row_idx" in item:
             lid = f"inv_row_{item['orig_row_idx']}"
         else:
-            lid = str(item.get("designator") or item.get("part_name") or "item")
+            lid = str(item.get("designator") or part_number or "item")
 
         description = str(item.get("description") or item.get("comment") or "")
-        exact_mpn = item.get("exact_mpn_required", False if explicit_url else True)
 
-        if explicit_url:
-            package = str(item.get("package") or "").strip() or None if item.get("package_required") else None
-            footprint = str(item.get("footprint") or "").strip() or None if item.get("footprint_required") else None
-            manufacturer = (
-                str(item.get("manufacturer") or item.get("brand") or "").strip() or None
-                if item.get("manufacturer_required")
-                else None
-            )
-        else:
+        # Explicit mode branching
+        if eff_mode == ProcurementMode.DIRECT_BOM:
+            explicit_url = None
+            target_vendor = None
+            exact_mpn = item.get("exact_mpn_required", True)
             package = str(item.get("package") or "").strip() or None
             footprint = str(item.get("footprint") or "").strip() or None
             manufacturer = str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+            allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
+            is_mfg_any = bool(item.get("is_manufacturer_any", False))
+            req_specs = item.get("required_specs") or {}
+            req_dims = item.get("required_dimensions") or {}
+        else:
+            # Mode A: DATABASE_AWARE
+            raw_link = str(item.get("link", "")).strip()
+            explicit_url = raw_link if raw_link.startswith("http") else None
+            target_vendor = None
+            if explicit_url:
+                _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
 
-        allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
-        is_mfg_any = bool(item.get("is_manufacturer_any", False))
-        req_specs = item.get("required_specs") or {}
-        req_dims = item.get("required_dimensions") or {}
+            exact_mpn = item.get("exact_mpn_required", False if explicit_url else True)
+            if explicit_url:
+                package = str(item.get("package") or "").strip() or None if item.get("package_required") else None
+                footprint = str(item.get("footprint") or "").strip() or None if item.get("footprint_required") else None
+                manufacturer = (
+                    str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+                    if item.get("manufacturer_required")
+                    else None
+                )
+            else:
+                package = str(item.get("package") or "").strip() or None
+                footprint = str(item.get("footprint") or "").strip() or None
+                manufacturer = str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+
+            allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
+            is_mfg_any = bool(item.get("is_manufacturer_any", False))
+            req_specs = item.get("required_specs") or {}
+            req_dims = item.get("required_dimensions") or {}
 
         metadata = {
             k: v
@@ -167,7 +213,7 @@ class ProcurementBridge:
         }
 
         return ProcurementRequest(
-            part_number=str(part_number).strip(),
+            part_number=part_number,
             required_quantity=req_qty,
             description=description,
             explicit_vendor_id=target_vendor,
@@ -180,6 +226,7 @@ class ProcurementBridge:
             required_specs=req_specs,
             required_dimensions=req_dims,
             exact_mpn_required=exact_mpn,
+            mode=eff_mode,
             source=str(lid),
             metadata=metadata,
         )
@@ -192,11 +239,11 @@ class ProcurementBridge:
         orchestrator: Optional[UniversalProcurementOrchestrator] = None,
     ) -> Dict[str, Any]:
         """
-        Executes cart staging across a batch of shortage items using the Universal
+        Executes cart staging across a batch of shortage or direct BOM items using the Universal
         Procurement Orchestrator and registered vendor adapters.
 
         Args:
-            items: List of shortage dictionaries (from BOMAuditor or ExcelDataLoader).
+            items: List of shortage/BOM dictionaries (from BOMAuditor or ExcelDataLoader).
             progress_callback: Optional progress reporter (current, total, part_name, qty, msg).
             registry: Optional custom VendorRegistry instance.
             orchestrator: Optional custom UniversalProcurementOrchestrator instance.
@@ -237,7 +284,13 @@ class ProcurementBridge:
                 or item.get("designator")
                 or f"Item {idx}"
             )
-            needed_qty = int(item.get("needed_qty") or item.get("shortage_qty") or 1)
+            needed_qty = int(
+                item.get("needed_qty")
+                or item.get("shortage_qty")
+                or item.get("total_needed_qty")
+                or item.get("unit_qty")
+                or 1
+            )
             link = str(item.get("link", "")).strip()
 
             is_orderable, vendor_id = ProcurementBridge.is_item_orderable(item, reg)
@@ -247,7 +300,7 @@ class ProcurementBridge:
                 item["order_success"] = False
                 item["actual_ordered_qty"] = 0
                 item["qty_ordered"] = 0
-                msg = f"No supported vendor adapter for link: {link}" if link else "Missing store link"
+                msg = f"No supported vendor adapter for link: {link}" if link else "Missing or invalid part number / store link"
                 item["order_message"] = msg
                 results_log.append({
                     "part": p_name,
@@ -260,9 +313,10 @@ class ProcurementBridge:
                     progress_callback(idx, total, p_name, 0, f"Skipped ({msg})")
                 continue
 
+            v_target_desc = vendor_id if vendor_id else "multi-vendor catalog"
             if progress_callback:
                 progress_callback(
-                    idx, total, p_name, needed_qty, f"Staging {needed_qty} pcs for {vendor_id}..."
+                    idx, total, p_name, needed_qty, f"Staging {needed_qty} pcs for {v_target_desc}..."
                 )
 
             try:
@@ -336,7 +390,7 @@ class ProcurementBridge:
                         "status": "FAILED",
                         "qty": 0,
                         "msg": fail_msg,
-                        "vendor_id": vendor_id,
+                        "vendor_id": vendor_id or "multi_vendor",
                         "item": item,
                     })
                     if progress_callback:
@@ -354,7 +408,7 @@ class ProcurementBridge:
                     "status": "FAILED",
                     "qty": 0,
                     "msg": err_msg,
-                    "vendor_id": vendor_id,
+                    "vendor_id": vendor_id or "multi_vendor",
                     "item": item,
                 })
                 if progress_callback:

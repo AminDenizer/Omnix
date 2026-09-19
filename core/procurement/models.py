@@ -29,6 +29,35 @@ class EvaluationState(str, Enum):
     PRICE_UNAVAILABLE = "PRICE_UNAVAILABLE"
 
 
+class ProcurementMode(str, Enum):
+    """
+    Procurement workflow execution mode.
+    Governing GAP: GAP-01.
+    """
+    DATABASE_AWARE = "DATABASE_AWARE"  # Mode A: Shortage calculation against Inventory.xlsx
+    DIRECT_BOM = "DIRECT_BOM"          # Mode B: Direct turnkey BOM sourcing bypassing inventory
+
+
+class ManufacturerRule(str, Enum):
+    """
+    Rule type specified in CAD contract or UI selection.
+    Governing GAP: GAP-06, GAP-16.
+    """
+    EXACT = "EXACT"
+    APPROVED_LIST = "APPROVED_LIST"
+    ANY = "ANY"
+
+
+class ManufacturerDataState(str, Enum):
+    """
+    Ingestion & qualification presence state of manufacturer data.
+    Governing GAP: GAP-06, GAP-16.
+    """
+    EXPLICIT_ANY = "EXPLICIT_ANY"
+    EXPLICIT_BRAND_RULE = "EXPLICIT_BRAND_RULE"
+    MISSING_MANUFACTURER_DATA = "MISSING_MANUFACTURER_DATA"
+
+
 def normalize_constraint_string(s: Optional[str]) -> str:
     """
     Conservative string normalization for technical constraints (MPN, package, footprint, brand, specs).
@@ -78,6 +107,7 @@ class ProcurementRequest:
     required_specs: Dict[str, str] = field(default_factory=dict)
     required_dimensions: Dict[str, str] = field(default_factory=dict)
     exact_mpn_required: bool = True
+    mode: ProcurementMode = ProcurementMode.DATABASE_AWARE
     source: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -93,6 +123,8 @@ class ProcurementRequest:
             self.footprint = self.footprint.strip()
         if self.manufacturer:
             self.manufacturer = self.manufacturer.strip()
+        if isinstance(self.mode, str) and not isinstance(self.mode, ProcurementMode):
+            self.mode = ProcurementMode(self.mode)
 
 
 @dataclass
@@ -129,6 +161,10 @@ class CandidateEvaluation:
     state: EvaluationState = EvaluationState.ELIGIBLE
     rejection_reasons: List[str] = field(default_factory=list)
     unknown_parameters: List[str] = field(default_factory=list)
+
+    @property
+    def evaluation_state(self) -> EvaluationState:
+        return self.state
 
 
 @dataclass

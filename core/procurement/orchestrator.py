@@ -108,10 +108,11 @@ class UniversalProcurementOrchestrator:
 
         return candidates
 
+    @classmethod
     def evaluate_candidate(
-        self,
+        cls,
         candidate: VendorProcurementCandidate,
-        required_quantity: int,
+        required_quantity: Optional[int] = None,
         exact_mpn_required: bool = True,
         requested_part_number: str = "",
         requested_package: Optional[str] = None,
@@ -127,9 +128,15 @@ class UniversalProcurementOrchestrator:
         Evaluate candidate eligibility, effective quantity, hard technical constraints, and total cost.
         Governing GAPs: GAP-04, GAP-05, GAP-06.
         """
+        # Handle case where request is passed as second positional argument
+        if isinstance(required_quantity, ProcurementRequest):
+            request = required_quantity
+            required_quantity = None
+
         # Resolve request parameters if request object passed
         if request is not None:
-            required_quantity = request.required_quantity
+            if required_quantity is None:
+                required_quantity = request.required_quantity
             exact_mpn_required = request.exact_mpn_required
             requested_part_number = request.part_number
             if requested_package is None:
@@ -147,6 +154,9 @@ class UniversalProcurementOrchestrator:
             if required_dimensions is None:
                 required_dimensions = request.required_dimensions
 
+        if required_quantity is None:
+            required_quantity = 1
+
         reasons: List[str] = []
         unknown_params: List[str] = []
         primary_failures: List[EvaluationState] = []
@@ -154,7 +164,7 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 1. MPN matching
         # -------------------------------------------------------------
-        is_exact = self._check_mpn_match(candidate.part_number, requested_part_number)
+        is_exact = cls._check_mpn_match(candidate.part_number, requested_part_number)
         if exact_mpn_required and requested_part_number and not is_exact:
             reasons.append(f"MPN mismatch: '{candidate.part_number}' != '{requested_part_number}'")
             primary_failures.append(EvaluationState.INCOMPATIBLE_MPN)
