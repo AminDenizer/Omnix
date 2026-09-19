@@ -338,23 +338,26 @@ class ProcurementBridge:
                         item["order_success"] = True
                         item["actual_ordered_qty"] = stage_res.actual_quantity_staged
                         item["qty_ordered"] = stage_res.actual_quantity_staged
-                        item["order_message"] = stage_res.raw_vendor_message or "Added to cart"
+                        msg = stage_res.raw_vendor_message or ("Already satisfied in cart" if stage_res.is_noop else "Added to cart")
+                        item["order_message"] = msg
                         results_log.append({
                             "part": p_name,
                             "status": "SUCCESS",
                             "qty": stage_res.actual_quantity_staged,
-                            "msg": item["order_message"],
+                            "msg": msg,
                             "vendor_id": candidate.vendor_id,
                             "item": item,
                         })
                         if progress_callback:
+                            cb_msg = f"{msg}" if stage_res.is_noop else f"Added {stage_res.actual_quantity_staged} pcs ({msg})"
                             progress_callback(
                                 idx,
                                 total,
                                 p_name,
                                 stage_res.actual_quantity_staged,
-                                f"Added {stage_res.actual_quantity_staged} pcs ({item['order_message']})",
+                                cb_msg,
                             )
+
                     else:
                         failed_count += 1
                         item["order_success"] = False

@@ -225,8 +225,11 @@ def calculate_effective_quantity(
     """
     Deterministically calculate order quantity respecting packaging step, MOQ, and limits.
     
-    Formula:
-        effective_qty = max(ceil(needed_qty / packaging_step) * packaging_step, moq)
+    A3 Authoritative Rule:
+    IF needed_qty < MOQ:
+        effective_qty = MOQ (Do NOT apply packaging-step rounding again)
+    ELSE:
+        effective_qty = ceil(needed_qty / packaging_step) * packaging_step
         
     Raises:
         ValueError: If needed_qty, packaging_step, or moq < 1.
@@ -238,9 +241,11 @@ def calculate_effective_quantity(
     step = max(packaging_step if packaging_step is not None else 1, 1)
     min_order = max(moq if moq is not None else 1, 1)
 
-    multiples = math.ceil(needed_qty / step)
-    stepped_qty = multiples * step
-    effective_qty = max(stepped_qty, min_order)
+    if needed_qty < min_order:
+        effective_qty = min_order
+    else:
+        multiples = math.ceil(needed_qty / step)
+        effective_qty = multiples * step
 
     if max_orderable is not None and max_orderable >= 1:
         if effective_qty > max_orderable:
@@ -250,6 +255,7 @@ def calculate_effective_quantity(
             )
 
     return effective_qty
+
 
 
 def effective_unit_price(candidate: VendorProcurementCandidate, quantity: int) -> Optional[int]:

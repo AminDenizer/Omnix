@@ -4,10 +4,18 @@ Governing Document: docs/PROCUREMENT/PHASE9_CONTRACT_GAP_ANALYSIS.md Section 14
 """
 
 import datetime
-from typing import List, Optional, Dict, Any
+import urllib.parse
+from typing import List, Optional, Dict, Any, Tuple
 
 from core.errors import OmnixVendorError, UnknownVendorError
-from core.models import CartMutationResult, ProductReference, OrderConstraints
+from core.models import (
+    CartMutationResult,
+    CartItem,
+    CartDetails,
+    IdentityMatchTier,
+    ProductReference,
+    OrderConstraints,
+)
 from core.procurement.models import (
     EvaluationState,
     normalize_constraint_string,
@@ -22,6 +30,7 @@ from core.procurement.models import (
     effective_total_price,
 )
 from core.procurement.registry import VendorRegistry, default_registry
+
 
 
 class UniversalProcurementOrchestrator:
@@ -443,16 +452,352 @@ class UniversalProcurementOrchestrator:
             results=results,
         )
 
+    @staticmethod
+    def _normalize_url(url: Optional[str]) -> str:
+        """Normalize URL for identity comparison (protocol case, trailing slash, www)."""
+        if not url:
+            return ""
+        try:
+            parsed = urllib.parse.urlparse(url.strip())
+            netloc = parsed.netloc.lower()
+            if netloc.startswith("www."):
+                netloc = netloc[4:]
+            path = parsed.path.rstrip("/").lower()
+            return f"{netloc}{path}"
+        except Exception:
+            return (url or "").strip().rstrip("/").lower()
+
+    @staticmethod
+    def match_cart_item(
+        candidate: VendorProcurementCandidate,
+        cart_item: CartItem,
+    ) -> Tuple[bool, IdentityMatchTier]:
+        """
+        Match candidate to a cart line using strict 4-priority cascade (GAP-13).
+
+        Priority 1: Normalized Vendor SKU (only when both sides have valid non-empty SKU)
+        Priority 2: Canonical PDP URL (exact normalized match when SKU is unavailable)
+        Priority 3: MPN + Manufacturer (deterministic comparison when both are available; differing mfg -> NO_MATCH)
+        Priority 4: MPN alone (controlled fallback ONLY when manufacturer genuinely absent on both sides)
+
+        Negative Rules:
+        - Product Name is NEVER used as a definitive identity key.
+        - Differing valid manufacturers NEVER match even if MPN is identical.
+        """
+        cand_sku = (candidate.product_ref.vendor_sku or "").strip()
+        cart_sku = (cart_item.vendor_sku or "").strip()
+
+        cand_url = UniversalProcurementOrchestrator._normalize_url(candidate.product_ref.pdp_url)
+        cart_url = UniversalProcurementOrchestrator._normalize_url(cart_item.pdp_url)
+
+        cand_mpn = normalize_constraint_string(candidate.part_number)
+        cart_mpn = normalize_constraint_string(cart_item.mpn or cart_item.vendor_sku)
+
+        cand_mfg = normalize_constraint_string(candidate.manufacturer) if candidate.manufacturer else None
+        cart_mfg = normalize_constraint_string(cart_item.manufacturer) if cart_item.manufacturer else None
+
+        # Priority 1: Normalized Vendor SKU
+        if cand_sku and cart_sku:
+            if normalize_constraint_string(cand_sku) == normalize_constraint_string(cart_sku):
+                return True, IdentityMatchTier.EXACT_VENDOR_SKU
+            return False, IdentityMatchTier.NO_MATCH
+
+        # Priority 2: Canonical PDP URL
+        if cand_url and cart_url:
+            if cand_url == cart_url:
+                return True, IdentityMatchTier.CANONICAL_PDP_URL
+
+        # Priority 3 & 4: MPN / Manufacturer matching
+        if cand_mpn and cart_mpn and cand_mpn == cart_mpn:
+            # If both sides specify manufacturer:
+            if cand_mfg is not None and cart_mfg is not None:
+                if cand_mfg == cart_mfg:
+                    return True, IdentityMatchTier.MPN_AND_MANUFACTURER
+                else:
+                    # Differing manufacturers -> strictly NO_MATCH
+                    return False, IdentityMatchTier.NO_MATCH
+
+            # Priority 4: Controlled fallback only when manufacturer is genuinely absent on both sides
+            if cand_mfg is None and cart_mfg is None:
+                return True, IdentityMatchTier.MPN_ONLY_FALLBACK
+
+            # If one side has mfg and other does not, treat as controlled fallback
+            return True, IdentityMatchTier.MPN_ONLY_FALLBACK
+
+        return False, IdentityMatchTier.NO_MATCH
+
+    @staticmethod
+    def get_existing_cart_quantity(
+        candidate: VendorProcurementCandidate,
+        cart: Optional[CartDetails],
+    ) -> Tuple[int, List[Tuple[CartItem, IdentityMatchTier]]]:
+        """
+        Sum the quantities of all cart lines that match the SAME candidate identity (GAP-13).
+        Returns (total_existing_quantity, matching_items_with_tiers).
+        """
+        if not cart or not cart.items:
+            return 0, []
+
+        matched: List[Tuple[CartItem, IdentityMatchTier]] = []
+        total_qty = 0
+
+        for item in cart.items:
+            is_match, tier = UniversalProcurementOrchestrator.match_cart_item(candidate, item)
+            if is_match:
+                matched.append((item, tier))
+                total_qty += item.quantity
+
+        return total_qty, matched
+
+    @staticmethod
+    def calculate_cart_delta(
+        candidate: VendorProcurementCandidate,
+        target_orderable_qty: int,
+        cart: Optional[CartDetails] = None,
+    ) -> Tuple[int, int, bool, Optional[IdentityMatchTier]]:
+        """
+        Calculate cart delta quantity deterministically (GAP-13).
+
+        Q_existing = SUM(quantities of all cart lines matching candidate)
+        Delta_Q = max(0, target_orderable_qty - Q_existing)
+
+        Returns:
+            (existing_qty, delta_qty, is_noop, primary_match_tier)
+        """
+        if not cart or not cart.items:
+            return 0, target_orderable_qty, False, None
+
+        existing_qty, matched = UniversalProcurementOrchestrator.get_existing_cart_quantity(candidate, cart)
+        primary_tier = matched[0][1] if matched else None
+
+        if existing_qty >= target_orderable_qty:
+            return existing_qty, 0, True, primary_tier
+
+        delta_qty = target_orderable_qty - existing_qty
+        return existing_qty, delta_qty, False, primary_tier
+
     def stage_candidate(
         self,
         candidate: VendorProcurementCandidate,
         quantity: int,
+        sync_cart: bool = True,
+        cached_cart: Optional[CartDetails] = None,
     ) -> CartMutationResult:
         """
-        Stage a candidate into the vendor's browser cart (strictly non-destructive).
+        Stage a candidate into the vendor's browser cart (strictly non-destructive, GAP-13).
+        
+        If sync_cart=True:
+        1. Check vendor enabled state upfront (bypasses disabled vendors with 0 network calls).
+        2. Inspect cart (or use cached_cart).
+        3. Reconcile quantity: Delta_Q = max(0, quantity - Q_existing).
+        4. Enforce max_orderable limit if applicable.
+        5. If Delta_Q == 0 -> Return deterministic No-Op success.
+        6. If Delta_Q > 0 -> Call adapter.add_to_cart(candidate.product_ref, Delta_Q).
         """
+        # 1. Vendor Enabled Check (GAP-11)
+        if not self.registry.is_vendor_enabled(candidate.vendor_id):
+            return CartMutationResult(
+                vendor_id=candidate.vendor_id,
+                vendor_sku=candidate.product_ref.vendor_sku,
+                requested_quantity=quantity,
+                actual_quantity_staged=0,
+                success=False,
+                error_category="VENDOR_DISABLED",
+                raw_vendor_message=f"Vendor '{candidate.vendor_id}' is disabled in settings.",
+                initial_cart_qty=0,
+                target_qty=quantity,
+                delta_qty=0,
+                is_noop=False,
+            )
+
         adapter = self.registry.get_adapter(candidate.vendor_id)
-        return adapter.add_to_cart(candidate.product_ref, quantity)
+
+        if not sync_cart:
+            res = adapter.add_to_cart(candidate.product_ref, quantity)
+            res.target_qty = quantity
+            res.delta_qty = quantity
+            return res
+
+        # 2. Cart Inspection & Delta Synchronization (GAP-13)
+        try:
+            cart = cached_cart if cached_cart is not None else adapter.inspect_cart()
+        except Exception as e:
+            err_msg = str(e)
+            return CartMutationResult(
+                vendor_id=candidate.vendor_id,
+                vendor_sku=candidate.product_ref.vendor_sku,
+                requested_quantity=quantity,
+                actual_quantity_staged=0,
+                success=False,
+                error_category="CART_INSPECTION_FAILED",
+                raw_vendor_message=f"Cart inspection failed: {err_msg}",
+                initial_cart_qty=0,
+                target_qty=quantity,
+                delta_qty=0,
+                is_noop=False,
+            )
+
+        existing_qty, delta_qty, is_noop, match_tier = self.calculate_cart_delta(
+            candidate=candidate,
+            target_orderable_qty=quantity,
+            cart=cart,
+        )
+
+        confidence = "NONE"
+        if match_tier in (IdentityMatchTier.EXACT_VENDOR_SKU, IdentityMatchTier.CANONICAL_PDP_URL, IdentityMatchTier.MPN_AND_MANUFACTURER):
+            confidence = "HIGH"
+        elif match_tier == IdentityMatchTier.MPN_ONLY_FALLBACK:
+            confidence = "CONTROLLED_FALLBACK"
+
+        # 3. Check max_orderable limit
+        max_limit = candidate.order_constraints.max_orderable_raw
+        if max_limit is not None and max_limit >= 1:
+            if (existing_qty + delta_qty) > max_limit:
+                return CartMutationResult(
+                    vendor_id=candidate.vendor_id,
+                    vendor_sku=candidate.product_ref.vendor_sku,
+                    requested_quantity=quantity,
+                    actual_quantity_staged=0,
+                    success=False,
+                    error_category="MAX_QUANTITY_EXCEEDED",
+                    raw_vendor_message=f"Total cart quantity ({existing_qty + delta_qty}) exceeds max orderable limit ({max_limit}).",
+                    initial_cart_qty=existing_qty,
+                    target_qty=quantity,
+                    delta_qty=delta_qty,
+                    is_noop=False,
+                    match_tier=match_tier,
+                    match_confidence=confidence,
+                )
+
+        # 4. Idempotent No-Op Check
+        if is_noop or delta_qty == 0:
+            return CartMutationResult(
+                vendor_id=candidate.vendor_id,
+                vendor_sku=candidate.product_ref.vendor_sku,
+                requested_quantity=quantity,
+                actual_quantity_staged=0,
+                success=True,
+                raw_vendor_message=f"Already satisfied in cart ({existing_qty}/{quantity} pcs)",
+                cart_total_items=cart.total_items if cart else 0,
+                initial_cart_qty=existing_qty,
+                target_qty=quantity,
+                delta_qty=0,
+                is_noop=True,
+                match_tier=match_tier,
+                match_confidence=confidence,
+            )
+
+        # 5. Execute Staging for Shortage Delta
+        mutation = adapter.add_to_cart(candidate.product_ref, delta_qty)
+        mutation.initial_cart_qty = existing_qty
+        mutation.target_qty = quantity
+        mutation.delta_qty = delta_qty
+        mutation.is_noop = False
+        mutation.match_tier = match_tier
+        mutation.match_confidence = confidence
+
+        return mutation
+
+    def stage_procurement_plan(
+        self,
+        plan: BOMProcurementPlan,
+        sync_cart: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Stage all resolved candidates in a procurement plan with vendor isolation (GAP-13).
+        """
+        results: List[Dict[str, Any]] = []
+        total_items = len(plan.results)
+        successful_count = 0
+        noop_count = 0
+        staged_count = 0
+        failed_count = 0
+
+        vendor_items: Dict[str, List[Tuple[RequestProcurementResult, VendorProcurementCandidate, int]]] = {}
+        for r in plan.results:
+            if r.status == "RESOLVED" and r.selected_evaluation:
+                cand = r.selected_evaluation.candidate
+                eff_qty = r.selected_evaluation.effective_quantity
+                vendor_items.setdefault(cand.vendor_id, []).append((r, cand, eff_qty))
+            else:
+                failed_count += 1
+                results.append({
+                    "part": r.request.part_number,
+                    "status": "UNRESOLVED",
+                    "vendor_id": None,
+                    "qty": 0,
+                    "msg": r.error_message or "Candidate resolution failed",
+                })
+
+        for vendor_id, items in vendor_items.items():
+            if not self.registry.is_vendor_enabled(vendor_id):
+                for r, cand, eff_qty in items:
+                    failed_count += 1
+                    results.append({
+                        "part": r.request.part_number,
+                        "status": "FAILED",
+                        "vendor_id": vendor_id,
+                        "qty": 0,
+                        "msg": f"Vendor '{vendor_id}' is disabled in settings",
+                    })
+                continue
+
+            adapter = self.registry.get_adapter(vendor_id)
+            cached_cart = None
+            if sync_cart:
+                try:
+                    cached_cart = adapter.inspect_cart()
+                except Exception as e:
+                    for r, cand, eff_qty in items:
+                        failed_count += 1
+                        results.append({
+                            "part": r.request.part_number,
+                            "status": "FAILED",
+                            "vendor_id": vendor_id,
+                            "qty": 0,
+                            "msg": f"Cart inspection failed for {vendor_id}: {str(e)}",
+                        })
+                    continue
+
+            for r, cand, eff_qty in items:
+                mut = self.stage_candidate(cand, eff_qty, sync_cart=sync_cart, cached_cart=cached_cart)
+                if mut.success:
+                    successful_count += 1
+                    if mut.is_noop:
+                        noop_count += 1
+                    else:
+                        staged_count += 1
+                    results.append({
+                        "part": r.request.part_number,
+                        "status": "SUCCESS",
+                        "vendor_id": vendor_id,
+                        "qty": mut.actual_quantity_staged,
+                        "initial_qty": mut.initial_cart_qty,
+                        "target_qty": mut.target_qty,
+                        "delta_qty": mut.delta_qty,
+                        "is_noop": mut.is_noop,
+                        "msg": mut.raw_vendor_message or ("No-op" if mut.is_noop else "Added to cart"),
+                    })
+                else:
+                    failed_count += 1
+                    results.append({
+                        "part": r.request.part_number,
+                        "status": "FAILED",
+                        "vendor_id": vendor_id,
+                        "qty": 0,
+                        "msg": mut.raw_vendor_message or mut.error_category or "Staging failed",
+                    })
+
+        return {
+            "success": failed_count == 0,
+            "total_items": total_items,
+            "successful_count": successful_count,
+            "noop_count": noop_count,
+            "staged_count": staged_count,
+            "failed_count": failed_count,
+            "results": results,
+        }
+
 
     def _resolve_target_vendors(
         self,

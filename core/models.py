@@ -4,7 +4,20 @@ Governing Document: docs/VENDORS/LION/ADAPTER_SPECIFICATION.md
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional, Dict, Any
+
+
+class IdentityMatchTier(Enum):
+    """
+    Deterministic confidence tiers for cart item matching (GAP-13).
+    """
+    EXACT_VENDOR_SKU = "EXACT_VENDOR_SKU"
+    CANONICAL_PDP_URL = "CANONICAL_PDP_URL"
+    MPN_AND_MANUFACTURER = "MPN_AND_MANUFACTURER"
+    MPN_ONLY_FALLBACK = "MPN_ONLY_FALLBACK"
+    NO_MATCH = "NO_MATCH"
+
 
 
 @dataclass
@@ -154,6 +167,8 @@ class CartItem:
     unit_price_irr: Optional[int] = None
     total_price_irr: Optional[int] = None
     pdp_url: Optional[str] = None
+    mpn: Optional[str] = None
+    manufacturer: Optional[str] = None
 
 
 @dataclass
@@ -163,6 +178,13 @@ class CartDetails:
     total_items: int
     total_amount_irr: Optional[int] = None
     items: List[CartItem] = field(default_factory=list)
+
+    def find_items_by_sku(self, sku: str) -> List[CartItem]:
+        norm = (sku or "").strip().upper()
+        return [item for item in self.items if (item.vendor_sku or "").strip().upper() == norm]
+
+    def get_total_quantity_for_sku(self, sku: str) -> int:
+        return sum(item.quantity for item in self.find_items_by_sku(sku))
 
 
 @dataclass
@@ -175,6 +197,13 @@ class CartMutationResult:
     error_category: Optional[str] = None
     raw_vendor_message: str = ""
     cart_total_items: int = 0
+    initial_cart_qty: int = 0
+    target_qty: int = 0
+    delta_qty: int = 0
+    is_noop: bool = False
+    match_tier: Optional[IdentityMatchTier] = None
+    match_confidence: str = "NONE"
+
 
 
 @dataclass

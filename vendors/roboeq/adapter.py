@@ -395,16 +395,48 @@ class RoboEqVendorAdapter(IVendorAdapter):
             driver.get(RoboEqSelectors.CART_URL)
             self.session.wait_for_settle(2.0)
 
+            err = RoboEqErrorTranslator.translate_page_state(
+                page_title=driver.title,
+                page_source=driver.page_source,
+                current_url=driver.current_url,
+                context={"operation": "inspect_cart"},
+            )
+            if err:
+                raise err
+
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            rows = soup.select(".cart-container table tr, table.cart tr, .cart-table tr")
+
+            cart_items: List[CartItem] = []
+            for r in rows:
+                tds = r.find_all("td")
+                if len(tds) >= 2:
+                    name = tds[0].get_text(strip=True)
+                    if not name or "محصول" in name or "کالا" in name:
+                        continue
+                    qty_str = tds[1].get_text(strip=True).replace(",", "")
+                    qm = re.search(r"(\d+)", qty_str)
+                    qty = int(qm.group(1)) if qm else 1
+
+                    cart_items.append(
+                        CartItem(
+                            vendor_sku=name,
+                            product_name=name,
+                            quantity=qty,
+                        )
+                    )
+
             return CartDetails(
                 vendor_id=self.VENDOR_ID,
                 cart_url=RoboEqSelectors.CART_URL,
-                total_items=0,
-                items=[],
+                total_items=len(cart_items),
+                items=cart_items,
             )
         except Exception as e:
             if isinstance(e, OmnixVendorError):
                 raise
             raise RoboEqErrorTranslator.translate_transport_exception(e, {"operation": "inspect_cart"})
+
 
     def authenticate(
         self,
