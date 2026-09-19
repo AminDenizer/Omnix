@@ -6,12 +6,13 @@
 **Status:** Authoritative Single Source of Truth for Project GAPs  
 **Repository:** `D:\management-elec\autom\atom`  
 **Branch:** `Auto`  
-**Automated Tests:** 241 / 241 PASSED  
+**Automated Tests:** 258 / 258 PASSED  
 **Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
 **Phase 9 Certification Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
 **Task A1 Status:** `COMPLETED_AND_VERIFIED`  
 **Task A2 Status:** `COMPLETED_AND_VERIFIED`  
-**Audit Date:** September 17, 2026  
+**Task A3 Status:** `COMPLETED_AND_VERIFIED`  
+**Audit Date:** September 20, 2026  
 
 ---
 
@@ -46,7 +47,7 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 
 | ID | Title | Domain / Layer | Current Code State | Blocking? | Task Target | Dependencies | Status |
 |---|---|---|---|:---:|:---:|---|:---:|
-| **`GAP-01`** | Dual Procurement Modes (Mode A vs Mode B) | `UI / WORKFLOW` | Inventory subtraction hardcoded in `bom_auditor.py`; Mode B direct catalog BOM search missing. | **YES** | `TASK-A3` | `GAP-04`, `GAP-06` | `PARTIAL` |
+| **`GAP-01`** | Dual Procurement Modes (Mode A vs Mode B) | `UI / WORKFLOW` | Mode A (database-aware shortage calculation) and Mode B (100% inventory-independent turnkey BOM sourcing) fully implemented and UI-switchable. | **YES** | `TASK-A3` | `GAP-04`, `GAP-06` | `VERIFIED` |
 | **`GAP-02`** | Direct MPN Procurement Quick Order Dialog | `UI` | Search supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `GAP-04`, `GAP-07` | `PARTIAL` |
 | **`GAP-03`** | Direct URL Procurement Quick Order Dialog | `UI` | URL routing supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `GAP-13` | `PARTIAL` |
 | **`GAP-04`** | Package & Footprint Hard Constraints (`OD-001` OPEN) | `CORE_ENGINE` | Fully implemented in Core models and orchestrator with conservative normalization. | **YES** | `TASK-A1` | None | `VERIFIED` |
@@ -61,7 +62,7 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 | **`GAP-13`** | Multi-Vendor Cart Idempotency & Delta Sync | `RUNTIME` | Unconditional cart addition; pre-inspection and delta staging missing. | **YES** | `TASK-A4` | None | `MISSING` |
 | **`GAP-14`** | Embedded ACID Relational Persistence (SQLite) | `PERSISTENCE` | `Inventory.xlsx` production datastore active; SQLite migration deferred. | No | Post-Release | `OD-003` | `DEFERRED` |
 | **`GAP-15`** | Append-Only Persistent Audit Trail Event Log | `AUDIT` | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `GAP-14` | `DEFERRED` |
-| **`GAP-16`** | Extended Altium Parameter Ingestion Parser | `CAD_INTEGRATION` | Ingests 7 standard BOM columns; extended 20-parameter contract ingestion missing. | No | `TASK-A3` | None | `PARTIAL` |
+| **`GAP-16`** | Extended Altium Parameter Ingestion Parser | `CAD_INTEGRATION` | Full 20-parameter canonical contract ingestion, strict MPN validation, and technical spec extraction implemented. | No | `TASK-A3` | None | `VERIFIED` |
 | **`GAP-17`** | Universal Security Challenge / CAPTCHA Handler | `SECURITY / AUTH` | Unified `IChallengeHandler` subsystem with 8 challenge types, callback handler, and Qt dialog implemented. | **YES** | `TASK-A2` | None | `VERIFIED` |
 | **`GAP-18`** | Multi-Vendor Deterministic Export Pipeline | `REPORTING` | Basic Lion shortage export; multi-vendor PDF/CSV/XLSX export pipeline missing. | No | `TASK-A6` | `GAP-01`, `GAP-07` | `PARTIAL` |
 
@@ -77,7 +78,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 ├──────────┬─────────────────────────────────────────────┬──────────────┬──────────────────────────┤
 │ GAP ID   │ Title                                       │ Target Task  │ Current Status           │
 ├──────────┼─────────────────────────────────────────────┼──────────────┼──────────────────────────┤
-│ GAP-01   │ Dual Procurement Modes (Mode A vs Mode B)   │ TASK-A3      │ PARTIAL                  │
+│ GAP-01   │ Dual Procurement Modes (Mode A vs Mode B)   │ TASK-A3      │ VERIFIED (Mode Verified) │
 │ GAP-04   │ Package & Footprint Hard Constraints        │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-05   │ UNKNOWN_REQUIRED_PARAMETER & Spec Engine    │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-06   │ Manufacturer / Brand Constraint Engine      │ TASK-A1      │ VERIFIED (Core Verified) │
@@ -90,7 +91,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 
 ---
 
-## 4. TASK-A1 & TASK-A2 IMPLEMENTATION & VERIFICATION EVIDENCE
+## 4. TASK IMPLEMENTATION & FORENSIC VERIFICATION EVIDENCE
 
 ### 4.1 Task A1 Verification Evidence (GAP-04, GAP-05, GAP-06)
 - **`GAP-04`**: `normalize_constraint_string()`, independent package/footprint matching ([`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py), [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py)).
@@ -104,6 +105,12 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 | **`GAP-17`** | • `ChallengeType` enum (8 types: Turnstile, reCAPTCHA, hCaptcha, Image CAPTCHA, OTP, SMS, Password, Custom)<br>• `ChallengeState` enum (Solved, Cancelled, TimedOut, Unsupported, Failed)<br>• `ChallengeContext` & `ChallengeResult` dataclasses<br>• `IChallengeHandler` interface & `CallbackChallengeHandler`<br>• `UniversalChallengeDialog` & `QtChallengeHandler` | [`core/procurement/challenge_handler.py`](file:///d:/management-elec/autom/atom/core/procurement/challenge_handler.py)<br>[`ui/dialogs/challenge_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/challenge_dialog.py) | Passed 12 dedicated challenge handler tests in [`tests/test_challenge_handler.py`](file:///d:/management-elec/autom/atom/tests/test_challenge_handler.py). |
 | **`GAP-09`** | • Headless-to-headful promotion (`promote_to_headful`)<br>• Qualified session continuity (`SessionContinuityMode`)<br>• Cookie capture, headless teardown, headful recreation, cookie re-application<br>• `IVendorAdapter.authenticate(credentials, challenge_handler)` integration across Lion, Javan, and RoboEq | [`vendors/lion/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/lion/session.py#L100-L145)<br>[`vendors/javan/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/javan/session.py#L100-L145)<br>[`vendors/roboeq/session.py:100-145`](file:///d:/management-elec/autom/atom/vendors/roboeq/session.py#L100-L145)<br>[`vendors/lion/adapter.py:540-630`](file:///d:/management-elec/autom/atom/vendors/lion/adapter.py#L540-L630)<br>[`vendors/javan/adapter.py:570-710`](file:///d:/management-elec/autom/atom/vendors/javan/adapter.py#L570-L710)<br>[`vendors/roboeq/adapter.py:440-520`](file:///d:/management-elec/autom/atom/vendors/roboeq/adapter.py#L440-L520) | Passed 10 dedicated interactive auth and session promotion tests in [`tests/test_interactive_authentication.py`](file:///d:/management-elec/autom/atom/tests/test_interactive_authentication.py). |
 
+### 4.3 Task A3 Verification Evidence (GAP-01, GAP-16)
+| GAP ID | Implemented Features | Source Code Location | Forensic Verification |
+|---|---|---|---|
+| **`GAP-01`** | • `ProcurementMode` enum (`DATABASE_AWARE` vs `DIRECT_BOM`)<br>• Mode A: stock subtraction $\Delta Q = \max(0, (\text{unit\_qty} \times M) - \text{db\_stock\_qty})$ using authoritative store link<br>• Mode B: 100% inventory-independent turnkey sourcing ($Q = \text{unit\_qty} \times M$, DB ignored)<br>• Mode-explicit branching in `ProcurementBridge.item_to_request`<br>• Interactive Mode A/B switcher ribbon in `BOMAuditWidget` | [`core/procurement/models.py:32-39`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L32-L39)<br>[`bom_auditor.py:10-380`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10-L380)<br>[`core/procurement/bridge.py:100-190`](file:///d:/management-elec/autom/atom/core/procurement/bridge.py#L100-L190)<br>[`ui/widgets/bom_audit_widget.py`](file:///d:/management-elec/autom/atom/ui/widgets/bom_audit_widget.py) | Passed 4 dedicated dual procurement mode tests in [`tests/test_dual_procurement_modes.py`](file:///d:/management-elec/autom/atom/tests/test_dual_procurement_modes.py). |
+| **`GAP-16`** | • Full 20-parameter Altium contract parser conforming to `DOC-OMNIX-ALTIUM-CONTRACT-001`<br>• Strict MPN validation (missing/blank MPN $\to$ `INVALID_REQUIRED_PARAMETER` / non-orderable; never falls back to `Comment`)<br>• Strict quantity validation (rejection of zero, negative, non-integer, and malformed strings)<br>• Separate `ManufacturerRule` (`EXACT`, `APPROVED_LIST`, `ANY`) and `ManufacturerDataState`<br>• Technical specs bundling (`Value`, `Tolerance`, `Voltage_Rating`, `Current_Rating`, `Power_Rating`) | [`bom_auditor.py:10-380`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10-L380)<br>[`core/procurement/models.py:41-60`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L41-L60) | Passed 4 dedicated Altium contract tests in [`tests/test_altium_contract_ingestion.py`](file:///d:/management-elec/autom/atom/tests/test_altium_contract_ingestion.py) and 7 brand selection tests in [`tests/test_bom_brand_selection.py`](file:///d:/management-elec/autom/atom/tests/test_bom_brand_selection.py). |
+
 ---
 
 ## 5. RECONCILED IMPLEMENTATION ROADMAP (TASKS A1 THROUGH A7)
@@ -112,8 +119,8 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 flowchart TD
     A1["TASK-A1 [VERIFIED]: Core Technical Matching, Package/Footprint & Brand Rules (GAP-04, GAP-05, GAP-06)"]
     A2["TASK-A2 [VERIFIED]: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth (GAP-11, GAP-17, GAP-09)"]
-    A3["TASK-A3 [NEXT]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
-    A4["TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
+    A3["TASK-A3 [VERIFIED]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
+    A4["TASK-A4 [NEXT]: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
     A5["TASK-A5: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
     A6["TASK-A6: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
     A7["TASK-A7: Phase 10 Release Packaging, Windows Hardening & Nuitka Compilation"]
@@ -134,18 +141,16 @@ flowchart TD
 
 #### TASK-A2: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth
 - **Target GAPs:** `GAP-11`, `GAP-17`, `GAP-09`
-- **Status:** `COMPLETED_AND_VERIFIED` (241 tests passing total, +33 new tests).
-- **Scope Accomplished:** Multi-vendor isolated settings schema, dynamic vendor enable/disable in `VendorRegistry` & `UniversalProcurementOrchestrator`, `IChallengeHandler` subsystem with 8 challenge types and UI dialog, session promotion (`SessionContinuityMode`) with cookie transfer, and adapter challenge escalation for Lion, Javan, and RoboEq.
+- **Status:** `COMPLETED_AND_VERIFIED` (241 tests passing total).
 
 #### TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion
 - **Target GAPs:** `GAP-01`, `GAP-16`
-- **Scope:**
-  1. Add Mode A (Database-Aware) vs Mode B (Direct BOM Sourcing) toggle to `BOMAuditWidget`.
-  2. Implement Mode B sourcing workflow querying all enabled vendors directly from BOM.
-  3. Extend `BOMAuditor` to ingest extended Altium Parameter Contract columns (`DOC-OMNIX-ALTIUM-CONTRACT-001`).
+- **Status:** `COMPLETED_AND_VERIFIED` (258 tests passing total, +17 new tests).
+- **Scope Accomplished:** Mode A (database-aware stock reconciliation) vs Mode B (100% inventory-independent turnkey BOM sourcing), interactive UI mode switcher, 20-parameter Altium contract parser, strict MPN validation, strict quantity validation, and `ManufacturerRule` vs `ManufacturerDataState` separation.
 
 #### TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization
 - **Target GAPs:** `GAP-13`
+- **Status:** `NEXT_FOR_EXECUTION`
 - **Scope:**
   1. Cart pre-inspection via `inspect_cart()` across all vendor adapters.
   2. Calculate missing delta: $\Delta Q = \max(0, Q_{\text{target}} - Q_{\text{staged}})$.
@@ -192,12 +197,12 @@ Document Reference:      DOC-OMNIX-REGISTRY-001
 Version:                 1.0.0-CANONICAL
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Automated Test Suite:    208 / 208 PASSED (7.40s)
+Automated Test Suite:    258 / 258 PASSED
 Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
 Total Registered GAPs:   18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17)
-Verified GAPs in Core:   3 GAPs (GAP-04, GAP-05, GAP-06 — Completed in Task A1)
-Next Task for Execution: TASK-A2 (GAP-11, GAP-17, GAP-09)
+Verified GAPs:           8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-16, GAP-17)
+Next Task for Execution: TASK-A4 (GAP-13 — Multi-Vendor Cart Idempotency & Delta Sync)
 Datastore Baseline:      Inventory.xlsx (Production Datastore Preserved)
 SQLite Status:           DEFERRED (GAP-14 gated on OD-003)
 ================================================================================
