@@ -6,13 +6,14 @@
 **Status:** Approved Master Architecture Gap Audit & Authoritative Implementation Roadmap  
 **Repository:** `D:\management-elec\autom\atom`  
 **Branch:** `Auto`  
-**Automated Tests:** 258 / 258 PASSED  
+**Automated Tests:** 282 / 282 PASSED  
 **Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
 **Phase 9 Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
 **Canonical Registry Reference:** `docs/PRODUCT/CANONICAL_GAP_REGISTRY.md` (`DOC-OMNIX-REGISTRY-001`)  
 **Task A1 Status:** `COMPLETED_AND_VERIFIED`  
 **Task A2 Status:** `COMPLETED_AND_VERIFIED`  
 **Task A3 Status:** `COMPLETED_AND_VERIFIED`  
+**Task A4 Status:** `COMPLETED_AND_VERIFIED`  
 **Audit Date:** September 20, 2026  
 
 ---
@@ -29,7 +30,7 @@ All GAP definitions, numbering schemes, classifications, and task allocations in
 2. **Current Sourcing Data Pipeline:**
    $$\text{Inventory.xlsx} \longrightarrow \text{ExcelDataLoader / BOMAuditor} \longrightarrow \text{ProcurementBridge} \longrightarrow \text{ProcurementRequest} \longrightarrow \text{UniversalProcurementOrchestrator} \longrightarrow \text{Vendor Adapters} \longrightarrow \text{Storefront Shopping Cart}$$
 3. **Zero Database Migration Invariant:** `GAP-14` (SQLite ACID Repository Layer) is an open architectural evolution path and is **DEFERRED** to post-release milestones. The current Excel-based data pipeline is preserved without modification or disruption.
-4. **Tasks A1, A2, & A3 Completed and Verified:** `GAP-04`, `GAP-05`, `GAP-06` (Task A1), `GAP-11`, `GAP-17`, `GAP-09` (Task A2), and `GAP-01`, `GAP-16` (Task A3) are fully implemented and verified with 258 passing automated tests.
+4. **Tasks A1, A2, A3, & A4 Completed and Verified:** `GAP-04`, `GAP-05`, `GAP-06` (Task A1), `GAP-11`, `GAP-17`, `GAP-09` (Task A2), `GAP-01`, `GAP-16` (Task A3), and `GAP-13` (Task A4) are fully implemented and verified with 282 passing automated tests.
 
 ---
 
@@ -51,7 +52,7 @@ All 18 product and architectural GAPs are summarized below with their canonical 
 | **`GAP-10`** | Security | Encrypted Keyring Credential Storage | Plaintext JSON in `settings.json`; OS keyring encryption deferred. | No | Post-Release | `DEFERRED` |
 | **`GAP-11`** | Vendor Mgmt | Multi-Vendor Settings & Dynamic Enable/Disable | Multi-vendor settings schema, dynamic registry filtering, and 4-tab UI dialog implemented. | **YES** | `TASK-A2` | `VERIFIED` |
 | **`GAP-12`** | Runtime | Finite State Machine Job Lifecycle Engine | Coarse string statuses (`"RESOLVED"`); explicit lifecycle FSM deferred. | No | Post-Release | `DEFERRED` |
-| **`GAP-13`** | Runtime | Multi-Vendor Cart Idempotency & Delta Sync | Unconditional cart addition; pre-inspection and delta staging missing. | **YES** | `TASK-A4` | `MISSING` |
+| **`GAP-13`** | Runtime | Multi-Vendor Cart Idempotency & Delta Sync | Strict 4-tier cart identity cascade, A3 quantity reconciliation, delta staging, and idempotent no-ops verified. | **YES** | `TASK-A4` | `VERIFIED` |
 | **`GAP-14`** | Persistence | Embedded ACID Relational Persistence (SQLite) | `Inventory.xlsx` production datastore active; SQLite migration deferred. | No | Post-Release | `DEFERRED` |
 | **`GAP-15`** | Audit | Append-Only Persistent Audit Trail Event Log | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `DEFERRED` |
 | **`GAP-16`** | Altium Contract| Extended Parameter Ingestion Parser | Full 20-parameter canonical contract ingestion, strict MPN validation, and technical spec extraction implemented. | No | `TASK-A3` | `VERIFIED` |
@@ -62,14 +63,14 @@ All 18 product and architectural GAPs are summarized below with their canonical 
 
 ## 3. RELEASE-BLOCKING GAPS
 
-The following **EXACTLY 8 GAPS** are strictly release-blocking:
-1. **`GAP-01` (Dual Procurement Modes):** Enables Mode A (Database-Aware) and Mode B (Direct BOM Sourcing).
+The following **EXACTLY 8 GAPS** are strictly release-blocking (ALL 8 ARE NOW VERIFIED):
+1. **`GAP-01` (Dual Procurement Modes):** Enables Mode A (Database-Aware) and Mode B (Direct BOM Sourcing). *(VERIFIED via Task A3)*
 2. **`GAP-04` (Package & Footprint Hard Constraints):** Prevents purchasing physically incompatible SMD/through-hole parts. *(VERIFIED in Core via Task A1)*
 3. **`GAP-05` (`UNKNOWN_REQUIRED_PARAMETER` & Spec Engine):** Flags unlisted/unknown specs to prevent unsafe auto-ordering. *(VERIFIED in Core via Task A1)*
 4. **`GAP-06` (Manufacturer / Brand Constraint Engine):** Enforces brand rules (`ANY` vs approved list) over lower pricing. *(VERIFIED in Core via Task A1)*
 5. **`GAP-09` (Interactive Authentication & Headful Fallback):** Enables human challenge resolution on Iranian storefronts. *(VERIFIED via Task A2)*
 6. **`GAP-11` (Multi-Vendor Settings & Enable/Disable Subsystem):** Enables dynamic activation and credentials for Lion, Javan, and RoboEq. *(VERIFIED via Task A2)*
-7. **`GAP-13` (Multi-Vendor Cart Idempotency & Delta Synchronization):** Prevents duplicate item accumulation in vendor carts.
+7. **`GAP-13` (Multi-Vendor Cart Idempotency & Delta Synchronization):** Prevents duplicate item accumulation in vendor carts. *(VERIFIED via Task A4)*
 8. **`GAP-17` (Universal Security Challenge Handler Subsystem):** Modular handling of CAPTCHA, Turnstile, and OTP challenges. *(VERIFIED via Task A2)*
 
 ---
@@ -362,8 +363,8 @@ The following decisions remain **OPEN** and are strictly preserved:
 │ TASK-A1   │ Core Technical Matching & Brands  │ GAP-04, GAP-05, GAP-06        │ VERIFIED         │
 │ TASK-A2   │ Multi-Vendor Settings & Challenge │ GAP-11, GAP-17, GAP-09        │ VERIFIED         │
 │ TASK-A3   │ Dual Modes & Altium Ingestion     │ GAP-01, GAP-16                │ VERIFIED         │
-│ TASK-A4   │ Multi-Vendor Cart Idempotency     │ GAP-13                        │ NEXT_IN_SEQUENCE │
-│ TASK-A5   │ Desktop UI & Multi-Candidate      │ GAP-07, GAP-02, GAP-03        │ READY            │
+│ TASK-A4   │ Multi-Vendor Cart Idempotency     │ GAP-13                        │ VERIFIED         │
+│ TASK-A5   │ Desktop UI & Multi-Candidate      │ GAP-07, GAP-02, GAP-03        │ NEXT_IN_SEQUENCE │
 │ TASK-A6   │ Deterministic Export Pipeline     │ GAP-18                        │ READY            │
 │ TASK-A7   │ Phase 10 Release & Nuitka Binary  │ End-to-End Validation         │ READY            │
 └───────────┴───────────────────────────────────┴───────────────────────────────┴──────────────────┘
@@ -395,15 +396,13 @@ The following decisions remain **OPEN** and are strictly preserved:
 
 #### TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization
 - **Target GAPs:** `GAP-13`.
-- **Status:** `NEXT_TASK_FOR_EXECUTION`.
-- **Scope:**
-  1. Cart pre-inspection via `inspect_cart()` across all vendor adapters.
-  2. Calculate missing delta: $\Delta Q = \max(0, Q_{\text{target}} - Q_{\text{staged}})$.
-  3. Stage only $\Delta Q$ units (0 units added if already satisfied).
-- **Affected Files:** `core/procurement/bridge.py`, `vendors/*/adapter.py`.
+- **Status:** `COMPLETED_AND_VERIFIED` (282 unit/contract tests passing total, +24 new tests).
+- **Scope Accomplished:** 4-tier cart identity cascade, A3 quantity reconciliation without secondary step rounding, multi-line cart aggregation, delta staging ($\Delta Q = \max(0, Q_{\text{target\_orderable}} - Q_{\text{existing}})$), idempotent no-ops, multi-vendor isolation, disabled vendor bypass, and RoboEq DOM cart extraction.
+- **Affected Files:** `core/models.py`, `core/procurement/models.py`, `core/procurement/orchestrator.py`, `core/procurement/bridge.py`, `vendors/roboeq/adapter.py`, `tests/test_cart_sync.py`.
 
 #### TASK-A5: Desktop UI Workflows & Multi-Candidate Preview
 - **Target GAPs:** `GAP-07`, `GAP-02`, `GAP-03`.
+- **Status:** `NEXT_TASK_FOR_EXECUTION`.
 - **Scope:**
   1. Expand `OrderPreviewDialog` to display multi-candidate alternative offers, selection rationales, and candidate switching.
   2. Create `QuickOrderDialog` for standalone Direct MPN and Direct URL procurement.
@@ -433,12 +432,12 @@ Version:                 2.0.0-RECONCILED
 Governing Registry:      docs/PRODUCT/CANONICAL_GAP_REGISTRY.md (DOC-OMNIX-REGISTRY-001)
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Automated Tests:         258 / 258 PASSED
+Automated Tests:         282 / 282 PASSED
 Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
 Canonical GAPs Count:    18 GAPs (GAP-01 through GAP-18)
-Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17)
-Verified GAPs:           8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06 in A1/A3; GAP-09, GAP-11, GAP-17 in A2; GAP-16 in A3)
-Active Next Task:        TASK-A4 (GAP-13 — Multi-Vendor Cart Idempotency & Delta Sync)
+Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
+Verified GAPs:           9 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
+Active Next Task:        TASK-A5 (GAP-07, GAP-02, GAP-03 — Desktop UI Workflows & Multi-Candidate Preview)
 Task Sequence:           TASK-A1 -> TASK-A2 -> TASK-A3 -> TASK-A4 -> TASK-A5 -> TASK-A6 -> TASK-A7
 Current Datastore:       Inventory.xlsx (Production Datastore Preserved)
 SQLite Status:           DEFERRED (GAP-14 gated on OD-003)
