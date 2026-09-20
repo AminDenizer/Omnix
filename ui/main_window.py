@@ -20,7 +20,7 @@ from ui.widgets import (
     FilterBarWidget,
     BOMAuditWidget
 )
-from ui.dialogs import SettingsDialog, OrderPreviewDialog
+from ui.dialogs import SettingsDialog, OrderPreviewDialog, QuickOrderDialog
 
 
 class MainWindow(QMainWindow):
@@ -117,6 +117,24 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(brand_layout)
         header_layout.addStretch()
 
+        # Quick Order Button
+        self.quick_order_btn = QPushButton("⚡ Quick Order")
+        self.quick_order_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 6px 14px;
+            }
+            QPushButton:hover {
+                background-color: #38bdf8;
+                color: #0f172a;
+            }
+        """)
+        self.quick_order_btn.clicked.connect(self._open_quick_order)
+        header_layout.addWidget(self.quick_order_btn)
+
         # Settings Button
         self.settings_btn = QPushButton("⚙️ Settings")
         self.settings_btn.setObjectName("secondaryBtn")
@@ -199,6 +217,12 @@ class MainWindow(QMainWindow):
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self.handle_escape_key)
 
+        ctrl_shift_o = QShortcut(QKeySequence("Ctrl+Shift+O"), self)
+        ctrl_shift_o.activated.connect(self._open_quick_order)
+
+        ctrl_o = QShortcut(QKeySequence("Ctrl+O"), self)
+        ctrl_o.activated.connect(self._open_quick_order)
+
         ctrl_q = QShortcut(QKeySequence("Ctrl+Q"), self)
         ctrl_q.activated.connect(self.close)
 
@@ -280,6 +304,15 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         dlg = SettingsDialog(self)
         dlg.exec()
+
+    def _open_quick_order(self):
+        dlg = QuickOrderDialog(
+            inventory_loader=self.excel,
+            on_stock_updated=self._on_stock_incremented_callback,
+            parent=self,
+        )
+        dlg.exec()
+
 
     def _on_stock_incremented_callback(self):
         """Callback when order payment is confirmed and inventory is incremented."""
