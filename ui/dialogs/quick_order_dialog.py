@@ -41,7 +41,7 @@ from core.procurement.models import (
 )
 from core.procurement.orchestrator import UniversalProcurementOrchestrator
 from core.procurement.registry import VendorRegistry, default_registry
-from ui.widgets.bom_audit_widget import NumberStepperWidget
+from ui.widgets.number_stepper import NumberStepperWidget
 from vendors.javan.selectors import JavanSelectors
 from vendors.lion.selectors import LionSelectors
 from vendors.roboeq.selectors import RoboEqSelectors
