@@ -6,7 +6,7 @@
 **Status:** Authoritative Master Product Gap Analysis & Implementation Backlog  
 **Repository:** `D:\management-elec\autom\atom`  
 **Branch:** `Auto`  
-**Automated Tests:** 282 / 282 PASSED  
+**Automated Tests:** 331 / 331 PASSED  
 **Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
 **Phase 9 Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
 **Audit Date:** September 20, 2026  
@@ -22,7 +22,7 @@ Following the formal certification of Phase 9 (`PHASE_9_FINAL_REVIEW_PASS`), thi
 
 ### 1.2 Core Architectural Invariant: Baseline Certified != Product Complete
 - **Phase 9 Baseline (`PHASE_9_FINAL_REVIEW_PASS`):** Formally certified that the Universal Procurement Core (`core/procurement/`), dynamic Vendor Registry (`registry.py`), and decoupled adapter interface (`IVendorAdapter`) operate with 100% mathematical integrity across 183 unit/contract/integration tests.
-- **Product Completion Status:** **NOT COMPLETE.** The application cannot be released to production until the full multi-vendor desktop workflow, dual procurement modes, brand selection rules, package/footprint hard matching, interactive security challenge recovery, multi-vendor settings, idempotent cart staging, and export reporting are fully implemented.
+- **Product Completion Status:** **TASKS A1 THROUGH A6 COMPLETED AND VERIFIED.** Multi-vendor desktop workflows, dual procurement modes, brand selection rules, package/footprint hard matching, interactive security challenge recovery, multi-vendor settings, idempotent cart staging, and multi-vendor deterministic export reporting are fully implemented and verified.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -31,14 +31,14 @@ Following the formal certification of Phase 9 (`PHASE_9_FINAL_REVIEW_PASS`), thi
 │ Subsystem / Layer             │ Automated / Contract State      │ Production Product State       │
 ├───────────────────────────────┼─────────────────────────────────┼────────────────────────────────┤
 │ Datastore & Inventory Access  │ ExcelDataLoader (Inventory.xlsx)│ Production Excel Datastore (OK)│
-│ Core Procurement Models       │ 100% Verified (Unit Tests)      │ Missing Typed Unknown State    │
-│ Technical Matching Engine     │ MPN String Match Verified       │ Package/Footprint/Brand MISSING│
-│ Vendor Registry & Routing     │ 100% Verified (Regex Routing)   │ Missing Enable/Disable Toggles │
+│ Core Procurement Models       │ 100% Verified (Unit Tests)      │ Typed EvaluationState Verified │
+│ Technical Matching Engine     │ MPN String Match Verified       │ Package/Footprint/Brand VERIF. │
+│ Vendor Registry & Routing     │ 100% Verified (Regex Routing)   │ Enable/Disable Toggles VERIF.  │
 │ Discovery Site Maps           │ 30 / 30 Checks PASSED (10/10)   │ Codified in Graph Selectors    │
-│ Vendor Automation Adapters    │ Mock Staging Verified (183)     │ Interactive Challenge MISSING  │
-│ Desktop UI Workflows          │ Mode A (Shortage-only) Working  │ Mode B & Quick Order MISSING   │
-│ Cart Staging Runtime          │ Batch Staging Working           │ Idempotent Deduplication MISSING│
-│ Reporting & Audit             │ Basic Lion Shortage HTML/PDF    │ Multi-Vendor PDF/CSV/XLSX MISSING│
+│ Vendor Automation Adapters    │ Mock Staging Verified (183)     │ Interactive Challenge VERIFIED │
+│ Desktop UI Workflows          │ Mode A & Mode B Working         │ Quick Order & Preview VERIFIED │
+│ Cart Staging Runtime          │ Batch Staging Working           │ Idempotent Deduplication VERIF.│
+│ Reporting & Audit             │ Deterministic Export Pipeline   │ Multi-Vendor PDF/CSV/XLSX VERIF│
 │ Persistence & Relational DB   │ Openpyxl Direct File Access     │ Future SQLite Roadmap (GAP-14) │
 └───────────────────────────────┴─────────────────────────────────┴────────────────────────────────┘
 ```
@@ -91,7 +91,7 @@ The following master table details all **18 identified product gaps** across the
 | **`GAP-15`** | Audit | Append-Only Persistent Event Log | Basic Python console logging only | [`core/procurement/bridge.py:27`](file:///d:/management-elec/autom/atom/core/procurement/bridge.py#L27) | `MISSING` | `AUDIT` | `NON_BLOCKING_PRODUCT_GAP` | `GAP-14` | No |
 | **`GAP-16`** | Altium Contract| Extended Parameter Ingestion Parser | Full 20-parameter contract parser, strict MPN validation, and technical spec extraction implemented | [`bom_auditor.py:10`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10) | `VERIFIED` | `CAD_INTEGRATION` | `NON_BLOCKING_PRODUCT_GAP`, `BLOCKS_DATA_CORRECTNESS` | None (Contract Defined) | No |
 | **`GAP-17`** | Security | Universal Challenge / CAPTCHA Handler | Unified `IChallengeHandler` subsystem with 8 challenge types, callback & Qt dialogs | [`core/procurement/challenge_handler.py`](file:///d:/management-elec/autom/atom/core/procurement/challenge_handler.py) | `VERIFIED` | `SECURITY / AUTH` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_PRODUCTION_RUNTIME` | None | **YES** |
-| **`GAP-18`** | Reporting | Multi-Vendor Deterministic Export Pipeline | Lion-only shortage export; no multi-vendor PDF/CSV | [`ui/widgets/bom_audit_widget.py:570`](file:///d:/management-elec/autom/atom/ui/widgets/bom_audit_widget.py#L570) | `PARTIALLY_IMPLEMENTED` | `REPORTING` | `NON_BLOCKING_PRODUCT_GAP` | `GAP-01`, `GAP-07` | No |
+| **`GAP-18`** | Reporting | Multi-Vendor Deterministic Export Pipeline | Pure functional multi-vendor PDF, CSV (RFC 4180/utf-8-sig), and XLSX (multi-sheet/openpyxl) deterministic export pipeline with candidate audit trails and Persian/RTL support | [`core/procurement/reporting/`](file:///d:/management-elec/autom/atom/core/procurement/reporting/) | `VERIFIED` | `REPORTING` | `NON_BLOCKING_PRODUCT_GAP` | `GAP-01`, `GAP-07` | No |
 
 ---
 
@@ -377,9 +377,8 @@ flowchart TD
 
 ### TASK-A6: Multi-Vendor Deterministic Export Pipeline
 - **Target GAPs:** `GAP-18`
-- **Scope:**
-  1. Implement multi-vendor procurement report generation in PDF, CSV, and Excel formats.
-  2. Include complete decision audit trail, pricing breakdown, and unverified parameter warnings.
+- **Status:** `COMPLETED_AND_VERIFIED` (331 tests passing total, +15 new tests).
+- **Scope Accomplished:** Side-effect-free, deterministic export pipeline in PDF, CSV, and XLSX formats; complete candidate decision audit trails (`DISCOVERED`, `ELIGIBLE`, `REJECTED`, `SELECTED_BY_USER`, `ACTUALLY_STAGED`); Pre-Order vs Post-Staging separation; Persian/RTL text direction handling; pure UI export integration.
 - **Dependencies:** `TASK-A3`, `TASK-A5`.
 
 ### TASK-A7: Phase 10 Release Packaging & Nuitka Hardening
@@ -415,15 +414,14 @@ FINAL PRODUCT REQUIREMENT FORENSIC AUDIT SANITY CHECK
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
 Working Tree:            Clean
-Automated Tests:         316 / 316 PASSED
+Automated Tests:         331 / 331 PASSED
 Site Map Validation:     Lion (10/10), Javan (10/10), RoboEq (10/10) — ALL PASS (30/30)
 Total GAPs in Registry:  18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
-Verified GAPs:           12 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
-Active Next Task:        TASK-A6 (GAP-18 — Multi-Vendor Deterministic Export Pipeline)
+Verified GAPs:           13 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17, GAP-18)
+Active Next Task:        TASK-A7 (Phase 10 Release Packaging & Nuitka Hardening)
 Open Decisions:          3 (OD-001: Package Taxonomy, OD-002: Sourcing Metric, OD-003: Safety Stock)
 Out-of-Scope Items:      3 (OOS-001: Altium Library, OOS-002: Auto-Payment, OOS-003: Runtime AI/LLM)
 Updated Document:        docs/PRODUCT/MASTER_PRODUCT_COMPLETION_GAP_ANALYSIS.md
 ================================================================================
-
 ```

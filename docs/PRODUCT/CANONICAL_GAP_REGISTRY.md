@@ -6,12 +6,15 @@
 **Status:** Authoritative Single Source of Truth for Project GAPs  
 **Repository:** `D:\management-elec\autom\atom`  
 **Branch:** `Auto`  
-**Automated Tests:** 258 / 258 PASSED  
+**Automated Tests:** 331 / 331 PASSED  
 **Discovery Graph Audits:** Lion (`10/10`), Javan (`10/10`), RoboEq (`10/10`) — ALL 30/30 PASS  
 **Phase 9 Certification Baseline:** `PHASE_9_FINAL_REVIEW_PASS`  
 **Task A1 Status:** `COMPLETED_AND_VERIFIED`  
 **Task A2 Status:** `COMPLETED_AND_VERIFIED`  
 **Task A3 Status:** `COMPLETED_AND_VERIFIED`  
+**Task A4 Status:** `COMPLETED_AND_VERIFIED`  
+**Task A5 Status:** `COMPLETED_AND_VERIFIED`  
+**Task A6 Status:** `COMPLETED_AND_VERIFIED`  
 **Audit Date:** September 20, 2026  
 
 ---
@@ -62,7 +65,7 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 | **`GAP-15`** | Append-Only Persistent Audit Trail Event Log | `AUDIT` | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `GAP-14` | `DEFERRED` |
 | **`GAP-16`** | Extended Altium Parameter Ingestion Parser | `CAD_INTEGRATION` | Full 20-parameter canonical contract ingestion, strict MPN validation, and technical spec extraction implemented. | No | `TASK-A3` | None | `VERIFIED` |
 | **`GAP-17`** | Universal Security Challenge / CAPTCHA Handler | `SECURITY / AUTH` | Unified `IChallengeHandler` subsystem with 8 challenge types, callback handler, and Qt dialog implemented. | **YES** | `TASK-A2` | None | `VERIFIED` |
-| **`GAP-18`** | Multi-Vendor Deterministic Export Pipeline | `REPORTING` | Basic Lion shortage export; multi-vendor PDF/CSV/XLSX export pipeline missing. | No | `TASK-A6` | `GAP-01`, `GAP-07` | `PARTIAL` |
+| **`GAP-18`** | Multi-Vendor Deterministic Export Pipeline | `REPORTING` | Pure functional multi-vendor PDF, CSV (RFC 4180/utf-8-sig), and XLSX (multi-sheet/openpyxl) deterministic export pipeline with candidate audit trails and Persian/RTL support. | No | `TASK-A6` | `GAP-01`, `GAP-07` | `VERIFIED` |
 
 ---
 
@@ -121,6 +124,11 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 | **`GAP-02`** | • Standalone Direct MPN Sourcing tab in `QuickOrderDialog`<br>• Dedicated input parameters: MPN (mandatory string), Quantity stepper (`NumberStepperWidget`), Brand Rule (`ANY`, `EXACT`, `APPROVED_LIST`), Package/Footprint, Target Vendor combo<br>• Strict MPN validation (empty MPN prohibited; zero Comment fallback)<br>• Background `MPNSearchWorker` calling `orchestrator.gather_candidates` & `evaluate_candidate`<br>• Factual candidate table with radio candidate selection & MOQ/Step effective quantity calculation<br>• Cart staging integration invoking `orchestrator.stage_candidate(sync_cart=True)` | [`ui/dialogs/quick_order_dialog.py:292-486`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L292-L486) | Passed 12 dedicated Direct MPN sourcing tests in [`tests/test_desktop_workflows.py`](file:///d:/management-elec/autom/atom/tests/test_desktop_workflows.py). |
 | **`GAP-03`** | • Standalone Direct Product URL tab in `QuickOrderDialog`<br>• Strict `validate_vendor_pdp_url` validating vendor domain AND canonical PDP regex patterns across Lion, Javan, and RoboEq (non-PDP URLs rejected)<br>• Background `URLInspectWorker` executing adapter product inspection, stock querying, and constraint resolution<br>• Factually rendered inspection details table with raw technical specs, stock, MOQ, packaging step, and total cost<br>• Cart staging integration with GAP-13 delta synchronization via `orchestrator.stage_candidate(sync_cart=True)` | [`ui/dialogs/quick_order_dialog.py:50-86`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L50-L86)<br>[`ui/dialogs/quick_order_dialog.py:488-602`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L488-L602) | Passed 11 dedicated Direct URL sourcing tests in [`tests/test_desktop_workflows.py`](file:///d:/management-elec/autom/atom/tests/test_desktop_workflows.py). |
 
+### 4.6 Task A6 Verification Evidence (GAP-18)
+| GAP ID | Implemented Features | Source Code Location | Forensic Verification |
+|---|---|---|---|
+| **`GAP-18`** | • `ReportType` enum (`PRE_ORDER_CONFIRMATION` vs `POST_STAGING_FINAL`)<br>• `CandidateLifecycleState` audit trail tracking (`DISCOVERED`, `ELIGIBLE`, `REJECTED`, `SELECTED_BY_USER`, `ACTUALLY_STAGED`)<br>• `ProcurementReportBuilder.build` pure functional data builder with deterministic sorting contracts<br>• `ProcurementCSVExporter` RFC 4180 / `utf-8-sig` export with Windows Excel compatibility<br>• `ProcurementXLSXExporter` multi-sheet workbook generation (`Procurement Summary`, `Candidate Audit Trail`, `Warnings & Incompatibilities`) via `openpyxl`<br>• `ProcurementPDFExporter` vector PDF generation with Landscape A4 layout and Persian/RTL support via `QTextDocument`<br>• Non-mutating UI export action in `OrderPreviewDialog` dropdown menu | [`core/procurement/reporting/models.py`](file:///d:/management-elec/autom/atom/core/procurement/reporting/models.py)<br>[`core/procurement/reporting/builder.py`](file:///d:/management-elec/autom/atom/core/procurement/reporting/builder.py)<br>[`core/procurement/reporting/csv_exporter.py`](file:///d:/management-elec/autom/atom/core/procurement/reporting/csv_exporter.py)<br>[`core/procurement/reporting/xlsx_exporter.py`](file:///d:/management-elec/autom/atom/core/procurement/reporting/xlsx_exporter.py)<br>[`core/procurement/reporting/pdf_exporter.py`](file:///d:/management-elec/autom/atom/core/procurement/reporting/pdf_exporter.py)<br>[`ui/dialogs/order_preview_dialog.py:359-365,744-811`](file:///d:/management-elec/autom/atom/ui/dialogs/order_preview_dialog.py#L359-L365) | Passed 15 dedicated export pipeline and format verification tests in [`tests/test_export_pipeline.py`](file:///d:/management-elec/autom/atom/tests/test_export_pipeline.py). |
+
 ---
 
 ## 5. RECONCILED IMPLEMENTATION ROADMAP (TASKS A1 THROUGH A7)
@@ -132,8 +140,8 @@ flowchart TD
     A3["TASK-A3 [VERIFIED]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
     A4["TASK-A4 [VERIFIED]: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
     A5["TASK-A5 [VERIFIED]: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
-    A6["TASK-A6 [NEXT]: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
-    A7["TASK-A7: Phase 10 Release Packaging, Windows Hardening & Nuitka Compilation"]
+    A6["TASK-A6 [VERIFIED]: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
+    A7["TASK-A7 [NEXT]: Phase 10 Release Packaging, Windows Hardening & Nuitka Compilation"]
 
     A1 --> A2
     A2 --> A3
@@ -168,10 +176,8 @@ flowchart TD
 
 #### TASK-A6: Multi-Vendor Deterministic Export Pipeline
 - **Target GAPs:** `GAP-18`
-- **Status:** `NEXT_TASK_FOR_EXECUTION`
-- **Scope:**
-  1. Implement multi-vendor procurement report generation in PDF, CSV, and Excel formats.
-  2. Include complete decision audit trail, pricing breakdown, and unverified parameter warnings.
+- **Status:** `COMPLETED_AND_VERIFIED` (331 tests passing total, +15 new tests).
+- **Scope Accomplished:** Side-effect-free, deterministic export pipeline in PDF, CSV, and XLSX formats; complete candidate decision audit trails (`DISCOVERED`, `ELIGIBLE`, `REJECTED`, `SELECTED_BY_USER`, `ACTUALLY_STAGED`); Pre-Order vs Post-Staging separation; pure UI export integration.
 
 #### TASK-A7: Phase 10 Release Packaging & Nuitka Hardening
 - **Target Scope:** End-to-end live multi-vendor validation on Windows host, application-level packaging, and production Nuitka binary compilation.
@@ -202,12 +208,12 @@ Document Reference:      DOC-OMNIX-REGISTRY-001
 Version:                 1.0.0-CANONICAL
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Automated Test Suite:    316 / 316 PASSED
+Automated Test Suite:    331 / 331 PASSED
 Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
 Total Registered GAPs:   18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
-Verified GAPs:           12 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
-Next Task for Execution: TASK-A6 (GAP-18 — Multi-Vendor Deterministic Export Pipeline)
+Verified GAPs:           13 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17, GAP-18)
+Next Task for Execution: TASK-A7 (Phase 10 Release Packaging, Windows Hardening & Nuitka Compilation)
 Datastore Baseline:      Inventory.xlsx (Production Datastore Preserved)
 SQLite Status:           DEFERRED (GAP-14 gated on OD-003)
 ================================================================================
