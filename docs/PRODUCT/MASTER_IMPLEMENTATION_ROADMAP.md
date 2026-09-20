@@ -364,8 +364,8 @@ The following decisions remain **OPEN** and are strictly preserved:
 │ TASK-A2   │ Multi-Vendor Settings & Challenge │ GAP-11, GAP-17, GAP-09        │ VERIFIED         │
 │ TASK-A3   │ Dual Modes & Altium Ingestion     │ GAP-01, GAP-16                │ VERIFIED         │
 │ TASK-A4   │ Multi-Vendor Cart Idempotency     │ GAP-13                        │ VERIFIED         │
-│ TASK-A5   │ Desktop UI & Multi-Candidate      │ GAP-07, GAP-02, GAP-03        │ NEXT_IN_SEQUENCE │
-│ TASK-A6   │ Deterministic Export Pipeline     │ GAP-18                        │ READY            │
+│ TASK-A5   │ Desktop UI & Multi-Candidate      │ GAP-07, GAP-02, GAP-03        │ VERIFIED         │
+│ TASK-A6   │ Deterministic Export Pipeline     │ GAP-18                        │ NEXT_IN_SEQUENCE │
 │ TASK-A7   │ Phase 10 Release & Nuitka Binary  │ End-to-End Validation         │ READY            │
 └───────────┴───────────────────────────────────┴───────────────────────────────┴──────────────────┘
 ```
@@ -402,14 +402,13 @@ The following decisions remain **OPEN** and are strictly preserved:
 
 #### TASK-A5: Desktop UI Workflows & Multi-Candidate Preview
 - **Target GAPs:** `GAP-07`, `GAP-02`, `GAP-03`.
-- **Status:** `NEXT_TASK_FOR_EXECUTION`.
-- **Scope:**
-  1. Expand `OrderPreviewDialog` to display multi-candidate alternative offers, selection rationales, and candidate switching.
-  2. Create `QuickOrderDialog` for standalone Direct MPN and Direct URL procurement.
-- **Affected Files:** `ui/dialogs/order_preview_dialog.py`, `ui/dialogs/quick_order_dialog.py` (NEW), `ui/main_window.py`.
+- **Status:** `COMPLETED_AND_VERIFIED` (316 unit/contract tests passing total, +34 new tests).
+- **Scope Accomplished:** Master-Detail `OrderPreviewDialog` with multi-candidate offers, factual parameter comparison, radio candidate override, dynamic total recalculation, and `QuickOrderDialog` with standalone Direct MPN (GAP-02) and Direct URL (GAP-03) sourcing workflows.
+- **Affected Files:** `ui/dialogs/order_preview_dialog.py`, `ui/dialogs/quick_order_dialog.py` (NEW), `ui/main_window.py`, `tests/test_desktop_workflows.py` (NEW).
 
 #### TASK-A6: Multi-Vendor Deterministic Export Pipeline
 - **Target GAPs:** `GAP-18`.
+- **Status:** `NEXT_TASK_FOR_EXECUTION`.
 - **Scope:**
   1. Implement multi-vendor procurement report generation in PDF, CSV, and Excel formats.
   2. Include complete decision audit trail, pricing breakdown, and unverified parameter warnings.
@@ -432,12 +431,12 @@ Version:                 2.0.0-RECONCILED
 Governing Registry:      docs/PRODUCT/CANONICAL_GAP_REGISTRY.md (DOC-OMNIX-REGISTRY-001)
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Automated Tests:         282 / 282 PASSED
+Automated Tests:         316 / 316 PASSED
 Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
 Canonical GAPs Count:    18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
-Verified GAPs:           9 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
-Active Next Task:        TASK-A5 (GAP-07, GAP-02, GAP-03 — Desktop UI Workflows & Multi-Candidate Preview)
+Verified GAPs:           12 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
+Active Next Task:        TASK-A6 (GAP-18 — Multi-Vendor Deterministic Export Pipeline)
 Task Sequence:           TASK-A1 -> TASK-A2 -> TASK-A3 -> TASK-A4 -> TASK-A5 -> TASK-A6 -> TASK-A7
 Current Datastore:       Inventory.xlsx (Production Datastore Preserved)
 SQLite Status:           DEFERRED (GAP-14 gated on OD-003)

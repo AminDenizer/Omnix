@@ -74,17 +74,17 @@ The following master table details all **18 identified product gaps** across the
 
 | ID | Domain | Requirement Title | Current Implementation State | Repository Evidence | Status | Primary Layer | Impact Classification | Dependencies | Blocking? |
 |---|---|---|---|---|:---:|:---:|---|---|:---:|
-| **`GAP-01`** | UI / Workflow | Dual Procurement Modes (Mode A vs Mode B) | Inventory subtraction hardcoded; BOM-only mode missing | [`bom_auditor.py:324`](file:///d:/management-elec/autom/atom/bom_auditor.py#L324) | `PARTIALLY_IMPLEMENTED` | `UI / WORKFLOW` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-06` | **YES** |
-| **`GAP-02`** | UI / Workflow | Direct MPN Procurement Entry Form | Search supported in Core; no standalone GUI dialog | [`core/procurement/orchestrator.py:42`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L42) | `PARTIALLY_IMPLEMENTED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-07` | No |
-| **`GAP-03`** | UI / Workflow | Direct URL Procurement Entry Form | URL resolved in Core; no standalone GUI dialog | [`core/procurement/registry.py:146`](file:///d:/management-elec/autom/atom/core/procurement/registry.py#L146) | `PARTIALLY_IMPLEMENTED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-13` | No |
-| **`GAP-04`** | Matching | Package & Footprint Hard Constraints | Stored on candidate; not verified in evaluation | [`core/procurement/orchestrator.py:128`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L128) | `MISSING` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | None (Internal Contract) | **YES** |
-| **`GAP-05`** | Matching | `UNKNOWN_REQUIRED_PARAMETER` & Spec Engine | Missing typed enum & generic parameter validation | [`core/procurement/models.py:69`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L69) | `MISSING` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | None | **YES** |
-| **`GAP-06`** | Matching | Manufacturer / Brand Constraint Engine | Only exact MPN boolean flag; no allowed brand set | [`core/procurement/models.py:37`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L37) | `MISSING` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | `GAP-05` | **YES** |
-| **`GAP-07`** | UI / Preview | Multi-Candidate Alternative Selection UI | Core evaluates list; UI renders single row | [`ui/dialogs/order_preview_dialog.py:123`](file:///d:/management-elec/autom/atom/ui/dialogs/order_preview_dialog.py#L123) | `PARTIALLY_IMPLEMENTED` | `UI` | `BLOCKS_USER_WORKFLOW`, `BLOCKS_MULTI_CANDIDATE` | `GAP-04`, `GAP-05` | No |
+| **`GAP-01`** | UI / Workflow | Dual Procurement Modes (Mode A vs Mode B) | Mode A (database-aware) and Mode B (turnkey direct BOM) fully implemented and UI switchable | [`bom_auditor.py:10`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10) | `VERIFIED` | `UI / WORKFLOW` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-06` | **YES** |
+| **`GAP-02`** | UI / Workflow | Direct MPN Procurement Entry Form | Standalone QuickOrderDialog tab implemented with brand rules, stepper, vendor filtering, candidate table, and cart delta staging | [`ui/dialogs/quick_order_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py) | `VERIFIED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-07` | No |
+| **`GAP-03`** | UI / Workflow | Direct URL Procurement Entry Form | Standalone QuickOrderDialog tab implemented with strict PDP regex validation, live inspection, constraint extraction, and cart delta staging | [`ui/dialogs/quick_order_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py) | `VERIFIED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-13` | No |
+| **`GAP-04`** | Matching | Package & Footprint Hard Constraints | Exact normalized string equality in candidate evaluation with conservative normalization | [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py) | `VERIFIED` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | None (Internal Contract) | **YES** |
+| **`GAP-05`** | Matching | `UNKNOWN_REQUIRED_PARAMETER` & Spec Engine | Typed `EvaluationState` enum, 4-state spec engine, and dimension validator implemented | [`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py) | `VERIFIED` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | None | **YES** |
+| **`GAP-06`** | Matching | Manufacturer / Brand Constraint Engine | `ANY` vs explicit approved manufacturer list filtering implemented in Core | [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py) | `VERIFIED` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | `GAP-05` | **YES** |
+| **`GAP-07`** | UI / Preview | Multi-Candidate Alternative Selection UI | Master-Detail OrderPreviewDialog implemented with factual candidate comparison, radio candidate override, dynamic total recalculation, and staging | [`ui/dialogs/order_preview_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/order_preview_dialog.py) | `VERIFIED` | `UI` | `BLOCKS_USER_WORKFLOW`, `BLOCKS_MULTI_CANDIDATE` | `GAP-04`, `GAP-05` | No |
 | **`GAP-08`** | Sourcing | Split-Vendor Line Item Sourcing | Entire line item allocated to single vendor | [`core/procurement/orchestrator.py:196`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py#L196) | `MISSING` | `CORE_ENGINE` | `NON_BLOCKING_PRODUCT_GAP`, `OPEN_SPECIFICATION_DEPENDENCY` | `OD-002` | No |
-| **`GAP-09`** | Authentication | Interactive Challenge & Headful Fallback | Headless only; fails immediately on CAPTCHA/OTP | [`vendors/lion/adapter.py:542`](file:///d:/management-elec/autom/atom/vendors/lion/adapter.py#L542) | `MISSING` | `AUTHENTICATION` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_PRODUCTION_RUNTIME` | `GAP-11`, `GAP-17` | **YES** |
+| **`GAP-09`** | Authentication | Interactive Challenge & Headful Fallback | Headless-to-headful session promotion with qualified cookie transfer across all vendors | [`vendors/lion/session.py`](file:///d:/management-elec/autom/atom/vendors/lion/session.py) | `VERIFIED` | `AUTHENTICATION` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_PRODUCTION_RUNTIME` | `GAP-11`, `GAP-17` | **YES** |
 | **`GAP-10`** | Security | Encrypted Keyring Credential Storage | Plaintext JSON in `settings.json` | [`settings_manager.py:20`](file:///d:/management-elec/autom/atom/settings_manager.py#L20) | `PARTIALLY_IMPLEMENTED` | `SECURITY` | `NON_BLOCKING_PRODUCT_GAP` | None | No |
-| **`GAP-11`** | Vendor Mgmt | Multi-Vendor Settings & Enable/Disable | Settings dialog only configures Lion | [`ui/dialogs/settings_dialog.py:30`](file:///d:/management-elec/autom/atom/ui/dialogs/settings_dialog.py#L30) | `PARTIALLY_IMPLEMENTED` | `UI / SETTINGS` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_MULTI_VENDOR` | None | **YES** |
+| **`GAP-11`** | Vendor Mgmt | Multi-Vendor Settings & Enable/Disable | 4-tab SettingsDialog with independent enable toggles, credentials, and dynamic registry filtering | [`ui/dialogs/settings_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/settings_dialog.py) | `VERIFIED` | `UI / SETTINGS` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_MULTI_VENDOR` | None | **YES** |
 | **`GAP-12`** | Runtime | Finite State Machine Job Lifecycle | Coarse string statuses (`"RESOLVED"`, etc.) | [`core/procurement/models.py:88`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L88) | `MISSING` | `RUNTIME` | `NON_BLOCKING_PRODUCT_GAP` | None | No |
 | **`GAP-13`** | Runtime | Multi-Vendor Cart Idempotency & Delta Sync | Full cart inspection, 4-tier identity cascade, delta staging, and idempotent no-op returns implemented | [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py) | `VERIFIED` | `RUNTIME` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_PRODUCTION_RUNTIME` | None | **YES** |
 | **`GAP-14`** | Persistence | SQLite ACID Repository Migration | Direct `openpyxl` file access with file locking risk | [`excel_loader.py:213`](file:///d:/management-elec/autom/atom/excel_loader.py#L213) | `DOCUMENTED_ONLY` | `PERSISTENCE` | `NON_BLOCKING_PRODUCT_GAP`, `OPEN_SPECIFICATION_DEPENDENCY` | `OD-003` | No |
@@ -98,11 +98,12 @@ The following master table details all **18 identified product gaps** across the
 ## 4. GAP STATUS & IMPACT BREAKDOWN
 
 ### 4.1 Status Summary
-- **`VERIFIED`:** **9 GAPs** (`GAP-01`, `GAP-04`, `GAP-05`, `GAP-06`, `GAP-09`, `GAP-11`, `GAP-13`, `GAP-16`, `GAP-17`)
-- **`PARTIALLY_IMPLEMENTED`:** **4 GAPs** (`GAP-02`, `GAP-03`, `GAP-07`, `GAP-18`)
-- **`MISSING`:** **4 GAPs** (`GAP-08`, `GAP-10`, `GAP-12`, `GAP-15`)
+- **`VERIFIED`:** **12 GAPs** (`GAP-01`, `GAP-02`, `GAP-03`, `GAP-04`, `GAP-05`, `GAP-06`, `GAP-07`, `GAP-09`, `GAP-11`, `GAP-13`, `GAP-16`, `GAP-17`)
+- **`PARTIALLY_IMPLEMENTED`:** **2 GAPs** (`GAP-10`, `GAP-18`)
+- **`MISSING`:** **3 GAPs** (`GAP-08`, `GAP-12`, `GAP-15`)
 - **`DOCUMENTED_ONLY`:** **1 GAP** (`GAP-14`)
 - **Total Registered GAPs:** **18 GAPs**
+
 
 ### 4.2 Release-Blocking vs Non-Blocking GAPs
 Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified as **`BLOCKS_PRODUCT_COMPLETION`** (ALL 8 ARE NOW VERIFIED):
@@ -413,14 +414,16 @@ FINAL PRODUCT REQUIREMENT FORENSIC AUDIT SANITY CHECK
 ================================================================================
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Working Tree:            Clean (Zero source code / test files modified)
-Automated Tests:         282 / 282 PASSED
+Working Tree:            Clean
+Automated Tests:         316 / 316 PASSED
 Site Map Validation:     Lion (10/10), Javan (10/10), RoboEq (10/10) — ALL PASS (30/30)
 Total GAPs in Registry:  18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
-Verified GAPs:           9 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
+Verified GAPs:           12 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
+Active Next Task:        TASK-A6 (GAP-18 — Multi-Vendor Deterministic Export Pipeline)
 Open Decisions:          3 (OD-001: Package Taxonomy, OD-002: Sourcing Metric, OD-003: Safety Stock)
 Out-of-Scope Items:      3 (OOS-001: Altium Library, OOS-002: Auto-Payment, OOS-003: Runtime AI/LLM)
 Updated Document:        docs/PRODUCT/MASTER_PRODUCT_COMPLETION_GAP_ANALYSIS.md
 ================================================================================
+
 ```

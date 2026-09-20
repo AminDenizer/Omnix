@@ -48,17 +48,16 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 | ID | Title | Domain / Layer | Current Code State | Blocking? | Task Target | Dependencies | Status |
 |---|---|---|---|:---:|:---:|---|:---:|
 | **`GAP-01`** | Dual Procurement Modes (Mode A vs Mode B) | `UI / WORKFLOW` | Mode A (database-aware shortage calculation) and Mode B (100% inventory-independent turnkey BOM sourcing) fully implemented and UI-switchable. | **YES** | `TASK-A3` | `GAP-04`, `GAP-06` | `VERIFIED` |
-| **`GAP-02`** | Direct MPN Procurement Quick Order Dialog | `UI` | Search supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `GAP-04`, `GAP-07` | `PARTIAL` |
-| **`GAP-03`** | Direct URL Procurement Quick Order Dialog | `UI` | URL routing supported in Core; no standalone desktop GUI dialog. | No | `TASK-A5` | `GAP-13` | `PARTIAL` |
+| **`GAP-02`** | Direct MPN Procurement Quick Order Dialog | `UI` | Standalone QuickOrderDialog tab implemented with brand rules, stepper, vendor filtering, candidate table, and cart delta staging. | No | `TASK-A5` | `GAP-04`, `GAP-07` | `VERIFIED` |
+| **`GAP-03`** | Direct URL Procurement Quick Order Dialog | `UI` | Standalone QuickOrderDialog tab implemented with strict PDP regex validation, live inspection, constraint extraction, and cart delta staging. | No | `TASK-A5` | `GAP-13` | `VERIFIED` |
 | **`GAP-04`** | Package & Footprint Hard Constraints (`OD-001` OPEN) | `CORE_ENGINE` | Fully implemented in Core models and orchestrator with conservative normalization. | **YES** | `TASK-A1` | None | `VERIFIED` |
 | **`GAP-05`** | `UNKNOWN_REQUIRED_PARAMETER` & Spec Engine | `CORE_ENGINE` | Typed `EvaluationState` enum, 4-state spec engine, and dimension validator implemented. | **YES** | `TASK-A1` | None | `VERIFIED` |
 | **`GAP-06`** | Manufacturer / Brand Constraint Engine | `CORE_ENGINE` | `ANY` vs explicit approved manufacturer list filtering implemented in Core. | **YES** | `TASK-A1` | `GAP-05` | `VERIFIED` |
-| **`GAP-07`** | Multi-Candidate Alternative Selection UI | `UI` | Core evaluates candidate list; `OrderPreviewDialog` renders flat list without candidate override. | No | `TASK-A5` | `GAP-04`, `GAP-05`, `GAP-06` | `PARTIAL` |
+| **`GAP-07`** | Multi-Candidate Alternative Selection UI | `UI` | Master-Detail OrderPreviewDialog implemented with factual candidate comparison, radio candidate override, dynamic total recalculation, and staging. | No | `TASK-A5` | `GAP-04`, `GAP-05`, `GAP-06` | `VERIFIED` |
 | **`GAP-08`** | Split-Vendor Line Item Sourcing Allocation | `CORE_ENGINE` | Line items allocated to single vendor; split sourcing across multiple vendors deferred. | No | Post-Release | `OD-002` | `DEFERRED` |
 | **`GAP-09`** | Interactive Authentication & Headful Fallback | `AUTHENTICATION` | Session promotion with explicit cookie transfer qualification and adapter challenge escalation implemented. | **YES** | `TASK-A2` | `GAP-11`, `GAP-17` | `VERIFIED` |
 | **`GAP-10`** | Encrypted Keyring Credential Storage | `SECURITY` | Plaintext JSON in `settings.json`; OS keyring encryption deferred. | No | Post-Release | None | `DEFERRED` |
 | **`GAP-13`** | Multi-Vendor Cart Idempotency & Delta Sync | `RUNTIME` | Cart pre-inspection, strict 4-priority identity cascade, A3 quantity reconciliation, and idempotent delta staging implemented. | **YES** | `TASK-A4` | None | `VERIFIED` |
-
 | **`GAP-14`** | Embedded ACID Relational Persistence (SQLite) | `PERSISTENCE` | `Inventory.xlsx` production datastore active; SQLite migration deferred. | No | Post-Release | `OD-003` | `DEFERRED` |
 | **`GAP-15`** | Append-Only Persistent Audit Trail Event Log | `AUDIT` | Ephemeral stdout logging; append-only event store deferred. | No | Post-Release | `GAP-14` | `DEFERRED` |
 | **`GAP-16`** | Extended Altium Parameter Ingestion Parser | `CAD_INTEGRATION` | Full 20-parameter canonical contract ingestion, strict MPN validation, and technical spec extraction implemented. | No | `TASK-A3` | None | `VERIFIED` |
@@ -115,6 +114,13 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 |---|---|---|---|
 | **`GAP-13`** | • Strict 4-priority Cart Item Identity cascade (`EXACT_VENDOR_SKU` $\to$ `CANONICAL_PDP_URL` $\to$ `MPN_AND_MANUFACTURER` $\to$ `MPN_ONLY_FALLBACK`)<br>• Differing valid manufacturers strictly rejected (`NO_MATCH`)<br>• Product Name never used as definitive identity key<br>• Multi-line same-candidate cart quantity aggregation ($Q_{\text{existing}} = \sum \text{qty}$)<br>• Authoritative A3 quantity reconciliation without secondary step rounding<br>• Mathematical delta synchronization: $\Delta Q = \max(0, Q_{\text{target\_orderable}} - Q_{\text{existing}})$<br>• Deterministic idempotent No-Op when $Q_{\text{existing}} \ge Q_{\text{target\_orderable}}$<br>• Multi-vendor session & failure isolation (Vendor A error does not abort Vendor B/C)<br>• Disabled vendor upfront bypass before network activity<br>• Deterministic `MAX_QUANTITY_EXCEEDED` constraint handling<br>• Complete DOM cart extraction in `RoboEqVendorAdapter` | [`core/models.py`](file:///d:/management-elec/autom/atom/core/models.py)<br>[`core/procurement/models.py`](file:///d:/management-elec/autom/atom/core/procurement/models.py)<br>[`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py)<br>[`core/procurement/bridge.py`](file:///d:/management-elec/autom/atom/core/procurement/bridge.py)<br>[`vendors/roboeq/adapter.py`](file:///d:/management-elec/autom/atom/vendors/roboeq/adapter.py) | Passed 24 dedicated unit/integration tests in [`tests/test_cart_sync.py`](file:///d:/management-elec/autom/atom/tests/test_cart_sync.py). |
 
+### 4.5 Task A5 Verification Evidence (GAP-07, GAP-02, GAP-03)
+| GAP ID | Implemented Features | Source Code Location | Forensic Verification |
+|---|---|---|---|
+| **`GAP-07`** | • Master-Detail `OrderPreviewDialog` architecture with line-item master and candidate-detail tables<br>• Factual raw candidate offer rendering (Vendor, SKU, MPN, Brand, Package, Stock, MOQ, Step, Unit Price, Total Cost, Status)<br>• Explicit user candidate selection override via radio toggle without hidden/winner scoring<br>• Ineligible candidate non-selectability with explicit rejection reason tooltips<br>• Dynamic total estimated order cost and effective quantity recalculation upon candidate override<br>• Staging execution strictly targeting selected candidate evaluations via `stage_candidate(sync_cart=True)` | [`ui/dialogs/order_preview_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/order_preview_dialog.py) | Passed 11 dedicated candidate comparison & selection tests in [`tests/test_desktop_workflows.py`](file:///d:/management-elec/autom/atom/tests/test_desktop_workflows.py). |
+| **`GAP-02`** | • Standalone Direct MPN Sourcing tab in `QuickOrderDialog`<br>• Dedicated input parameters: MPN (mandatory string), Quantity stepper (`NumberStepperWidget`), Brand Rule (`ANY`, `EXACT`, `APPROVED_LIST`), Package/Footprint, Target Vendor combo<br>• Strict MPN validation (empty MPN prohibited; zero Comment fallback)<br>• Background `MPNSearchWorker` calling `orchestrator.gather_candidates` & `evaluate_candidate`<br>• Factual candidate table with radio candidate selection & MOQ/Step effective quantity calculation<br>• Cart staging integration invoking `orchestrator.stage_candidate(sync_cart=True)` | [`ui/dialogs/quick_order_dialog.py:292-486`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L292-L486) | Passed 12 dedicated Direct MPN sourcing tests in [`tests/test_desktop_workflows.py`](file:///d:/management-elec/autom/atom/tests/test_desktop_workflows.py). |
+| **`GAP-03`** | • Standalone Direct Product URL tab in `QuickOrderDialog`<br>• Strict `validate_vendor_pdp_url` validating vendor domain AND canonical PDP regex patterns across Lion, Javan, and RoboEq (non-PDP URLs rejected)<br>• Background `URLInspectWorker` executing adapter product inspection, stock querying, and constraint resolution<br>• Factually rendered inspection details table with raw technical specs, stock, MOQ, packaging step, and total cost<br>• Cart staging integration with GAP-13 delta synchronization via `orchestrator.stage_candidate(sync_cart=True)` | [`ui/dialogs/quick_order_dialog.py:50-86`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L50-L86)<br>[`ui/dialogs/quick_order_dialog.py:488-602`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py#L488-L602) | Passed 11 dedicated Direct URL sourcing tests in [`tests/test_desktop_workflows.py`](file:///d:/management-elec/autom/atom/tests/test_desktop_workflows.py). |
+
 ---
 
 ## 5. RECONCILED IMPLEMENTATION ROADMAP (TASKS A1 THROUGH A7)
@@ -125,8 +131,8 @@ flowchart TD
     A2["TASK-A2 [VERIFIED]: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth (GAP-11, GAP-17, GAP-09)"]
     A3["TASK-A3 [VERIFIED]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
     A4["TASK-A4 [VERIFIED]: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
-    A5["TASK-A5 [NEXT]: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
-    A6["TASK-A6: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
+    A5["TASK-A5 [VERIFIED]: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
+    A6["TASK-A6 [NEXT]: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]
     A7["TASK-A7: Phase 10 Release Packaging, Windows Hardening & Nuitka Compilation"]
 
     A1 --> A2
@@ -153,18 +159,16 @@ flowchart TD
 
 #### TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization
 - **Target GAPs:** `GAP-13`
-- **Status:** `COMPLETED_AND_VERIFIED` (282 tests passing total, +24 new tests).
-- **Scope Accomplished:** 4-tier cart identity cascade, A3 quantity reconciliation, multi-line cart aggregation, delta staging, idempotent no-ops, multi-vendor isolation, disabled vendor bypass, and RoboEq cart extraction.
+- **Status:** `COMPLETED_AND_VERIFIED` (282 tests passing total).
 
 #### TASK-A5: Desktop UI Workflows & Multi-Candidate Preview
 - **Target GAPs:** `GAP-07`, `GAP-02`, `GAP-03`
-- **Status:** `NEXT_TASK_FOR_EXECUTION`
-- **Scope:**
-  1. Expand `OrderPreviewDialog` to display multi-candidate alternative offers, selection rationales, and candidate switching.
-  2. Create `QuickOrderDialog` for standalone Direct MPN and Direct URL procurement.
+- **Status:** `COMPLETED_AND_VERIFIED` (316 tests passing total, +34 new tests).
+- **Scope Accomplished:** Master-Detail `OrderPreviewDialog` with multi-candidate offers, factual parameter comparison, radio candidate override, dynamic total recalculation, and `QuickOrderDialog` with standalone Direct MPN (GAP-02) and Direct URL (GAP-03) sourcing workflows.
 
 #### TASK-A6: Multi-Vendor Deterministic Export Pipeline
 - **Target GAPs:** `GAP-18`
+- **Status:** `NEXT_TASK_FOR_EXECUTION`
 - **Scope:**
   1. Implement multi-vendor procurement report generation in PDF, CSV, and Excel formats.
   2. Include complete decision audit trail, pricing breakdown, and unverified parameter warnings.
@@ -198,14 +202,15 @@ Document Reference:      DOC-OMNIX-REGISTRY-001
 Version:                 1.0.0-CANONICAL
 Repository:              D:\management-elec\autom\atom
 Branch:                  Auto
-Automated Test Suite:    282 / 282 PASSED
+Automated Test Suite:    316 / 316 PASSED
 Site Map Graph Audits:   Lion (10/10), Javan (10/10), RoboEq (10/10) — 30/30 PASS
 Total Registered GAPs:   18 GAPs (GAP-01 through GAP-18)
 Release-Blocking GAPs:   8 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-17 — ALL 8 VERIFIED)
-Verified GAPs:           9 GAPs (GAP-01, GAP-04, GAP-05, GAP-06, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
-Next Task for Execution: TASK-A5 (GAP-07, GAP-02, GAP-03 — Desktop UI Workflows & Multi-Candidate Preview)
+Verified GAPs:           12 GAPs (GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-11, GAP-13, GAP-16, GAP-17)
+Next Task for Execution: TASK-A6 (GAP-18 — Multi-Vendor Deterministic Export Pipeline)
 Datastore Baseline:      Inventory.xlsx (Production Datastore Preserved)
 SQLite Status:           DEFERRED (GAP-14 gated on OD-003)
 ================================================================================
 ```
+
 
