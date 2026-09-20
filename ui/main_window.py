@@ -18,7 +18,8 @@ from ui.widgets import (
     StockCellDelegate,
     StatsRibbonWidget,
     FilterBarWidget,
-    BOMAuditWidget
+    BOMAuditWidget,
+    AssemblyPreparationWidget
 )
 from ui.dialogs import SettingsDialog, OrderPreviewDialog, QuickOrderDialog
 
@@ -182,6 +183,15 @@ class MainWindow(QMainWindow):
         # Tab 2: Altium BOM Project Assembly Auditor
         self.bom_audit_widget = BOMAuditWidget(self.excel, self)
         self.tabs.addTab(self.bom_audit_widget, "📋 Altium BOM Project Auditor")
+
+        # Tab 3: Assembly & BOM Preparation
+        self.assembly_widget = AssemblyPreparationWidget(self)
+        self.tabs.addTab(self.assembly_widget, "🔧 Assembly & BOM Preparation")
+
+        # Wire BOM lifecycle synchronization between Tab 2 and Tab 3
+        self.bom_audit_widget.bomLoaded.connect(self.assembly_widget.set_bom_data)
+        self.bom_audit_widget.bomUnloaded.connect(self.assembly_widget.clear_bom)
+        self.assembly_widget.bomFileRequested.connect(self.bom_audit_widget.load_bom_file)
 
         main_layout.addWidget(self.tabs)
 

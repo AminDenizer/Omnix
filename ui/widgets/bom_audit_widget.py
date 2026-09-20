@@ -105,6 +105,9 @@ class BOMAuditWidget(QWidget):
       requirements directly across all enabled multi-vendor catalogs.
     """
 
+    bomLoaded = pyqtSignal(object)
+    bomUnloaded = pyqtSignal()
+
     def __init__(self, inventory_loader: ExcelDataLoader, parent=None):
         super().__init__(parent)
         self.inventory = inventory_loader
@@ -305,6 +308,7 @@ class BOMAuditWidget(QWidget):
 
         self.audit_result = res
         self._render_results()
+        self.bomLoaded.emit(self.audit_result)
 
     def unload_bom(self):
         """Unload active Altium BOM and reset view back to the drop zone."""
@@ -315,6 +319,7 @@ class BOMAuditWidget(QWidget):
         self.table.hide()
         self.action_card.hide()
         self.drop_zone.show()
+        self.bomUnloaded.emit()
 
     def _render_results(self):
         if not self.audit_result:
