@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
         self.table.itemChanged.connect(self._on_table_cell_changed)
         inv_layout.addWidget(self.table)
 
-        self.tabs.addTab(self.inventory_tab, "📦 Inventory & Stock Control")
+        self.tabs.addTab(self.inventory_tab, "📦 Inventory && Stock Control")
 
         # Tab 2: Altium BOM Project Assembly Auditor
         self.bom_audit_widget = BOMAuditWidget(self.excel, self)
@@ -186,7 +186,7 @@ class MainWindow(QMainWindow):
 
         # Tab 3: Assembly & BOM Preparation
         self.assembly_widget = AssemblyPreparationWidget(self)
-        self.tabs.addTab(self.assembly_widget, "🔧 Assembly & BOM Preparation")
+        self.tabs.addTab(self.assembly_widget, "🔧 Assembly && BOM Preparation")
 
         # Wire BOM lifecycle synchronization between Tab 2 and Tab 3
         self.bom_audit_widget.bomLoaded.connect(self.assembly_widget.set_bom_data)

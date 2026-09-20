@@ -59,9 +59,15 @@ def main():
     # Initialize Main Window
     window = MainWindow(default_file=target_excel)
 
-    # Startup Splash Screen
+    # Startup Splash Screen with safe window transition
+    app.setQuitOnLastWindowClosed(False)
+
+    def _on_splash_finished():
+        window.show()
+        app.setQuitOnLastWindowClosed(True)
+
     splash = SplashScreen(total_duration_ms=1000)
-    splash.finished.connect(window.show)
+    splash.finished.connect(_on_splash_finished)
     splash.start()
 
     sys.exit(app.exec())

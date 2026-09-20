@@ -474,6 +474,13 @@ QScrollBar:vertical {
     border-radius: 4px;
 }
 
+QTableWidget QScrollBar:vertical,
+QTableView QScrollBar:vertical,
+QTreeWidget QScrollBar:vertical,
+QTreeView QScrollBar:vertical {
+    margin: 44px 2px 0px 2px;
+}
+
 QScrollBar::handle:vertical {
     background-color: #334155;
     min-height: 28px;
