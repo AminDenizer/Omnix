@@ -4,6 +4,7 @@ Governing GAP: GAP-07 (Multi-Candidate Comparison & Alternative Selection)
 Reuses UniversalProcurementOrchestrator, CandidateEvaluation, and GAP-13 Delta Synchronization.
 """
 
+import os
 import webbrowser
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,11 +13,13 @@ from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -41,6 +44,12 @@ from core.procurement.models import (
 )
 from core.procurement.orchestrator import UniversalProcurementOrchestrator
 from core.procurement.registry import VendorRegistry, default_registry
+from core.procurement.reporting import (
+    ProcurementCSVExporter,
+    ProcurementPDFExporter,
+    ProcurementReportBuilder,
+    ProcurementXLSXExporter,
+)
 from settings_manager import settings
 from ui.dialogs.settings_dialog import SettingsDialog
 
@@ -182,6 +191,7 @@ class OrderPreviewDialog(QDialog):
         self.orchestrator = orchestrator or UniversalProcurementOrchestrator(registry=self.registry)
 
         self.worker: Optional[OrderWorkerThread] = None
+        self.staging_results_log: Optional[List[Dict[str, Any]]] = None
         self._has_updated_inventory = False
         self.active_row_idx: Optional[int] = None
 
@@ -345,6 +355,11 @@ class OrderPreviewDialog(QDialog):
         self.settings_btn.setObjectName("secondaryBtn")
         self.settings_btn.clicked.connect(self._open_settings)
         btn_layout.addWidget(self.settings_btn)
+
+        self.export_btn = QPushButton("📄 Export Report ▼")
+        self.export_btn.setObjectName("secondaryBtn")
+        self.export_btn.clicked.connect(self._show_export_menu)
+        btn_layout.addWidget(self.export_btn)
 
         self.open_cart_btn = QPushButton("🛒 Open Shopping Cart in Browser")
         self.open_cart_btn.setObjectName("secondaryBtn")
@@ -702,6 +717,7 @@ class OrderPreviewDialog(QDialog):
         self.confirm_payment_btn.show()
         self.confirm_payment_btn.setEnabled(True)
 
+        self.staging_results_log = results.get("results")
         succ_count = results.get("successful_count", 0)
         noop_count = results.get("noop_count", 0)
 
@@ -724,6 +740,74 @@ class OrderPreviewDialog(QDialog):
             )
 
         self._populate_master_table()
+
+    def _show_export_menu(self):
+        """Displays format selection menu for deterministic report export."""
+        menu = QMenu(self)
+        act_xlsx = menu.addAction("📊 Export as Excel Workbook (*.xlsx)")
+        act_xlsx.triggered.connect(lambda: self._export_report("xlsx"))
+
+        act_pdf = menu.addAction("📑 Export as PDF Document (*.pdf)")
+        act_pdf.triggered.connect(lambda: self._export_report("pdf"))
+
+        act_csv = menu.addAction("📋 Export as CSV Table (*.csv)")
+        act_csv.triggered.connect(lambda: self._export_report("csv"))
+
+        menu.exec(self.export_btn.mapToGlobal(self.export_btn.rect().bottomLeft()))
+
+    def _export_report(self, fmt: str):
+        """Pure functional report generation and file export."""
+        report_data = ProcurementReportBuilder.build(
+            plan=self.plan,
+            staging_results=self.staging_results_log,
+            source_title=self.source_title,
+        )
+
+        clean_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in self.source_title.replace(" ", "_"))
+        clean_title = clean_title.strip("_") or "Procurement_Report"
+
+        if fmt == "xlsx":
+            file_filter = "Excel Workbook (*.xlsx)"
+            default_ext = ".xlsx"
+        elif fmt == "pdf":
+            file_filter = "PDF Document (*.pdf)"
+            default_ext = ".pdf"
+        elif fmt == "csv":
+            file_filter = "CSV Spreadsheet (*.csv)"
+            default_ext = ".csv"
+        else:
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Save Procurement Report ({fmt.upper()})",
+            f"Omnix_{clean_title}{default_ext}",
+            file_filter,
+        )
+        if not file_path:
+            return
+
+        try:
+            if fmt == "xlsx":
+                ProcurementXLSXExporter.export(report_data, file_path)
+            elif fmt == "pdf":
+                ProcurementPDFExporter.export(report_data, file_path)
+            elif fmt == "csv":
+                ProcurementCSVExporter.export(report_data, file_path)
+
+            QMessageBox.information(
+                self,
+                "Report Exported Successfully",
+                f"✅ Procurement report successfully saved to:\n\n{file_path}",
+            )
+            if os.path.exists(file_path):
+                webbrowser.open(f"file:///{os.path.abspath(file_path)}")
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"An error occurred while exporting the report:\n\n{str(e)}",
+            )
 
     def _confirm_payment_and_add_stock(self):
         if self._has_updated_inventory:
