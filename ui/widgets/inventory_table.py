@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QWidget, QVBoxLayout, QLabel, QFrame, QLineEdit, QStyledItemDelegate
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QResizeEvent
+from PyQt6.QtGui import QResizeEvent, QFont
 
 
 class EmptyStateOverlay(QWidget):
@@ -75,17 +75,72 @@ class EmptyStateOverlay(QWidget):
 
 
 class InventoryTableWidget(QTableWidget):
-    """Dynamic table widget supporting sorting and empty state overlay."""
+    """Dynamic table widget supporting sorting, empty state overlay, and responsive column distribution."""
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.empty_overlay = EmptyStateOverlay(self.viewport())
         self.empty_overlay.hide()
+        self._min_column_widths = {}
+        self._flexible_columns = []
+        self._is_distributing_columns = False
+
+    def configure_column_distribution(
+        self,
+        min_widths: dict,
+        flexible_columns: Optional[list] = None,
+    ):
+        """Set base column widths and identify flexible columns that absorb extra viewport space."""
+        self._min_column_widths = dict(min_widths)
+        if flexible_columns is not None:
+            self._flexible_columns = list(flexible_columns)
+        else:
+            self._flexible_columns = list(min_widths.keys())
+        self.distribute_columns()
+
+    def distribute_columns(self):
+        """Distribute available viewport width across columns to prevent unused space on the right."""
+        col_count = self.columnCount()
+        if col_count == 0 or self._is_distributing_columns:
+            return
+
+        vp_width = self.viewport().width()
+        if vp_width <= 50:
+            return
+
+        self._is_distributing_columns = True
+        try:
+            base_widths = {}
+            for c in range(col_count):
+                base_widths[c] = self._min_column_widths.get(c, 100)
+
+            total_base = sum(base_widths.values())
+            flex_cols = [c for c in self._flexible_columns if c < col_count]
+            if not flex_cols:
+                flex_cols = list(range(col_count))
+
+            if vp_width > total_base:
+                excess = vp_width - total_base
+                add_each = excess // len(flex_cols)
+                rem = excess % len(flex_cols)
+
+                for c in range(col_count):
+                    extra = 0
+                    if c in flex_cols:
+                        idx_in_flex = flex_cols.index(c)
+                        extra = add_each + (1 if idx_in_flex < rem else 0)
+                    self.setColumnWidth(c, base_widths[c] + extra)
+            else:
+                for c in range(col_count):
+                    self.setColumnWidth(c, base_widths[c])
+        finally:
+            self._is_distributing_columns = False
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
         self.empty_overlay.setGeometry(0, 0, self.viewport().width(), self.viewport().height())
+        self.distribute_columns()
 
     def update_empty_state(self, is_empty: bool, is_filter_active: bool = False):
         """Show or hide the empty state placeholder overlay."""
@@ -104,6 +159,7 @@ class StockCellDelegate(QStyledItemDelegate):
     """
     def createEditor(self, parent: QWidget, option, index):
         editor = QLineEdit(parent)
+        editor.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         editor.setStyleSheet("""
             QLineEdit {
