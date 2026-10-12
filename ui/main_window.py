@@ -650,7 +650,7 @@ class MainWindow(QMainWindow):
                 self,
                 "Stock Policy Shortages Detected",
                 f"{len(shortages)} Stock Policy group(s) are currently below minimum stock threshold.\n\n"
-                f"Procurement and ordering workflows will be enabled in Phase 2."
+                f"Mode A replenishment and ordering are planned for Phase 3."
             )
             return
 

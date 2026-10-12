@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox
 
@@ -390,3 +390,35 @@ class TestTab1InventoryView:
             assert mock_crit.called
             title = mock_crit.call_args[0][1]
             assert "Database File Not Found" in title
+
+    def test_order_low_stock_informational_dialog(self, main_window):
+        win = main_window
+        expected_shortages = [g for g in win.inventory_repo.get_all_groups() if g.is_low_stock]
+        expected_count = len(expected_shortages)
+        assert expected_count > 0
+
+        with patch("ui.main_window.QMessageBox.information") as mock_info:
+            win._open_inventory_order_dialog()
+            assert mock_info.called
+            title = mock_info.call_args[0][1]
+            message = mock_info.call_args[0][2]
+
+            assert title == "Stock Policy Shortages Detected"
+            assert f"{expected_count} Stock Policy group(s) are currently below minimum stock threshold." in message
+            assert "Mode A replenishment and ordering are planned for Phase 3." in message
+            assert "Phase 2" not in message
+
+        # Verify dynamic count behavior to ensure count is not hardcoded
+        mock_group_1 = MagicMock(is_low_stock=True)
+        mock_group_2 = MagicMock(is_low_stock=False)
+        with patch.object(win.inventory_repo, "get_all_groups", return_value=[mock_group_1, mock_group_2]):
+            with patch("ui.main_window.QMessageBox.information") as mock_info:
+                win._open_inventory_order_dialog()
+                assert mock_info.called
+                title = mock_info.call_args[0][1]
+                message = mock_info.call_args[0][2]
+
+                assert title == "Stock Policy Shortages Detected"
+                assert "1 Stock Policy group(s) are currently below minimum stock threshold." in message
+                assert "Mode A replenishment and ordering are planned for Phase 3." in message
+                assert "Phase 2" not in message
