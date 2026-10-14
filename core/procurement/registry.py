@@ -255,6 +255,17 @@ class VendorRegistry:
                 raise UnknownVendorError(f"Vendor '{clean_id}' is not registered.", vendor_id=clean_id)
             return reg
 
+    def get_vendor_name(self, vendor_id: str) -> str:
+        """Return human-readable display name for a vendor."""
+        if not vendor_id:
+            return "Vendor"
+        clean_id = vendor_id.strip()
+        with self._lock:
+            reg = self._registrations.get(clean_id)
+            if reg and reg.display_name:
+                return reg.display_name
+            return clean_id.replace("vendor_", "").title()
+
     def has_vendor(self, vendor_id: str) -> bool:
         """Check if a vendor_id is registered."""
         if not vendor_id or not isinstance(vendor_id, str):

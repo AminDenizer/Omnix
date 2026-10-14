@@ -82,7 +82,12 @@ class UniversalProcurementOrchestrator:
                         pref = adapter.resolve_product(item.pdp_url or item.vendor_sku)
                         details = adapter.inspect_product(pref)
                         stock = adapter.inspect_stock(pref)
-                        constraints = adapter.determine_order_constraints(pref)
+                        constraints = None
+                        if hasattr(adapter, "determine_order_constraints"):
+                            try:
+                                constraints = adapter.determine_order_constraints(pref)
+                            except Exception:
+                                constraints = None
 
                         # Extract price tiers if provided in raw details
                         price_tiers: List[PriceTier] = []
@@ -399,6 +404,7 @@ class UniversalProcurementOrchestrator:
         self,
         requests: List[ProcurementRequest],
         vendor_ids: Optional[List[str]] = None,
+        progress_callback: Optional[Any] = None,
     ) -> BOMProcurementPlan:
         """
         Build an aggregate procurement plan across multiple requests.
@@ -406,8 +412,15 @@ class UniversalProcurementOrchestrator:
         plan_id = f"PLAN-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
         created_at = datetime.datetime.now().isoformat()
         results: List[RequestProcurementResult] = []
+        total_reqs = len(requests)
 
-        for req in requests:
+        for idx, req in enumerate(requests, start=1):
+            if progress_callback:
+                try:
+                    progress_callback(idx, total_reqs, req.part_number, f"Inspecting candidates for '{req.part_number}' ({idx}/{total_reqs})...")
+                except Exception:
+                    pass
+
             cands = self.gather_candidates(req, vendor_ids=vendor_ids)
             evals = [
                 self.evaluate_candidate(
@@ -427,13 +440,20 @@ class UniversalProcurementOrchestrator:
                 err_msg = ""
             elif not cands:
                 status = "UNRESOLVED"
-                err_msg = f"No candidate products found for '{req.part_number}'."
+                if req.explicit_vendor_url:
+                    err_msg = f"Failed to resolve or inspect vendor product at URL: {req.explicit_vendor_url}"
+                else:
+                    err_msg = f"No candidate products found for '{req.part_number}'."
             elif all(not c.in_stock or not c.can_order for c in cands):
                 status = "OUT_OF_STOCK"
                 err_msg = f"All {len(cands)} candidates for '{req.part_number}' are out of stock or inquiry-only."
             else:
                 status = "UNRESOLVED"
-                err_msg = f"Found {len(cands)} candidates but none met eligibility constraints."
+                reasons = [r for e in evals for r in e.rejection_reasons if r]
+                if reasons:
+                    err_msg = f"Found {len(cands)} candidate(s) but none met constraints: {reasons[0]}"
+                else:
+                    err_msg = f"Found {len(cands)} candidate(s) but none met eligibility constraints."
 
             results.append(
                 RequestProcurementResult(
@@ -838,10 +858,23 @@ class UniversalProcurementOrchestrator:
             pref = adapter.resolve_product(url)
             details = adapter.inspect_product(pref)
             stock = adapter.inspect_stock(pref)
-            constraints = adapter.determine_order_constraints(pref)
+            constraints = None
+            if hasattr(adapter, "determine_order_constraints"):
+                try:
+                    constraints = adapter.determine_order_constraints(pref)
+                except Exception:
+                    constraints = None
 
             raw_specs = getattr(details, "specs", {}) or {}
             raw_dims = getattr(details, "dimensions", {}) or {}
+
+            price_tiers: List[PriceTier] = []
+            raw_tiers = getattr(details, "raw_data", {}).get("price_tiers", []) or getattr(details, "price_tiers", [])
+            for t in raw_tiers:
+                if isinstance(t, dict) and "min_quantity" in t and "unit_price_irr" in t:
+                    price_tiers.append(PriceTier(min_quantity=t["min_quantity"], unit_price_irr=t["unit_price_irr"], raw_label=t.get("raw_label", "")))
+                elif isinstance(t, PriceTier):
+                    price_tiers.append(t)
 
             return VendorProcurementCandidate(
                 vendor_id=vendor_id,
@@ -852,10 +885,11 @@ class UniversalProcurementOrchestrator:
                 stock_quantity=stock.stock_quantity,
                 can_order=details.can_order,
                 base_unit_price_irr=details.price_irr,
+                price_tiers=price_tiers,
                 order_constraints=constraints or details.order_constraints or OrderConstraints(),
                 manufacturer=details.manufacturer,
                 package=details.package_raw,
-                footprint=getattr(details, "footprint_raw", None) or getattr(details, "footprint", None) or raw_specs.get("footprint"),
+                footprint=getattr(details, "footprint_raw", None) or getattr(details, "footprint", None) or raw_specs.get("footprint") or details.package_raw,
                 dimensions=raw_dims,
                 raw_status_text=details.raw_status_text,
                 specs=raw_specs,

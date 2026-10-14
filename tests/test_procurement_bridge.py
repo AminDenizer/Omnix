@@ -63,13 +63,21 @@ class MockTestAdapter(IVendorAdapter):
         )
 
     def resolve_product(self, url_or_sku: str) -> ProductReference:
+        sku = url_or_sku.rstrip("/").split("/")[-1]
         return ProductReference(
             vendor_id=self.VENDOR_ID,
-            vendor_sku=url_or_sku,
+            vendor_sku=sku,
             pdp_url=url_or_sku if url_or_sku.startswith("http") else f"{self.BASE_URL}/p/{url_or_sku}",
         )
 
     def inspect_product(self, product_ref: ProductReference) -> ProductDetails:
+        mpn_map = {
+            "item-a": "PART-A",
+            "item-b": "PART-B",
+            "item-c": "PART-C",
+            "fail-item": "PART-D",
+        }
+        mpn = mpn_map.get(product_ref.vendor_sku, product_ref.vendor_sku)
         return ProductDetails(
             vendor_id=self.VENDOR_ID,
             vendor_sku=product_ref.vendor_sku,
@@ -77,7 +85,7 @@ class MockTestAdapter(IVendorAdapter):
             stock_quantity=100,
             can_order=True,
             price_irr=1000,
-            mpn=product_ref.vendor_sku,
+            mpn=mpn,
         )
 
     def extract_product_data(self, dom_context: Any) -> CanonicalComponentDraft:

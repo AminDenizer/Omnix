@@ -148,6 +148,7 @@ class BaseE2EFakeAdapter(IVendorAdapter):
             can_order=True,
             price_irr=info.get("price_irr", 10000),
             mpn=info.get("mpn", product_ref.vendor_sku),
+            package_raw=info.get("package", "DIP-8"),
             order_constraints=OrderConstraints(
                 packaging_step_raw=info.get("step", 1),
                 moq_raw=info.get("moq", 1),
@@ -283,6 +284,7 @@ class FakeJavanE2EAdapter(BaseE2EFakeAdapter):
             "mpn": "STM32F103C8T6",
             "title": "STM32F103C8T6 ARM MCU",
             "url": "https://javanelec.com/product/101/STM32F103",
+            "package": "LQFP-48",
             "in_stock": True,
             "stock_qty": 50,
             "price_irr": 180000,
@@ -293,6 +295,7 @@ class FakeJavanE2EAdapter(BaseE2EFakeAdapter):
             "mpn": "AMS1117-3.3",
             "title": "AMS1117 3.3V LDO SOT-223",
             "url": "https://javanelec.com/product/102/AMS1117",
+            "package": "SOT-223",
             "in_stock": True,
             "stock_qty": 1000,
             "price_irr": 8000,
@@ -313,6 +316,7 @@ class FakeRoboEqE2EAdapter(BaseE2EFakeAdapter):
             "mpn": "ATMEGA328P-PU",
             "title": "ATmega328P DIP-28 AVR MCU",
             "url": "https://roboeq.ir/products/detail/0101001/",
+            "package": "DIP-28",
             "in_stock": True,
             "stock_qty": 80,
             "price_irr": 220000,
@@ -323,6 +327,7 @@ class FakeRoboEqE2EAdapter(BaseE2EFakeAdapter):
             "mpn": "100UF-25V-SMD",
             "title": "100uF 25V SMD Electrolytic Capacitor",
             "url": "https://roboeq.ir/products/detail/0202002/",
+            "package": "SMD",
             "in_stock": True,
             "stock_qty": 500,
             "price_irr": 12000,
@@ -729,7 +734,7 @@ class TestMultiVendorProcurementEdgeCases:
         req_direct = ProcurementBridge.item_to_request(item_direct, registry=reg)
         assert req_direct.explicit_vendor_id == "vendor_lion"
         assert req_direct.explicit_vendor_url == "https://lionelectronic.ir/products/2070-NE555P"
-        assert req_direct.exact_mpn_required is False
+        assert req_direct.exact_mpn_required is True
 
         # Item without direct URL (generic catalog search)
         item_generic = {

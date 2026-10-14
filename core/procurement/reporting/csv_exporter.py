@@ -134,3 +134,4 @@ class ProcurementCSVExporter:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
             f.write(csv_str)
+        return True

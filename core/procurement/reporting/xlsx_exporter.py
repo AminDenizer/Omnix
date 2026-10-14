@@ -48,6 +48,7 @@ class ProcurementXLSXExporter:
 
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         wb.save(filepath)
+        return True
 
     @classmethod
     def _build_summary_sheet(cls, ws, report: ProcurementReportData) -> None:

@@ -138,3 +138,18 @@ class IVendorAdapter(ABC):
         Cleanly terminate driver, release browser resources, and close session.
         """
         pass
+
+    def get_cart_url(self) -> Optional[str]:
+        """
+        Return the storefront cart URL for browser navigation and user review.
+        Base implementation returns None. Every adapter must explicitly provide its correct cart URL.
+        """
+        return None
+
+    def is_pdp_url(self, url: str) -> bool:
+        """
+        Check whether the given storefront URL matches a canonical Product Detail Page (PDP).
+        Default implementation returns False (strict non-permissive rejection).
+        """
+        return False
+

@@ -364,3 +364,265 @@ class ProcurementReportBuilder:
             total_actual_staged_cost_irr=total_actual_staged_cost,
             total_warnings_count=total_warnings,
         )
+
+    @staticmethod
+    def build_from_shortages(
+        shortages: List[Dict[str, Any]],
+        staging_results: Optional[List[Dict[str, Any]]] = None,
+        source_title: str = "Procurement Order Report",
+        source_file: str = "",
+        procurement_mode: Optional[ProcurementMode] = ProcurementMode.DATABASE_AWARE,
+        board_multiplier: int = 1,
+        enabled_vendors: Optional[List[str]] = None,
+        report_id: Optional[str] = None,
+        created_at: Optional[str] = None,
+    ) -> ProcurementReportData:
+        """
+        Pure function converting Mode A shortages / confirmation items into a deterministic ProcurementReportData.
+        """
+        is_post_staging = bool(staging_results is not None)
+        rep_type = ReportType.POST_STAGING_FINAL if is_post_staging else ReportType.PRE_ORDER_CONFIRMATION
+        now_iso = created_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        r_id = report_id or f"REP-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        eff_mode = procurement_mode if isinstance(procurement_mode, ProcurementMode) else ProcurementMode.DATABASE_AWARE
+
+        # Index staging results if provided (key by part_number, designator, part_name)
+        staging_map: Dict[str, Dict[str, Any]] = {}
+        if staging_results:
+            for item in staging_results:
+                for k in ("part", "part_number", "part_name", "designator"):
+                    val = str(item.get(k) or "").strip().upper()
+                    if val and val not in staging_map:
+                        staging_map[val] = item
+
+        line_items: List[ReportLineItem] = []
+        vendor_accum: Dict[str, Dict[str, Any]] = {}
+        total_estimated_cost = 0
+        total_actual_staged_cost = 0
+        total_warnings = 0
+        resolved_count = 0
+        unresolved_count = 0
+
+        for idx, it in enumerate(shortages, start=1):
+            des = str(it.get("designator") or f"Item {idx}")
+            pn = str(it.get("part_number") or it.get("part_name") or it.get("comment") or it.get("description") or f"Part_{idx}")
+            desc = str(it.get("description") or it.get("comment") or "")
+            pkg = str(it.get("package") or it.get("footprint") or "")
+            footprint = str(it.get("footprint") or "")
+            mfr = str(it.get("manufacturer") or it.get("brand") or "")
+            bom_demand = int(it.get("total_needed") or it.get("total_needed_qty") or it.get("unit_qty") or 1)
+            
+            raw_stock = it.get("in_stock")
+            if raw_stock is None:
+                raw_stock = it.get("current_stock")
+            if raw_stock is None:
+                raw_stock = it.get("db_stock_qty")
+            if raw_stock is None:
+                raw_stock = it.get("stock_qty")
+            if raw_stock is None:
+                raw_stock = it.get("stock")
+            db_stock = int(raw_stock) if (raw_stock is not None and str(raw_stock).isdigit()) else 0
+
+            raw_shortage = it.get("shortage")
+            if raw_shortage is None:
+                raw_shortage = it.get("shortage_qty")
+            if raw_shortage is None:
+                raw_shortage = it.get("needed_qty")
+            shortage_qty = int(raw_shortage) if (raw_shortage is not None and str(raw_shortage).isdigit()) else 1
+
+            raw_target = it.get("needed_qty")
+            if raw_target is None:
+                raw_target = shortage_qty
+            target_order_qty = int(raw_target) if (raw_target is not None and str(raw_target).isdigit()) else shortage_qty
+
+            link = str(it.get("link", "")).strip()
+            vid = it.get("vendor_id")
+            if not vid and link:
+                try:
+                    from core.procurement.registry import VendorRegistry
+                    vid = VendorRegistry.get_default_registry().get_vendor_for_url(link)
+                except Exception:
+                    if "lionelectronic.ir" in link.lower():
+                        vid = "vendor_lion"
+                    elif "javanelec.com" in link.lower():
+                        vid = "vendor_javan"
+
+            is_lion = (vid == "vendor_lion") or ("lionelectronic.ir" in link.lower())
+            if is_lion:
+                vid = "vendor_lion"
+                v_name = "Lion Electronic"
+            elif vid:
+                v_name = _format_vendor_name(vid)
+            else:
+                v_name = "—"
+
+            is_valid_link = bool(link and link.startswith("http"))
+            is_registered_vendor = bool(vid)
+
+            item_warnings: List[str] = []
+            if not link:
+                item_warnings.append("Store link is missing in database (Inventory.xlsx)")
+            elif not is_registered_vendor:
+                item_warnings.append(f"Store link domain is not a registered vendor: {link}")
+
+            # Match staging result
+            stage_info = (
+                staging_map.get(pn.strip().upper())
+                or staging_map.get(des.strip().upper())
+                or staging_map.get(str(it.get("part_name", "")).strip().upper())
+            )
+
+            staged_qty: Optional[int] = None
+            is_noop = False
+            vendor_msg = ""
+            staging_status = "PENDING_CONFIRMATION"
+
+            if is_valid_link and (is_registered_vendor or is_lion):
+                resolved_count += 1
+                status_str = "READY"
+            else:
+                unresolved_count += 1
+                status_str = "UNRESOLVED"
+                staging_status = "UNRESOLVED"
+
+            if stage_info:
+                st_status = stage_info.get("status", "")
+                staged_qty = stage_info.get("qty", 0)
+                is_noop = bool(stage_info.get("is_noop", False))
+                vendor_msg = stage_info.get("msg", "")
+
+                if st_status == "SUCCESS":
+                    if is_noop:
+                        staging_status = "NO_OP_SATISFIED"
+                        status_str = "NO_OP_SATISFIED"
+                    else:
+                        staging_status = "STAGED"
+                        status_str = "STAGED"
+                else:
+                    staging_status = "FAILED"
+                    status_str = "FAILED"
+                    item_warnings.append(f"Staging failed: {vendor_msg}")
+
+            # Vendor aggregation
+            if vid:
+                if vid not in vendor_accum:
+                    vendor_accum[vid] = {
+                        "vendor_name": v_name,
+                        "item_count": 0,
+                        "total_pieces": 0,
+                        "subtotal_cost_irr": 0,
+                        "actual_staged_pieces": 0,
+                        "success_count": 0,
+                        "fail_count": 0,
+                        "error_message": "",
+                    }
+                vendor_accum[vid]["item_count"] += 1
+                vendor_accum[vid]["total_pieces"] += target_order_qty
+                if staged_qty is not None:
+                    vendor_accum[vid]["actual_staged_pieces"] += staged_qty
+                    if staging_status in ("STAGED", "NO_OP_SATISFIED"):
+                        vendor_accum[vid]["success_count"] += 1
+                    else:
+                        vendor_accum[vid]["fail_count"] += 1
+                        vendor_accum[vid]["error_message"] = vendor_msg
+
+            total_warnings += len(item_warnings)
+
+            cand_record = ReportCandidateRecord(
+                vendor_id=vid or "unknown",
+                vendor_name=v_name,
+                vendor_sku=pn,
+                pdp_url=link,
+                mpn=pn,
+                manufacturer=mfr,
+                package=pkg,
+                footprint=footprint,
+                in_stock=True,
+                stock_quantity=1000,
+                moq=1,
+                packaging_step=1,
+                is_eligible=bool(is_registered_vendor and is_valid_link),
+                is_selected=True,
+                is_actually_staged=(staging_status in ("STAGED", "NO_OP_SATISFIED")),
+                qualification_state=CandidateLifecycleState.SELECTED_BY_USER.value if (is_registered_vendor and is_valid_link) else CandidateLifecycleState.REJECTED.value,
+                rejection_reasons=item_warnings if not (is_registered_vendor and is_valid_link) else [],
+            )
+
+            line_item = ReportLineItem(
+                line_number=idx,
+                designator=des,
+                part_number=pn,
+                description=desc,
+                package=pkg,
+                footprint=footprint,
+                manufacturer=mfr,
+                bom_demand_qty=bom_demand,
+                db_stock_qty=db_stock,
+                shortage_qty=shortage_qty,
+                target_order_qty=target_order_qty,
+                actual_quantity_staged=staged_qty,
+                is_noop=is_noop,
+                status=status_str,
+                selected_vendor_id=vid,
+                selected_vendor_name=v_name,
+                selected_sku=pn,
+                pdp_url=link,
+                moq=1,
+                packaging_step=1,
+                candidate_count=1 if link else 0,
+                candidates=[cand_record] if link else [],
+                warnings=item_warnings,
+                staging_status=staging_status,
+                vendor_response_message=vendor_msg,
+            )
+            line_items.append(line_item)
+
+        # Build deterministically sorted Vendor Summaries (by vendor_id)
+        vendor_summaries: List[VendorSummary] = []
+        for v_id in sorted(vendor_accum.keys()):
+            v_data = vendor_accum[v_id]
+            s_count = v_data["success_count"]
+            f_count = v_data["fail_count"]
+
+            if not is_post_staging:
+                v_st_status = "PENDING"
+            elif f_count == 0 and s_count > 0:
+                v_st_status = "SUCCESS"
+            elif f_count > 0 and s_count > 0:
+                v_st_status = "PARTIAL"
+            elif f_count > 0:
+                v_st_status = "FAILED"
+            else:
+                v_st_status = "SUCCESS"
+
+            v_summary = VendorSummary(
+                vendor_id=v_id,
+                vendor_name=v_data["vendor_name"],
+                item_count=v_data["item_count"],
+                total_pieces=v_data["total_pieces"],
+                subtotal_cost_irr=v_data["subtotal_cost_irr"],
+                actual_staged_pieces=v_data["actual_staged_pieces"],
+                staging_status=v_st_status,
+                error_message=v_data["error_message"],
+            )
+            vendor_summaries.append(v_summary)
+
+        return ProcurementReportData(
+            report_id=r_id,
+            report_title=source_title,
+            report_type=rep_type,
+            created_at=now_iso,
+            procurement_mode=eff_mode,
+            source_file=source_file or (source_title.replace("Procurement Order Confirmation — ", "").replace("Procurement Order Preview — ", "")),
+            board_multiplier=board_multiplier,
+            currency="IRR",
+            enabled_vendors=enabled_vendors or sorted(vendor_accum.keys()),
+            line_items=line_items,
+            vendor_summaries=vendor_summaries,
+            total_line_items=len(line_items),
+            resolved_line_items=resolved_count,
+            unresolved_line_items=unresolved_count,
+            total_estimated_cost_irr=total_estimated_cost,
+            total_actual_staged_cost_irr=total_actual_staged_cost,
+            total_warnings_count=total_warnings,
+        )

@@ -134,6 +134,7 @@ class ProductDetails:
     manufacturer: Optional[str] = None
     package_raw: Optional[str] = None
     order_constraints: OrderConstraints = field(default_factory=OrderConstraints)
+    raw_data: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

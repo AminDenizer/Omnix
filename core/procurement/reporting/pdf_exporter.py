@@ -278,7 +278,7 @@ class ProcurementPDFExporter:
         if filepath.lower().endswith(".html"):
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(html)
-            return
+            return True
 
         printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
@@ -293,3 +293,4 @@ class ProcurementPDFExporter:
         doc.setPageSize(QSizeF(page_size))
         doc.setHtml(html)
         doc.print(printer)
+        return True

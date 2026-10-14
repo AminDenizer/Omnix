@@ -174,9 +174,15 @@ class ProcurementBridge:
             exact_mpn = item.get("exact_mpn_required", True)
             package = str(item.get("package") or "").strip() or None
             footprint = str(item.get("footprint") or "").strip() or None
-            manufacturer = str(item.get("manufacturer") or item.get("brand") or "").strip() or None
+            raw_m = str(item.get("manufacturer") or item.get("brand") or "").strip()
+            manufacturer = None if raw_m.upper() == "ANY" else (raw_m or None)
             allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
-            is_mfg_any = bool(item.get("is_manufacturer_any", False))
+            is_mfg_any = bool(
+                item.get("is_manufacturer_any", False)
+                or raw_m.upper() == "ANY"
+                or item.get("manufacturer_rule") == "ANY"
+                or (not manufacturer and not allowed_mfg)
+            )
             req_specs = item.get("required_specs") or {}
             req_dims = item.get("required_dimensions") or {}
         else:
@@ -187,22 +193,18 @@ class ProcurementBridge:
             if explicit_url:
                 _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
 
-            exact_mpn = item.get("exact_mpn_required", False if explicit_url else True)
-            if explicit_url:
-                package = str(item.get("package") or "").strip() or None if item.get("package_required") else None
-                footprint = str(item.get("footprint") or "").strip() or None if item.get("footprint_required") else None
-                manufacturer = (
-                    str(item.get("manufacturer") or item.get("brand") or "").strip() or None
-                    if item.get("manufacturer_required")
-                    else None
-                )
-            else:
-                package = str(item.get("package") or "").strip() or None
-                footprint = str(item.get("footprint") or "").strip() or None
-                manufacturer = str(item.get("manufacturer") or item.get("brand") or "").strip() or None
-
+            exact_mpn = item.get("exact_mpn_required", True)
+            package = str(item.get("package") or "").strip() or None
+            footprint = str(item.get("footprint") or "").strip() or None
+            raw_m = str(item.get("manufacturer") or item.get("brand") or "").strip()
+            manufacturer = None if raw_m.upper() == "ANY" else (raw_m or None)
             allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
-            is_mfg_any = bool(item.get("is_manufacturer_any", False))
+            is_mfg_any = bool(
+                item.get("is_manufacturer_any", False)
+                or raw_m.upper() == "ANY"
+                or item.get("manufacturer_rule") == "ANY"
+                or (not manufacturer and not allowed_mfg)
+            )
             req_specs = item.get("required_specs") or {}
             req_dims = item.get("required_dimensions") or {}
 
