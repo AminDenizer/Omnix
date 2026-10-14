@@ -42,11 +42,6 @@ from core.procurement.models import (
 from core.procurement.orchestrator import UniversalProcurementOrchestrator
 from core.procurement.registry import VendorRegistry, default_registry
 from ui.widgets.number_stepper import NumberStepperWidget
-from vendors.javan.selectors import JavanSelectors
-from vendors.lion.selectors import LionSelectors
-from vendors.roboeq.selectors import RoboEqSelectors
-
-
 def validate_vendor_pdp_url(
     url: str, registry: Optional[VendorRegistry] = None
 ) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -60,7 +55,7 @@ def validate_vendor_pdp_url(
     if not clean_url:
         return False, None, "Product URL is required and cannot be empty."
 
-    reg = registry or default_registry
+    reg = registry or VendorRegistry.get_default_registry()
     vendor_id = reg.get_vendor_for_url(clean_url, enabled_only=False)
     if not vendor_id:
         return False, None, "The provided URL domain is not recognized as a registered vendor (supported: Lion, Javan, RoboEq)."
@@ -69,19 +64,20 @@ def validate_vendor_pdp_url(
         v_title = vendor_id.replace("vendor_", "").title()
         return False, vendor_id, f"Vendor '{v_title}' is currently disabled in Settings. Please enable it to proceed."
 
-    # Validate PDP path regex according to vendor
-    is_pdp = False
-    if vendor_id == "vendor_lion":
-        is_pdp = bool(LionSelectors.PDP_URL_PATTERN.match(clean_url) or LionSelectors.PDP_PATH_PATTERN.match(clean_url))
-    elif vendor_id == "vendor_javan":
-        is_pdp = bool(JavanSelectors.PDP_URL_PATTERN.match(clean_url) or JavanSelectors.PDP_PATH_PATTERN.match(clean_url))
-    elif vendor_id == "vendor_roboeq":
-        is_pdp = bool(RoboEqSelectors.PDP_URL_PATTERN.match(clean_url) or RoboEqSelectors.PDP_PATH_PATTERN.match(clean_url))
-    else:
-        is_pdp = True
+    # Validate PDP path via vendor adapter - fail closed
+    try:
+        adapter = reg.get_adapter(vendor_id)
+    except Exception as e:
+        return False, vendor_id, f"Vendor adapter for '{vendor_id}' is unavailable: {e}"
 
-    if not is_pdp:
-        return False, vendor_id, "The provided URL is not a recognized Product Detail Page (PDP). Home, search, cart, and category links cannot be ordered."
+    if not hasattr(adapter, "is_pdp_url") or not callable(adapter.is_pdp_url):
+        return False, vendor_id, f"Vendor adapter for '{vendor_id}' does not support URL validation capability."
+
+    try:
+        if not adapter.is_pdp_url(clean_url):
+            return False, vendor_id, "The provided URL is not a recognized Product Detail Page (PDP). Home, search, cart, and category links cannot be ordered."
+    except Exception as e:
+        return False, vendor_id, f"Vendor adapter error during URL validation: {e}"
 
     return True, vendor_id, None
 
@@ -225,7 +221,7 @@ class QuickOrderDialog(QDialog):
         super().__init__(parent)
         self.inventory_loader = inventory_loader
         self.on_stock_updated = on_stock_updated
-        self.registry = registry or default_registry
+        self.registry = registry or VendorRegistry.get_default_registry()
         self.orchestrator = orchestrator or UniversalProcurementOrchestrator(registry=self.registry)
 
         self.setWindowTitle("⚡ Quick Order — Standalone MPN & URL Procurement")
@@ -1016,23 +1012,67 @@ class QuickOrderDialog(QDialog):
         self.status_msg_lbl.setText(f"❌ Staging exception: {err_msg}")
         QMessageBox.warning(self, "Staging Error", f"Unexpected staging failure: {err_msg}")
 
+    def _open_vendor_cart(self, vendor_id: Optional[str]):
+        """Open the cart URL for a given vendor using its adapter."""
+        if not vendor_id:
+            QMessageBox.warning(
+                self,
+                "Vendor Cart Unavailable",
+                "Cannot open shopping cart: vendor could not be resolved.",
+            )
+            return
+
+        try:
+            adapter = self.registry.get_adapter(vendor_id)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Vendor Cart Unavailable",
+                f"Cannot open shopping cart: vendor adapter for '{vendor_id}' is unavailable ({e}).",
+            )
+            return
+
+        name_val = self.registry.get_vendor_name(vendor_id) if hasattr(self.registry, "get_vendor_name") else vendor_id
+        v_title = name_val if isinstance(name_val, str) else str(vendor_id).replace("vendor_", "").title()
+
+        if not hasattr(adapter, "get_cart_url") or not callable(adapter.get_cart_url):
+            QMessageBox.warning(
+                self,
+                "Vendor Cart Unavailable",
+                f"Vendor adapter for '{v_title}' does not support cart URL retrieval.",
+            )
+            return
+
+        try:
+            url = adapter.get_cart_url()
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Vendor Cart Unavailable",
+                f"Error retrieving cart URL from vendor adapter: {e}",
+            )
+            return
+
+        clean_url = str(url or "").strip()
+        if not clean_url or not (clean_url.startswith("http://") or clean_url.startswith("https://")):
+            QMessageBox.warning(
+                self,
+                "Vendor Cart Unavailable",
+                f"No valid storefront shopping cart URL is available for '{v_title}'.",
+            )
+            return
+
+        webbrowser.open(clean_url)
+
     def _on_open_cart_clicked(self):
-        cart_urls = {
-            "vendor_lion": "https://lionelectronic.ir/orders/cart",
-            "vendor_javan": "https://javanelec.com/cart",
-            "vendor_roboeq": "https://roboeq.ir/cart",
-        }
+        vendor_id = None
         if self.tabs.currentIndex() == 0 and self.selected_mpn_eval_idx is not None:
             cand = self.mpn_evaluations[self.selected_mpn_eval_idx].candidate
-            v_id = cand.vendor_id
-            url = cart_urls.get(v_id, "https://lionelectronic.ir/orders/cart")
-            webbrowser.open(url)
+            vendor_id = cand.vendor_id
         elif self.tabs.currentIndex() == 1 and self.url_candidate:
-            v_id = self.url_candidate.vendor_id
-            url = cart_urls.get(v_id, "https://lionelectronic.ir/orders/cart")
-            webbrowser.open(url)
-        else:
-            webbrowser.open("https://lionelectronic.ir/orders/cart")
+            vendor_id = self.url_candidate.vendor_id
+
+        self._open_vendor_cart(vendor_id)
 
     def _on_confirm_stock_clicked(self):
         if not self.inventory_loader:

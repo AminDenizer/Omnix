@@ -118,10 +118,10 @@ class TestManufacturerRuleDataStateSeparation:
             ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
             assert ok is True
             it = res.items[0]
-            assert it.manufacturer_rule is None
-            assert it.mfg_data_state == ManufacturerDataState.MISSING_MANUFACTURER_DATA
+            assert it.manufacturer_rule == ManufacturerRule.ANY
+            assert it.mfg_data_state == ManufacturerDataState.EXPLICIT_ANY
             assert it.allowed_manufacturers is None
-            assert it.is_manufacturer_any is False
+            assert it.is_manufacturer_any is True
         finally:
             if os.path.exists(path):
                 os.remove(path)

@@ -100,6 +100,35 @@ class BOMItem:
         self.status: str = "NOT_IN_DB"  # "IN_STOCK", "SHORTAGE", "NOT_IN_DB", "INVALID"
         self.link: str = ""
 
+    def update_brand_rule(self, rule_type: str, allowed_brands: Optional[List[str]] = None):
+        """
+        Updates the in-memory brand rule for this BOM item.
+        rule_type: 'ANY', 'EXACT', 'APPROVED_LIST'
+        """
+        rule_upper = (rule_type or "ANY").upper().strip()
+        if rule_upper in ("ANY", "GENERIC"):
+            self.manufacturer_rule = ManufacturerRule.ANY
+            self.mfg_data_state = ManufacturerDataState.EXPLICIT_ANY
+            self.is_manufacturer_any = True
+            self.allowed_manufacturers = None
+            self.manufacturer = None
+            self.approved_manufacturers = []
+        elif rule_upper == "APPROVED_LIST" or (allowed_brands and len(allowed_brands) > 1):
+            self.manufacturer_rule = ManufacturerRule.APPROVED_LIST
+            self.mfg_data_state = ManufacturerDataState.EXPLICIT_BRAND_RULE
+            self.is_manufacturer_any = False
+            self.allowed_manufacturers = [b.strip() for b in allowed_brands if b.strip()] if allowed_brands else []
+            self.approved_manufacturers = list(self.allowed_manufacturers)
+            self.manufacturer = ", ".join(self.allowed_manufacturers)
+        else:
+            self.manufacturer_rule = ManufacturerRule.EXACT
+            self.mfg_data_state = ManufacturerDataState.EXPLICIT_BRAND_RULE
+            self.is_manufacturer_any = False
+            brand_name = allowed_brands[0].strip() if (allowed_brands and len(allowed_brands) > 0) else rule_type.strip()
+            self.allowed_manufacturers = [brand_name]
+            self.approved_manufacturers = [brand_name]
+            self.manufacturer = brand_name
+
     @property
     def link_type(self) -> str:
         """Returns 'LION', 'JAVAN', 'ROBOEQ', or vendor-specific string; 'DIRECT_BOM', 'INVALID', or 'NONE'."""
@@ -182,6 +211,9 @@ class BOMItem:
             "total_needed_qty": self.total_needed_qty,
             "needed_qty": self.shortage_qty if self.mode == ProcurementMode.DATABASE_AWARE else self.total_needed_qty,
             "in_stock": self.db_stock_qty,
+            "current_stock": self.db_stock_qty,
+            "db_stock_qty": self.db_stock_qty,
+            "stock_qty": self.db_stock_qty,
             "shortage": self.shortage_qty,
             "shortage_qty": self.shortage_qty,
             "status": self.status,
@@ -466,6 +498,7 @@ class BOMAuditor:
                     mfg_data_state = ManufacturerDataState.EXPLICIT_ANY
                     is_mfg_any = True
                     allowed_mfg = None
+                    raw_mfg = ""
                 elif approved_mfg_list or rule_upper in ("APPROVED_LIST", "APPROVED"):
                     mfg_rule = ManufacturerRule.APPROVED_LIST
                     mfg_data_state = ManufacturerDataState.EXPLICIT_BRAND_RULE
@@ -477,10 +510,11 @@ class BOMAuditor:
                     allowed_mfg = [raw_mfg]
                     is_mfg_any = False
                 else:
-                    mfg_rule = None
-                    mfg_data_state = ManufacturerDataState.MISSING_MANUFACTURER_DATA
+                    mfg_rule = ManufacturerRule.ANY
+                    mfg_data_state = ManufacturerDataState.EXPLICIT_ANY
                     allowed_mfg = None
-                    is_mfg_any = False
+                    is_mfg_any = True
+                    raw_mfg = ""
 
                 # Required Specs Bundling
                 required_specs: Dict[str, str] = {}

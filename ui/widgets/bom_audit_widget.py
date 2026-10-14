@@ -15,6 +15,7 @@ from bom_auditor import BOMAuditor, BOMAuditResult, BOMItem
 from core.procurement.models import ProcurementMode, ManufacturerRule, ManufacturerDataState
 from excel_loader import ExcelDataLoader
 from ui.dialogs.order_preview_dialog import OrderPreviewDialog
+from ui.dialogs.brand_rule_dialog import BrandRuleDialog
 
 
 class DropZoneFrame(QFrame):
@@ -257,7 +258,7 @@ class BOMAuditWidget(QWidget):
         action_layout.setContentsMargins(12, 8, 12, 8)
         action_layout.setSpacing(12)
 
-        self.export_report_btn = QPushButton("📄 Export Missing & Shortages Report")
+        self.export_report_btn = QPushButton("📄 Export Missing && Shortages Report")
         self.export_report_btn.setObjectName("secondaryBtn")
         self.export_report_btn.clicked.connect(self._export_missing_report)
         action_layout.addWidget(self.export_report_btn)
@@ -345,6 +346,7 @@ class BOMAuditWidget(QWidget):
             self.pill_shortage.setText(f"📦 Total Sourcing Demand: {total_req_pcs} pcs")
             self.pill_not_in_db.setText(f"❌ Invalid / Blocked: {res.invalid_count}")
 
+            self.table.setColumnCount(10)
             self.table.setHorizontalHeaderLabels([
                 "Status", "Designator", "Part Number", "Manufacturer", "Package / Footprint",
                 "Qty / Board", "Total Needed", "Brand Rule", "Specs", "Procurement Target"
@@ -355,9 +357,10 @@ class BOMAuditWidget(QWidget):
             self.pill_shortage.setText(f"⚠️ Shortages: {res.shortage_count}")
             self.pill_not_in_db.setText(f"🔴 Not in Database: {res.not_in_db_count}")
 
+            self.table.setColumnCount(11)
             self.table.setHorizontalHeaderLabels([
                 "Status", "Designator", "Part Number", "Comment", "Footprint",
-                "Qty / Board", "Total Needed", "In Stock", "Shortage", "Store Link"
+                "Brand Rule", "Qty / Board", "Total Needed", "In Stock", "Shortage", "Store Link"
             ])
 
         # Populate Table
@@ -416,9 +419,10 @@ class BOMAuditWidget(QWidget):
                 elif it.manufacturer:
                     rule_str = f"EXACT ({it.manufacturer})"
                 else:
-                    rule_str = "MISSING (No Brand Rule)"
+                    rule_str = "ANY (Generic Allowed)"
                 item7 = QTableWidgetItem(rule_str)
                 item7.setFont(font_txt)
+                item7.setToolTip("Double-click to edit Brand / Manufacturer Rule")
                 self.table.setItem(row_idx, 7, item7)
 
                 # 8. Specs
@@ -481,58 +485,72 @@ class BOMAuditWidget(QWidget):
                 # 4. Footprint
                 self.table.setItem(row_idx, 4, QTableWidgetItem(it.footprint))
 
-                # 5. Qty / Board
-                item5 = QTableWidgetItem(str(it.unit_qty))
-                item5.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                item5.setFont(font_num)
-                self.table.setItem(row_idx, 5, item5)
+                # 5. Brand Rule
+                if it.is_manufacturer_any:
+                    rule_str = "ANY (Generic Allowed)"
+                elif it.allowed_manufacturers and len(it.allowed_manufacturers) > 1:
+                    rule_str = f"APPROVED ({len(it.allowed_manufacturers)})"
+                elif it.manufacturer:
+                    rule_str = f"EXACT ({it.manufacturer})"
+                else:
+                    rule_str = "ANY (Generic Allowed)"
+                brand_item = QTableWidgetItem(rule_str)
+                brand_item.setFont(font_txt)
+                brand_item.setToolTip("Double-click to edit Brand / Manufacturer Rule")
+                self.table.setItem(row_idx, 5, brand_item)
 
-                # 6. Total Needed
-                item6 = QTableWidgetItem(str(it.total_needed_qty))
+                # 6. Qty / Board
+                item6 = QTableWidgetItem(str(it.unit_qty))
                 item6.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item6.setFont(font_num)
                 self.table.setItem(row_idx, 6, item6)
 
-                # 7. In Stock
-                stock_str = str(it.db_stock_qty) if it.status != "NOT_IN_DB" else "-"
-                item7 = QTableWidgetItem(stock_str)
+                # 7. Total Needed
+                item7 = QTableWidgetItem(str(it.total_needed_qty))
                 item7.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item7.setFont(font_num)
                 self.table.setItem(row_idx, 7, item7)
 
-                # 8. Shortage
-                short_str = str(it.shortage_qty) if it.shortage_qty > 0 else "0"
-                item8 = QTableWidgetItem(short_str)
+                # 8. In Stock
+                stock_str = str(it.db_stock_qty) if it.status != "NOT_IN_DB" else "-"
+                item8 = QTableWidgetItem(stock_str)
                 item8.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 item8.setFont(font_num)
-                if it.shortage_qty > 0:
-                    item8.setForeground(QColor("#fbbf24") if it.is_orderable else QColor("#f87171"))
                 self.table.setItem(row_idx, 8, item8)
 
-                # 9. Store Link
-                item9 = QTableWidgetItem()
-                item9.setFont(font_txt)
-                if it.is_orderable:
-                    v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
-                    item9.setText(it.link)
-                    item9.setForeground(QColor("#38bdf8"))
-                    item9.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
-                elif it.link_type == "INVALID":
-                    item9.setText(f"❌ Unsupported URL ({it.link_domain})")
-                    item9.setForeground(QColor("#f87171"))
-                    item9.setToolTip(f"Unsupported store link ({it.link}). Please update to a registered vendor in Inventory.xlsx.")
-                else:
-                    if it.status == "SHORTAGE":
-                        item9.setText("❌ Blank Store Link")
-                        item9.setForeground(QColor("#f87171"))
-                        item9.setToolTip("Component is in inventory database but store link is blank. Please add vendor URL in Inventory.xlsx.")
-                    else:
-                        item9.setText("— Not in DB —" if it.status == "NOT_IN_DB" else it.link)
-                        item9.setForeground(QColor("#64748b"))
+                # 9. Shortage
+                short_str = str(it.shortage_qty) if it.shortage_qty > 0 else "0"
+                item9 = QTableWidgetItem(short_str)
+                item9.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item9.setFont(font_num)
+                if it.shortage_qty > 0:
+                    item9.setForeground(QColor("#fbbf24") if it.is_orderable else QColor("#f87171"))
                 self.table.setItem(row_idx, 9, item9)
 
+                # 10. Store Link
+                item10 = QTableWidgetItem()
+                item10.setFont(font_txt)
+                if it.is_orderable:
+                    v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
+                    item10.setText(it.link)
+                    item10.setForeground(QColor("#38bdf8"))
+                    item10.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
+                elif it.link_type == "INVALID":
+                    item10.setText(f"❌ Unsupported URL ({it.link_domain})")
+                    item10.setForeground(QColor("#f87171"))
+                    item10.setToolTip(f"Unsupported store link ({it.link}). Please update to a registered vendor in Inventory.xlsx.")
+                else:
+                    if it.status == "SHORTAGE":
+                        item10.setText("❌ Blank Store Link")
+                        item10.setForeground(QColor("#f87171"))
+                        item10.setToolTip("Component is in inventory database but store link is blank. Please add vendor URL in Inventory.xlsx.")
+                    else:
+                        item10.setText("— Not in DB —" if it.status == "NOT_IN_DB" else it.link)
+                        item10.setForeground(QColor("#64748b"))
+                self.table.setItem(row_idx, 10, item10)
+
         # Auto-fit columns
-        for c in range(10):
+        for c in range(self.table.columnCount()):
             self.table.resizeColumnToContents(c)
             if self.table.columnWidth(c) < 95:
                 self.table.setColumnWidth(c, 95)
@@ -722,17 +740,40 @@ class BOMAuditWidget(QWidget):
 
             webbrowser.open(f"file:///{os.path.abspath(file_path)}")
 
+    def _edit_brand_rule(self, row_idx: int):
+        """Open the interactive Brand / Manufacturer Rule Dialog for a BOM item."""
+        if not self.audit_result or not (0 <= row_idx < len(self.audit_result.items)):
+            return
+        it = self.audit_result.items[row_idx]
+        dlg = BrandRuleDialog(it, parent=self)
+        if dlg.exec():
+            # Refresh table display with updated brand rule
+            self._render_results()
+
     def _on_item_double_clicked(self, item: QTableWidgetItem):
-        if not item:
+        if not item or not self.audit_result:
             return
         row = item.row()
-        link_item = self.table.item(row, 9)
-        if link_item and link_item.text().startswith("http"):
-            webbrowser.open(link_item.text())
-        else:
-            val = item.text().strip()
-            if val.startswith("http"):
-                webbrowser.open(val)
+        col = item.column()
+        is_mode_b = self.audit_result.mode == ProcurementMode.DIRECT_BOM
+
+        # Brand Rule column (Col 5 in Mode A, Col 7 in Mode B)
+        brand_col = 7 if is_mode_b else 5
+        if col == brand_col:
+            self._edit_brand_rule(row)
+            return
+
+        # Store Link column (Col 10 in Mode A)
+        link_col = 10 if not is_mode_b else None
+        if link_col is not None and col == link_col:
+            link_item = self.table.item(row, link_col)
+            if link_item and link_item.text().startswith("http"):
+                webbrowser.open(link_item.text())
+                return
+
+        val = item.text().strip()
+        if val.startswith("http"):
+            webbrowser.open(val)
 
     def _show_context_menu(self, pos):
         item = self.table.itemAt(pos)
@@ -753,8 +794,10 @@ class BOMAuditWidget(QWidget):
 
         if self.audit_result and 0 <= row_idx < len(self.audit_result.items):
             it = self.audit_result.items[row_idx]
+            menu.addSeparator()
+            brand_act = menu.addAction("🏷️ Edit Brand / Manufacturer Rule...")
+            brand_act.triggered.connect(lambda _, r=row_idx: self._edit_brand_rule(r))
             if it.link and it.link.startswith("http"):
-                menu.addSeparator()
                 open_link_act = menu.addAction(f"🌐 Open Store Link ({it.link_domain or 'Browser'})")
                 open_link_act.triggered.connect(lambda _, url=it.link: webbrowser.open(url))
 

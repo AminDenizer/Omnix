@@ -54,3 +54,101 @@ class TestDialogAndEdgeCases:
         assert lm358[stock_col] == '60'  # 10 + 50
         assert irfu[stock_col] == '0'    # untouched
         assert ao[stock_col] == '0'      # untouched
+
+    def test_mode_a_dialog_instantiation(self, qapp):
+        from ui.dialogs.order_preview_dialog import OrderPreviewDialog
+        shortages = [
+            {
+                "part_name": "100NF",
+                "part_number": "GRM188R71H104KA93D",
+                "description": "Capacitor 0603 100nF",
+                "current_stock": 2,
+                "needed_qty": 36,
+                "link": "https://javanelec.com/item/100nf",
+                "vendor_id": "vendor_javan",
+            },
+            {
+                "part_name": "10UF",
+                "part_number": "C2012X5R1H106K125AC",
+                "description": "Capacitor 0805 10uF",
+                "current_stock": 5,
+                "needed_qty": 4,
+                "link": "https://lionelectronic.ir/product/10uf",
+                "vendor_id": "vendor_lion",
+            },
+            {
+                "part_name": "EXT",
+                "part_number": "EXT-1",
+                "description": "External Store Item",
+                "current_stock": 0,
+                "needed_qty": 10,
+                "link": "https://unknownstore.com/item/1",
+            },
+            {
+                "part_name": "BLANK",
+                "part_number": "BLANK-1",
+                "description": "Blank link item",
+                "current_stock": 0,
+                "needed_qty": 5,
+                "link": "",
+            },
+        ]
+        dlg = OrderPreviewDialog(
+            all_shortages=shortages,
+            missing_db_items=[{"part_number": "MISSING-1"}],
+            source_title="Project BOM Shortages — Test.xlsx (1 Boards)",
+        )
+        assert dlg.table.rowCount() == 4
+        assert dlg.table.columnCount() == 6
+        # Check stock values
+        assert dlg.table.item(0, 2).text() == "2"
+        assert dlg.table.item(1, 2).text() == "5"
+        assert len(dlg.orderable_items) == 2
+        assert len(dlg.external_items) == 1
+        assert len(dlg.blank_link_items) == 1
+        assert dlg.order_btn.isEnabled() is True
+
+    def test_mode_a_report_export(self, tmp_path):
+        from core.procurement.reporting.builder import ProcurementReportBuilder
+        from core.procurement.reporting.csv_exporter import ProcurementCSVExporter
+        from core.procurement.reporting.xlsx_exporter import ProcurementXLSXExporter
+        from core.procurement.reporting.pdf_exporter import ProcurementPDFExporter
+
+        shortages = [
+            {
+                "designator": "C1",
+                "part_name": "100NF",
+                "part_number": "GRM188R71H104KA93D",
+                "description": "Capacitor 0603 100nF",
+                "in_stock": 2,
+                "needed_qty": 36,
+                "link": "https://javanelec.com/#dtl/7589",
+                "vendor_id": "vendor_javan",
+            },
+            {
+                "designator": "C2",
+                "part_name": "10UF",
+                "part_number": "C2012X5R1H106K125AC",
+                "description": "Capacitor 0805 10uF",
+                "in_stock": 5,
+                "needed_qty": 4,
+                "link": "https://lionelectronic.ir/product/10uf",
+                "vendor_id": "vendor_lion",
+            },
+        ]
+        report = ProcurementReportBuilder.build_from_shortages(shortages=shortages, source_title="Test Mode A")
+        assert report.total_line_items == 2
+        assert report.resolved_line_items == 2
+        assert len(report.vendor_summaries) == 2
+
+        csv_path = os.path.join(str(tmp_path), "report.csv")
+        xlsx_path = os.path.join(str(tmp_path), "report.xlsx")
+        pdf_path = os.path.join(str(tmp_path), "report.pdf")
+
+        assert ProcurementCSVExporter.export(report, csv_path) is True
+        assert os.path.exists(csv_path)
+        assert ProcurementXLSXExporter.export(report, xlsx_path) is True
+        assert os.path.exists(xlsx_path)
+        assert ProcurementPDFExporter.export(report, pdf_path) is True
+        assert os.path.exists(pdf_path)
+

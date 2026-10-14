@@ -65,7 +65,17 @@ def mock_registry():
         return vid
 
     reg.get_vendor_for_url.side_effect = _get_vendor_for_url
+
+    default_adapter_ret = reg.get_adapter.return_value
+
+    def _get_adapter(vid, *args, **kwargs):
+        if reg.get_adapter.return_value is not default_adapter_ret:
+            return reg.get_adapter.return_value
+        return VendorRegistry.get_default_registry().get_adapter(vid)
+
+    reg.get_adapter.side_effect = _get_adapter
     return reg
+
 
 
 @pytest.fixture
@@ -394,6 +404,184 @@ class TestGAP07MultiCandidateComparison:
             candidates[1], 10, sync_cart=True
         )
 
+    def test_order_worker_thread_direct_items_routes_via_procurement_bridge(self, qapp):
+        """OrderWorkerThread direct shortage execution unifies under ProcurementBridge."""
+        items = [
+            {
+                "orig_row_idx": 1,
+                "part_name": "NE555P",
+                "part_number": "NE555P",
+                "needed_qty": 5,
+                "link": "https://lionelectronic.ir/products/ne555p",
+            },
+            {
+                "orig_row_idx": 2,
+                "part_name": "LM358",
+                "part_number": "LM358",
+                "needed_qty": 10,
+                "link": "https://javanelec.com/product/lm358",
+            },
+        ]
+
+        expected_bridge_res = {
+            "success": True,
+            "message": "Batch staging completed: 2 succeeded, 0 failed.",
+            "successful_count": 2,
+            "failed_count": 0,
+            "results": [
+                {"part": "NE555P", "status": "SUCCESS", "qty": 5, "msg": "Added 5 pcs", "vendor_id": "vendor_lion"},
+                {"part": "LM358", "status": "SUCCESS", "qty": 10, "msg": "Added 10 pcs", "vendor_id": "vendor_javan"},
+            ],
+            "items": items,
+        }
+
+        with patch("ui.dialogs.order_preview_dialog.ProcurementBridge.execute_staged_procurement_batch") as mock_bridge:
+            def fake_bridge(items, progress_callback=None, registry=None, orchestrator=None):
+                if progress_callback:
+                    progress_callback(1, 2, "NE555P", 5, "Added 5 pcs")
+                    progress_callback(2, 2, "LM358", 10, "Added 10 pcs")
+                return expected_bridge_res
+
+            mock_bridge.side_effect = fake_bridge
+
+            worker = OrderWorkerThread(items=items)
+
+            captured_progress = []
+            captured_finished = []
+            worker.progress_signal.connect(lambda c, t, p, q, m: captured_progress.append((c, t, p, q, m)))
+            worker.finished_signal.connect(lambda d: captured_finished.append(d))
+
+            worker.run()
+
+            mock_bridge.assert_called_once()
+            call_kwargs = mock_bridge.call_args[1]
+            assert call_kwargs["items"] == items
+            assert call_kwargs["registry"] == worker.registry
+            assert call_kwargs["orchestrator"] == worker.orchestrator
+
+            assert len(captured_progress) == 2
+            assert captured_progress[0] == (1, 2, "NE555P", 5, "Added 5 pcs")
+            assert captured_progress[1] == (2, 2, "LM358", 10, "Added 10 pcs")
+
+            assert len(captured_finished) == 1
+            assert captured_finished[0]["success"] is True
+            assert captured_finished[0]["successful_count"] == 2
+
+    def test_order_worker_thread_no_legacy_automator_imports(self):
+        """Ensure order_preview_dialog has zero runtime import dependencies on LionAutomator or JavanAutomator."""
+        import ui.dialogs.order_preview_dialog as opd
+        assert not hasattr(opd, "LionAutomator")
+        assert not hasattr(opd, "JavanAutomator")
+
+    def test_order_worker_thread_direct_items_end_to_end_with_registry(self, qapp):
+        """Verify full direct items execution through UniversalProcurementOrchestrator and registry."""
+        from tests.test_procurement_bridge import MockTestAdapter
+        MockTestAdapter.staged_calls.clear()
+
+        reg = VendorRegistry()
+        reg.register_adapter(
+            vendor_id="vendor_mock",
+            adapter_class=MockTestAdapter,
+            display_name="Mock Store",
+            domains=["mockstore.com"],
+        )
+        orch = UniversalProcurementOrchestrator(registry=reg)
+
+        items = [
+            {
+                "orig_row_idx": 1,
+                "part_name": "Part A",
+                "part_number": "PART-A",
+                "needed_qty": 7,
+                "link": "https://mockstore.com/item-a",
+            }
+        ]
+
+        worker = OrderWorkerThread(items=items, registry=reg, orchestrator=orch)
+        finished_results = []
+        progress_events = []
+        worker.progress_signal.connect(lambda c, t, p, q, m: progress_events.append((c, t, p, q, m)))
+        worker.finished_signal.connect(lambda d: finished_results.append(d))
+
+        worker.run()
+
+        assert len(finished_results) == 1
+        assert finished_results[0]["success"] is True
+        assert finished_results[0]["successful_count"] == 1
+        assert finished_results[0]["failed_count"] == 0
+        assert items[0]["order_success"] is True
+        assert items[0]["actual_ordered_qty"] == 7
+        assert len(MockTestAdapter.staged_calls) == 1
+
+    def test_mode_a_progress_noop_satisfied_presentation(self, qapp):
+        """No-op satisfied results display neutral 'No new quantity added' without checkmark or green styling."""
+        shortages = [
+            {
+                "orig_row_idx": 1,
+                "part_name": "NE555P",
+                "part_number": "NE555P",
+                "needed_qty": 5,
+                "link": "https://lionelectronic.ir/products/ne555p",
+            }
+        ]
+        dlg = OrderPreviewDialog(all_shortages=shortages)
+
+        # 1. No-Op satisfied progress: displays neutral text without success checkmark, quantity, or green color
+        dlg._on_mode_a_order_progress(1, 1, "NE555P", 0, "Already satisfied in cart (5/5 pcs)")
+        status_item = dlg.table.item(0, 5)
+        assert status_item is not None
+        assert status_item.text() == "No new quantity added"
+        assert "In Cart" not in status_item.text()
+        assert "0 pcs" not in status_item.text()
+        assert "✅" not in status_item.text()
+        assert status_item.foreground().color().name() == "#94a3b8"
+
+        # 2. Unrelated error containing the word 'satisfied' is NOT classified as a no-op
+        dlg._on_mode_a_order_progress(1, 1, "NE555P", 0, "Failed: Constraints not satisfied")
+        assert status_item.text().startswith("❌")
+        assert status_item.text() != "No new quantity added"
+        assert status_item.foreground().color().name() == "#f87171"
+
+        # 3. Genuinely staged quantity progress: displays success checkmark and green color
+        dlg._on_mode_a_order_progress(1, 1, "NE555P", 5, "Added 5 pcs to cart")
+        assert status_item.text() == "✅ Added 5 pcs"
+        assert status_item.foreground().color().name() == "#34d399"
+
+    def test_mode_a_order_finished_guards_staging_results_log(self, qapp):
+        """Mode A completion handler treats empty/missing results as None while preserving non-empty results."""
+        shortages = [
+            {
+                "orig_row_idx": 1,
+                "part_name": "NE555P",
+                "part_number": "NE555P",
+                "needed_qty": 5,
+                "link": "https://lionelectronic.ir/products/ne555p",
+            }
+        ]
+        dlg = OrderPreviewDialog(all_shortages=shortages)
+
+        # Empty result list -> None
+        with patch.object(QMessageBox, "information"), patch("webbrowser.open"):
+            dlg._on_mode_a_order_finished({"success": True, "successful_count": 0, "results": []})
+            assert dlg.staging_results_log is None
+
+        # Missing results key -> None
+        with patch.object(QMessageBox, "information"), patch("webbrowser.open"):
+            dlg._on_mode_a_order_finished({"success": True, "successful_count": 0})
+            assert dlg.staging_results_log is None
+
+        # Non-empty failed results -> preserved
+        failed_results = [{"part": "NE555P", "status": "FAILED", "qty": 0, "msg": "Out of stock"}]
+        with patch.object(QMessageBox, "warning"):
+            dlg._on_mode_a_order_finished({"success": False, "message": "Failed", "results": failed_results})
+            assert dlg.staging_results_log == failed_results
+
+        # Non-empty successful results -> preserved
+        success_results = [{"part": "NE555P", "status": "SUCCESS", "qty": 5, "msg": "Added 5 pcs"}]
+        with patch.object(QMessageBox, "information"), patch("webbrowser.open"):
+            dlg._on_mode_a_order_finished({"success": True, "successful_count": 1, "results": success_results})
+            assert dlg.staging_results_log == success_results
+
     def test_open_shopping_cart_urls(self, qapp, sample_candidate_offers):
         """_open_shopping_cart opens browser tabs for active vendors of selected candidates."""
         candidates, evaluations = sample_candidate_offers
@@ -410,6 +598,107 @@ class TestGAP07MultiCandidateComparison:
         with patch("webbrowser.open") as mock_open:
             dlg._open_shopping_cart()
             mock_open.assert_called_once_with("https://lionelectronic.ir/orders/cart")
+
+    def test_open_shopping_cart_urls_javan_authoritative(self, qapp, sample_candidate_offers):
+        """_open_shopping_cart opens authoritative Javan cart URL (https://www.javanelec.com/shoppingcarts)."""
+        candidates, evaluations = sample_candidate_offers
+        req = ProcurementRequest(part_number="NE555P", required_quantity=3)
+        result = RequestProcurementResult(
+            request=req,
+            status="RESOLVED",
+            candidates=candidates,
+            evaluations=evaluations,
+            selected_evaluation=evaluations[1],  # Javan candidate
+        )
+        dlg = OrderPreviewDialog(plan=BOMProcurementPlan(results=[result]))
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._open_shopping_cart()
+            mock_open.assert_called_once_with("https://www.javanelec.com/shoppingcarts")
+
+    def test_open_shopping_cart_urls_roboeq(self, qapp, sample_candidate_offers):
+        """_open_shopping_cart opens RoboEq cart URL via adapter."""
+        candidates, evaluations = sample_candidate_offers
+        req = ProcurementRequest(part_number="NE555P", required_quantity=3)
+        result = RequestProcurementResult(
+            request=req,
+            status="RESOLVED",
+            candidates=candidates,
+            evaluations=evaluations,
+            selected_evaluation=evaluations[2],  # RoboEq candidate
+        )
+        dlg = OrderPreviewDialog(plan=BOMProcurementPlan(results=[result]))
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._open_shopping_cart()
+            mock_open.assert_called_once_with("https://roboeq.ir/cart/")
+
+    def test_open_shopping_cart_urls_multi_vendor(self, qapp, sample_candidate_offers):
+        """_open_shopping_cart opens multiple unique vendor cart URLs without duplicates."""
+        candidates, evaluations = sample_candidate_offers
+        r1 = RequestProcurementResult(
+            request=ProcurementRequest(part_number="NE555P", required_quantity=3),
+            status="RESOLVED",
+            candidates=candidates,
+            evaluations=evaluations,
+            selected_evaluation=evaluations[0],  # Lion
+        )
+        r2 = RequestProcurementResult(
+            request=ProcurementRequest(part_number="LM358", required_quantity=5),
+            status="RESOLVED",
+            candidates=candidates,
+            evaluations=evaluations,
+            selected_evaluation=evaluations[1],  # Javan
+        )
+        dlg = OrderPreviewDialog(plan=BOMProcurementPlan(results=[r1, r2]))
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._open_shopping_cart()
+            assert mock_open.call_count == 2
+            opened_urls = [call.args[0] for call in mock_open.call_args_list]
+            assert "https://lionelectronic.ir/orders/cart" in opened_urls
+            assert "https://www.javanelec.com/shoppingcarts" in opened_urls
+
+    def test_open_shopping_cart_mode_a_delegates_to_adapters(self, qapp):
+        """Mode A shortage ordering resolves cart URLs via registry adapters."""
+        shortages = [
+            {"orig_row_idx": 1, "part_name": "NE555", "needed_qty": 5, "link": "https://lionelectronic.ir/products/2070-ne555p", "vendor_id": "vendor_lion"},
+            {"orig_row_idx": 2, "part_name": "LM358", "needed_qty": 10, "link": "https://www.javanelec.com/shop/product/123", "vendor_id": "vendor_javan"},
+        ]
+        dlg = OrderPreviewDialog(all_shortages=shortages)
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._open_shopping_cart()
+            assert mock_open.call_count == 2
+            opened_urls = [call.args[0] for call in mock_open.call_args_list]
+            assert "https://lionelectronic.ir/orders/cart" in opened_urls
+            assert "https://www.javanelec.com/shoppingcarts" in opened_urls
+
+    def test_open_shopping_cart_unresolved_vendor_does_not_open_browser(self, qapp):
+        """When vendor cannot be resolved, shopping cart opening does NOT navigate browser or guess a vendor."""
+        shortages = [{"orig_row_idx": 1, "part_name": "UNKNOWN", "needed_qty": 1, "link": "https://broken-store.com/item"}]
+        dlg = OrderPreviewDialog(all_shortages=shortages)
+
+        with patch("webbrowser.open") as mock_open, patch.object(QMessageBox, "warning") as mock_warn:
+            dlg._open_shopping_cart()
+            mock_open.assert_not_called()
+            mock_warn.assert_called_once()
+            assert "Cart Unavailable" in mock_warn.call_args[0][1]
+
+    def test_open_shopping_cart_adapter_failure_does_not_open_browser(self, qapp):
+        """When adapter raises exception or cart URL is unavailable, do NOT navigate browser or fall back to Lion."""
+        shortages = [{"orig_row_idx": 1, "part_name": "TEST", "needed_qty": 1, "link": "https://lionelectronic.ir/products/2070-ne555p", "vendor_id": "vendor_broken"}]
+        mock_reg = MagicMock()
+        mock_reg.get_vendor_for_url.return_value = "vendor_broken"
+        mock_reg.get_adapter.side_effect = RuntimeError("Simulated adapter failure")
+        dlg = OrderPreviewDialog(all_shortages=shortages, registry=mock_reg)
+
+        with patch("webbrowser.open") as mock_open, patch.object(QMessageBox, "warning") as mock_warn:
+            dlg._open_shopping_cart()
+            mock_open.assert_not_called()
+            mock_warn.assert_called_once()
+            assert "Cart Unavailable" in mock_warn.call_args[0][1]
+
 
     def test_confirm_payment_and_add_stock(self, qapp, sample_candidate_offers):
         """Confirm payment prompts user and updates inventory stock via inventory_loader."""
@@ -723,6 +1012,51 @@ class TestGAP03DirectURLQuickOrder:
         assert vid == "vendor_lion"
         assert "currently disabled in Settings" in err
 
+    def test_validate_vendor_pdp_url_adapter_unavailable_fails_closed(self):
+        """When vendor adapter is unavailable or registry raises, validation fails closed."""
+        reg = MagicMock(spec=VendorRegistry)
+        reg.is_vendor_enabled.return_value = True
+        reg.get_vendor_for_url.return_value = "vendor_lion"
+        reg.get_adapter.side_effect = RuntimeError("Adapter not installed")
+
+        valid, vid, err = validate_vendor_pdp_url(
+            "https://lionelectronic.ir/products/2070-ne555p", registry=reg
+        )
+        assert valid is False
+        assert vid == "vendor_lion"
+        assert "unavailable" in err.lower()
+
+    def test_validate_vendor_pdp_url_missing_capability_fails_closed(self):
+        """When vendor adapter lacks is_pdp_url method, validation fails closed."""
+        reg = MagicMock(spec=VendorRegistry)
+        reg.is_vendor_enabled.return_value = True
+        reg.get_vendor_for_url.return_value = "vendor_lion"
+        mock_adapter = object()  # No is_pdp_url attribute
+        reg.get_adapter.return_value = mock_adapter
+
+        valid, vid, err = validate_vendor_pdp_url(
+            "https://lionelectronic.ir/products/2070-ne555p", registry=reg
+        )
+        assert valid is False
+        assert vid == "vendor_lion"
+        assert "does not support url validation" in err.lower()
+
+    def test_validate_vendor_pdp_url_adapter_exception_fails_closed(self):
+        """When adapter.is_pdp_url raises an exception, validation fails closed."""
+        reg = MagicMock(spec=VendorRegistry)
+        reg.is_vendor_enabled.return_value = True
+        reg.get_vendor_for_url.return_value = "vendor_lion"
+        mock_adapter = MagicMock()
+        mock_adapter.is_pdp_url.side_effect = ValueError("Malformed regex")
+        reg.get_adapter.return_value = mock_adapter
+
+        valid, vid, err = validate_vendor_pdp_url(
+            "https://lionelectronic.ir/products/2070-ne555p", registry=reg
+        )
+        assert valid is False
+        assert vid == "vendor_lion"
+        assert "error during url validation" in err.lower()
+
     def test_direct_url_inspect_worker_execution(self, qapp, mock_registry):
         """URLInspectWorker resolves product, stock, and constraints and constructs candidate."""
         mock_adapter = MagicMock()
@@ -823,4 +1157,73 @@ class TestGAP03DirectURLQuickOrder:
 
         assert dlg.btn_url_stage.isEnabled() is False
         assert "cannot be ordered" in dlg.status_msg_lbl.text()
+
+    def test_quick_order_no_vendor_selectors_imported(self):
+        """Verify QuickOrderDialog does not import or couple to vendor-specific Selectors."""
+        import ui.dialogs.quick_order_dialog as qod
+        assert not hasattr(qod, "LionSelectors"), "LionSelectors should not be imported in quick_order_dialog"
+        assert not hasattr(qod, "JavanSelectors"), "JavanSelectors should not be imported in quick_order_dialog"
+        assert not hasattr(qod, "RoboEqSelectors"), "RoboEqSelectors should not be imported in quick_order_dialog"
+
+    def test_quick_order_open_cart_delegates_to_adapter_javan(self, qapp, mock_registry, sample_candidate_offers):
+        """QuickOrderDialog._on_open_cart_clicked opens authoritative Javan cart URL via adapter."""
+        candidates, evaluations = sample_candidate_offers
+        dlg = QuickOrderDialog(registry=mock_registry)
+        dlg.tabs.setCurrentIndex(0)
+        dlg.mpn_candidates = candidates
+        dlg.mpn_evaluations = evaluations
+        dlg.selected_mpn_eval_idx = 1  # Javan candidate
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._on_open_cart_clicked()
+            mock_open.assert_called_once_with("https://www.javanelec.com/shoppingcarts")
+
+    def test_quick_order_open_cart_delegates_to_adapter_url_tab(self, qapp, mock_registry, sample_candidate_offers):
+        """QuickOrderDialog._on_open_cart_clicked in URL tab delegates to adapter."""
+        candidates, evaluations = sample_candidate_offers
+        dlg = QuickOrderDialog(registry=mock_registry)
+        dlg.tabs.setCurrentIndex(1)
+        dlg.url_candidate = candidates[2]  # RoboEq candidate
+
+        with patch("webbrowser.open") as mock_open:
+            dlg._on_open_cart_clicked()
+            mock_open.assert_called_once_with("https://roboeq.ir/cart/")
+
+    def test_quick_order_open_cart_unresolved_vendor_does_not_open_browser(self, qapp, mock_registry):
+        """When vendor is None or unresolved, QuickOrderDialog does NOT open browser or fall back to Lion."""
+        dlg = QuickOrderDialog(registry=mock_registry)
+
+        with patch("webbrowser.open") as mock_open, patch.object(QMessageBox, "warning") as mock_warn:
+            dlg._open_vendor_cart(None)
+            mock_open.assert_not_called()
+            mock_warn.assert_called_once()
+            assert "Vendor Cart Unavailable" in mock_warn.call_args[0][1]
+
+    def test_quick_order_open_cart_adapter_failure_does_not_open_browser(self, qapp):
+        """When adapter retrieval or cart URL fails, QuickOrderDialog does NOT open browser or fall back."""
+        mock_reg = MagicMock()
+        mock_reg.get_adapter.side_effect = RuntimeError("Adapter crashed")
+        dlg = QuickOrderDialog(registry=mock_reg)
+
+        with patch("webbrowser.open") as mock_open, patch.object(QMessageBox, "warning") as mock_warn:
+            dlg._open_vendor_cart("vendor_broken")
+            mock_open.assert_not_called()
+            mock_warn.assert_called_once()
+            assert "Vendor Cart Unavailable" in mock_warn.call_args[0][1]
+
+    def test_quick_order_open_cart_invalid_or_empty_url_does_not_open_browser(self, qapp):
+        """When adapter returns None or non-URL, QuickOrderDialog does NOT open browser."""
+        mock_adapter = MagicMock()
+        mock_adapter.get_cart_url.return_value = ""  # empty URL
+        mock_reg = MagicMock()
+        mock_reg.get_adapter.return_value = mock_adapter
+        mock_reg.get_vendor_name.return_value = "Test Vendor"
+        dlg = QuickOrderDialog(registry=mock_reg)
+
+        with patch("webbrowser.open") as mock_open, patch.object(QMessageBox, "warning") as mock_warn:
+            dlg._open_vendor_cart("vendor_test")
+            mock_open.assert_not_called()
+            mock_warn.assert_called_once()
+            assert "Vendor Cart Unavailable" in mock_warn.call_args[0][1]
+
 
