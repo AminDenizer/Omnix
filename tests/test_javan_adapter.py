@@ -87,6 +87,22 @@ class TestJavanAdapterContract:
         assert adapter.vendor_id == "vendor_javan"
         assert adapter.base_url == "https://www.javanelec.com"
 
+    def test_get_cart_url(self):
+        """Verify get_cart_url returns authoritative shoppingcarts URL."""
+        adapter = JavanVendorAdapter()
+        assert adapter.get_cart_url() == "https://www.javanelec.com/shoppingcarts"
+
+    def test_is_pdp_url(self):
+        """Verify is_pdp_url correctly identifies Javan PDP URLs."""
+        adapter = JavanVendorAdapter()
+        assert adapter.is_pdp_url("https://www.javanelec.com/shop/product/17930/texas-instruments/ne555p") is True
+        assert adapter.is_pdp_url("https://javanelec.com/shop/product/123/ti/lm358") is True
+        assert adapter.is_pdp_url("https://www.javanelec.com/shoppingcarts") is False
+        assert adapter.is_pdp_url("https://javanelec.com/cart") is False
+        assert adapter.is_pdp_url("https://lionelectronic.ir/products/2070-NE555P") is False
+        assert adapter.is_pdp_url("") is False
+
+
 
 # ============================================================================
 # 2. SELECTOR REGEXES & URL PATTERNS
@@ -227,6 +243,23 @@ class TestJavanProductResolution:
         with pytest.raises(ProductNotFoundError):
             adapter.resolve_product("")
 
+    def test_resolve_hash_and_generic_urls(self):
+        adapter = JavanVendorAdapter()
+        ref1 = adapter.resolve_product("https://www.javanelec.com/#dtl/7589")
+        assert ref1.vendor_id == "vendor_javan"
+        assert ref1.vendor_sku == "7589"
+        assert ref1.pdp_url == "https://www.javanelec.com/#dtl/7589"
+
+        ref2 = adapter.resolve_product("https://javanelec.com/item/7589")
+        assert ref2.vendor_id == "vendor_javan"
+        assert ref2.vendor_sku == "7589"
+        assert ref2.pdp_url == "https://javanelec.com/item/7589"
+
+        ref3 = adapter.resolve_product("https://www.javanelec.com/shop/product/7589")
+        assert ref3.vendor_id == "vendor_javan"
+        assert ref3.vendor_sku == "7589"
+        assert ref3.pdp_url == "https://www.javanelec.com/shop/product/7589"
+
 
 # ============================================================================
 # 5. DATA EXTRACTION & TIERED PRICING TESTS (MOCK DOM)
@@ -358,7 +391,8 @@ class TestJavanSessionAndRecovery:
         assert mgr.config.base_url == "https://www.javanelec.com"
         assert mgr.config.settle_seconds == 2.2
 
-    def test_auth_without_credentials_fails(self):
+    @patch("settings_manager.settings.get_vendor_settings", return_value=None)
+    def test_auth_without_credentials_fails(self, _mock_settings):
         adapter = JavanVendorAdapter()
         res = adapter.authenticate(None)
         assert res.success is False

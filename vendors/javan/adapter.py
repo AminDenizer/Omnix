@@ -215,17 +215,55 @@ class JavanVendorAdapter(IVendorAdapter):
             raise ProductNotFoundError("Empty product identifier provided", vendor_id=self.VENDOR_ID)
 
         # Case 1: Full URL
-        m = JavanSelectors.PDP_URL_PATTERN.match(raw)
-        if m:
-            p_id = m.group("product_id")
-            mfr = m.group("manufacturer")
-            slug = m.group("slug")
+        if raw.startswith("http://") or raw.startswith("https://"):
+            m = JavanSelectors.PDP_URL_PATTERN.match(raw)
+            if m:
+                p_id = m.group("product_id")
+                mfr = m.group("manufacturer")
+                slug = m.group("slug")
+                return ProductReference(
+                    vendor_id=self.VENDOR_ID,
+                    vendor_sku=p_id,
+                    pdp_url=raw,
+                    product_id=p_id,
+                    slug=slug,
+                )
+
+            # Check hash navigation (#dtl/7589)
+            dtl_m = re.search(r"#dtl/(\d+)", raw)
+            if dtl_m:
+                p_id = dtl_m.group(1)
+                return ProductReference(
+                    vendor_id=self.VENDOR_ID,
+                    vendor_sku=p_id,
+                    pdp_url=raw,
+                    product_id=p_id,
+                    slug=f"product-{p_id}",
+                )
+
+            # Check /shop/product/123, /products/123, /product/123, /item/123
+            prod_m = re.search(r"/(?:shop/product|products|product|item)/(\d+)(?:/([a-zA-Z0-9_.-]+))?(?:/([a-zA-Z0-9_.-]+))?", raw)
+            if prod_m:
+                p_id = prod_m.group(1)
+                mfr = prod_m.group(2) or "generic"
+                slug = prod_m.group(3) or f"product-{p_id}"
+                return ProductReference(
+                    vendor_id=self.VENDOR_ID,
+                    vendor_sku=p_id,
+                    pdp_url=raw,
+                    product_id=p_id,
+                    slug=slug,
+                )
+
+            # Generic Javan URL fallback - preserve exact raw URL
+            dig_m = re.search(r"(\d+)", raw)
+            p_id = dig_m.group(1) if dig_m else "product"
             return ProductReference(
                 vendor_id=self.VENDOR_ID,
                 vendor_sku=p_id,
                 pdp_url=raw,
                 product_id=p_id,
-                slug=slug,
+                slug="product",
             )
 
         # Case 2: Relative URL
@@ -241,6 +279,18 @@ class JavanVendorAdapter(IVendorAdapter):
                 pdp_url=full_url,
                 product_id=p_id,
                 slug=slug,
+            )
+
+        if raw.startswith("/"):
+            full_url = urllib.parse.urljoin(self.BASE_URL, raw)
+            dig_m = re.search(r"(\d+)", raw)
+            p_id = dig_m.group(1) if dig_m else "product"
+            return ProductReference(
+                vendor_id=self.VENDOR_ID,
+                vendor_sku=p_id,
+                pdp_url=full_url,
+                product_id=p_id,
+                slug="product",
             )
 
         # Case 3: SKU format '17930' or '17930/texas-instruments/ne555p'
@@ -273,8 +323,10 @@ class JavanVendorAdapter(IVendorAdapter):
         target_url = product_ref.pdp_url
 
         try:
-            driver.get(target_url)
-            self.session.wait_for_settle(1.5)
+            cur_url = getattr(driver, "current_url", "") or ""
+            if not cur_url or (cur_url.rstrip("/").lower() != target_url.rstrip("/").lower()):
+                driver.get(target_url)
+                self.session.wait_for_settle(1.5)
 
             # Check 404 and page errors
             err = JavanErrorTranslator.translate_page_state(
@@ -293,9 +345,13 @@ class JavanVendorAdapter(IVendorAdapter):
             title_el = soup.select_one(JavanSelectors.PDP_TITLE)
             raw_title = title_el.get_text(strip=True) if title_el else ""
 
-            # Check add to cart button presence
+            # Check stock and add to cart button presence
             add_btn = soup.select_one(JavanSelectors.BTN_ADD_TO_CART)
-            can_order = add_btn is not None
+            page_text = soup.get_text(" ", strip=True)
+            has_stock_badge = "موجود در انبار" in page_text or "موجود" in page_text
+            is_out_of_stock = "ناموجود" in page_text or "عدم موجودی" in page_text
+            can_order = (add_btn is not None or has_stock_badge) and not is_out_of_stock
+            stock_qty = 1000 if can_order else 0
 
             # Extract technical specifications table
             draft = self.extract_product_data(soup)
@@ -303,32 +359,105 @@ class JavanVendorAdapter(IVendorAdapter):
             # Extract pricing tiers table
             price_tiers = self._extract_price_tiers(soup)
             price_irr = price_tiers[0]["unit_price_irr"] if price_tiers else None
-            packaging_step = price_tiers[0]["min_quantity"] if price_tiers else 1
-            moq = packaging_step
+            
+            if price_irr is None:
+                # Find main price from text or elements
+                main_pm = re.search(r"([\d,]{3,})\s*(?:ریال|تومان|IRR)", page_text)
+                if main_pm:
+                    val = int(main_pm.group(1).replace(",", ""))
+                    if val > 100:
+                        price_irr = val
 
-            # Fallback for MPN if not in specs table
+            # Extract packaging step & MOQ from specs or tiers
+            packaging_step = 1
+            moq = 1
+            if "ضریب" in draft.specs:
+                sm = re.search(r"(\d+)", draft.specs["ضریب"])
+                if sm:
+                    packaging_step = max(int(sm.group(1)), 1)
+            elif price_tiers and price_tiers[0]["min_quantity"] > 1:
+                packaging_step = price_tiers[0]["min_quantity"]
+
+            if "حداقل" in draft.specs:
+                mm = re.search(r"(\d+)", draft.specs["حداقل"])
+                if mm:
+                    moq = max(int(mm.group(1)), 1)
+            elif price_tiers and price_tiers[0]["min_quantity"] > 1:
+                moq = price_tiers[0]["min_quantity"]
+            else:
+                moq = packaging_step
+
+            # Fallback/Authoritative check: Extract exact constraints via shoppingCarts/create if product ID is present
+            p_id_probe = product_ref.product_id or product_ref.vendor_sku
+            if not p_id_probe or not str(p_id_probe).isdigit():
+                m_dig = re.search(r"(\d+)", target_url)
+                p_id_probe = m_dig.group(1) if m_dig else None
+
+            if p_id_probe:
+                try:
+                    modal_data = driver.execute_script("""
+                        var pid = arguments[0];
+                        var res = null;
+                        try {
+                            $.ajax({
+                                url: '/shoppingCarts/create',
+                                data: { productId: pid },
+                                async: false,
+                                success: function(html) {
+                                    var $h = $('<div>' + html + '</div>');
+                                    var moq = parseFloat($h.find('#SaleMOQ, #SaleMOQExpositive').val());
+                                    var ratio = parseFloat($h.find('#SaleRatio').val());
+                                    var inv = parseFloat($h.find('#Inventory').val());
+                                    var price = parseFloat($h.find('#Price').val());
+                                    res = {
+                                        moq: isNaN(moq) ? 1 : moq,
+                                        ratio: isNaN(ratio) ? 1 : ratio,
+                                        inventory: isNaN(inv) ? 1000 : inv,
+                                        price: isNaN(price) ? null : price
+                                    };
+                                }
+                            });
+                        } catch(e) {}
+                        return res;
+                    """, p_id_probe)
+                    if modal_data:
+                        packaging_step = int(modal_data.get("ratio") or packaging_step or 1)
+                        moq = int(modal_data.get("moq") or moq or 1)
+                        if modal_data.get("price"):
+                            price_irr = int(modal_data["price"])
+                        if modal_data.get("inventory") is not None:
+                            stock_qty = int(modal_data["inventory"])
+                            can_order = stock_qty > 0
+                except Exception:
+                    pass
+
+            # Resolve MPN
             mpn = draft.mpn
             if not mpn:
-                if "|" in raw_title:
+                if "نام قطعه" in draft.specs:
+                    mpn = draft.specs["نام قطعه"]
+                elif "|" in raw_title:
                     mpn = raw_title.split("|")[0].strip()
-                elif raw_title:
-                    mpn = raw_title.split()[0].strip()
-                else:
+                elif product_ref.slug and product_ref.slug != "part":
                     mpn = product_ref.slug
+                else:
+                    mpn = product_ref.vendor_sku
 
-            # Fallback for Manufacturer if not in specs table
+            # Resolve Manufacturer
             mfr = draft.manufacturer
             if not mfr and "|" in raw_title:
                 mfr = raw_title.split("|")[1].strip()
+
+            raw_data = {"price_tiers": price_tiers}
 
             return ProductDetails(
                 vendor_id=self.VENDOR_ID,
                 vendor_sku=product_ref.vendor_sku,
                 pdp_url=target_url,
-                stock_quantity=0,
+                stock_quantity=stock_qty,
                 can_order=can_order,
                 is_inquiry_only=False,
-                raw_status_text="موجود" if can_order else "ناموجود",
+                raw_status_text="موجود در انبار" if can_order else "ناموجود",
                 price_irr=price_irr,
                 mpn=mpn,
                 manufacturer=mfr,
@@ -337,6 +466,7 @@ class JavanVendorAdapter(IVendorAdapter):
                     packaging_step_raw=packaging_step,
                     moq_raw=moq,
                 ),
+                raw_data=raw_data,
             )
 
         except Exception as e:
@@ -344,50 +474,56 @@ class JavanVendorAdapter(IVendorAdapter):
                 raise
             raise JavanErrorTranslator.translate_transport_exception(e, {"url": target_url, "operation": "inspect_product"})
 
-    def _extract_price_tiers(self, soup: BeautifulSoup) -> List[Dict[str, int]]:
+    def _extract_price_tiers(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
-        Extract tiered pricing brackets from Javan PDP tables.
-        Rows match patterns like: '50 عدد' -> '78,100 ریال'
+        Extract tiered pricing brackets from Javan PDP tables or lists.
+        Rows match patterns like: '10 عدد' -> '18,400 ریال' or '+ 400 عدد 18,000 ریال'
         """
-        tiers: List[Dict[str, int]] = []
-        rows = soup.select("table tr")
+        tiers: List[Dict[str, Any]] = []
+        rows = soup.select("table tr, div[class*='price'], ul li, tr")
 
         for row in rows:
             text = row.get_text(" ", strip=True)
-            # Look for quantity pattern and price pattern
-            # Example: "50 عدد 78,100 ریال" or cells [50 عدد, 78,100 ریال]
-            tds = row.find_all(["td", "th"])
+            tds = row.find_all(["td", "th", "div", "span"])
             if len(tds) >= 2:
                 col1 = tds[0].get_text(strip=True)
                 col2 = tds[1].get_text(strip=True)
                 
-                # Check if col1 contains quantity (e.g. '50 عدد')
                 qm = re.search(r"([\d,]+)\s*عدد", col1)
-                pm = re.search(r"([\d,]+)", col2)
+                pm = re.search(r"([\d,]{3,})", col2)
                 if qm and pm:
                     qty = int(qm.group(1).replace(",", ""))
                     price = int(pm.group(1).replace(",", ""))
-                    tiers.append({"min_quantity": qty, "unit_price_irr": price})
+                    if price > 100:
+                        tiers.append({"min_quantity": qty, "unit_price_irr": price})
             else:
-                # Single row text search
-                qm = re.search(r"([\d,]+)\s*عدد", text)
-                pm = re.search(r"([\d,]+)\s*(?:ریال|تومان|IRR)", text)
+                qm = re.search(r"\+?\s*([\d,]+)\s*عدد", text)
+                pm = re.search(r"([\d,]{3,})\s*(?:ریال|تومان|IRR)?", text)
                 if qm and pm:
-                    qty = int(qm.group(1).replace(",", ""))
-                    price = int(pm.group(1).replace(",", ""))
-                    tiers.append({"min_quantity": qty, "unit_price_irr": price})
+                    try:
+                        qty = int(qm.group(1).replace(",", ""))
+                        price = int(pm.group(1).replace(",", ""))
+                        if price > 100:
+                            tiers.append({"min_quantity": qty, "unit_price_irr": price})
+                    except Exception:
+                        pass
 
-        # Sort tiers by min_quantity ascending
-        tiers.sort(key=lambda t: t["min_quantity"])
-        return tiers
+        # Deduplicate and sort
+        seen_q = set()
+        unique_tiers = []
+        for t in sorted(tiers, key=lambda x: x["min_quantity"]):
+            if t["min_quantity"] not in seen_q:
+                seen_q.add(t["min_quantity"])
+                unique_tiers.append(t)
+        return unique_tiers
 
     def extract_product_data(self, dom_context: Any) -> CanonicalComponentDraft:
         """
-        Extract technical specs ('Brand', 'Package', 'Mounting Style', etc.) from BeautifulSoup or HTML string.
+        Extract technical specs ('نام کارخانه‌ای', 'نام قطعه', 'برند', 'پکیج', etc.) from BeautifulSoup or HTML.
         """
         if isinstance(dom_context, str):
             soup = BeautifulSoup(dom_context, "html.parser")
-        elif isinstance(dom_context, BeautifulSoup):
+        elif hasattr(dom_context, "find_all"):
             soup = dom_context
         else:
             soup = BeautifulSoup(str(dom_context), "html.parser")
@@ -397,21 +533,49 @@ class JavanVendorAdapter(IVendorAdapter):
         package = None
         specs: Dict[str, str] = {}
 
-        rows = soup.select(JavanSelectors.SPEC_TABLE_ROWS)
-        for row in rows:
-            tds = row.find_all(["td", "th"])
+        # 1. Check specification table rows
+        rows = soup.select("table tr, .spec-row, dl dt")
+        for r in rows:
+            tds = r.find_all(["td", "th", "dd"])
             if len(tds) >= 2:
                 key = tds[0].get_text(strip=True)
                 val = tds[1].get_text(strip=True)
                 if key and val and key != "Features" and key != "انتخاب ویژگی":
                     specs[key] = val
                     k_lower = key.lower()
-                    if "brand" in k_lower or "سازنده" in key or "manufacturer" in k_lower:
-                        manufacturer = val
-                    elif "package" in k_lower or "پکیج" in key or "case" in k_lower:
-                        package = val
-                    elif "mpn" in k_lower or "part number" in k_lower or "شماره فنی" in key:
+                    if "نام کارخانه‌ای" in key or "شماره فنی" in key or "part number" in k_lower or "mpn" in k_lower:
                         mpn = val
+                    elif not mpn and ("نام قطعه" in key or "part name" in k_lower):
+                        mpn = val
+                    elif "برند" in key or "سازنده" in key or "brand" in k_lower or "manufacturer" in k_lower:
+                        manufacturer = val
+                    elif "پکیج" in key or "package" in k_lower or "case" in k_lower or "footprint" in k_lower:
+                        package = val
+
+        # 2. Check full text lines (e.g. نام کارخانه‌ای: 1206B104K500CT, برند: Walsin)
+        full_text = soup.get_text("\n", strip=True)
+        for line in full_text.splitlines():
+            line_clean = line.strip(" •-\t\r")
+            if not mpn:
+                m_mpn = re.search(r"^(?:نام\s*کارخانه‌ای|شماره\s*فنی|Part\s*Number|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
+                if m_mpn:
+                    mpn = m_mpn.group(1).strip()
+            if not manufacturer:
+                m_mfg = re.search(r"^(?:برند|سازنده|Brand|Manufacturer)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                if m_mfg:
+                    manufacturer = m_mfg.group(1).strip()
+            if not package:
+                m_pkg = re.search(r"^(?:پکیج|Package|سایز|Footprint)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                if m_pkg:
+                    package = m_pkg.group(1).strip()
+            if "حداقل" not in specs:
+                m_min = re.search(r"^حداقل\s*[:\s•-]+\s*(\d+)", line_clean)
+                if m_min:
+                    specs["حداقل"] = m_min.group(1)
+            if "ضریب" not in specs:
+                m_step = re.search(r"^ضریب\s*[:\s•-]+\s*(\d+)", line_clean)
+                if m_step:
+                    specs["ضریب"] = m_step.group(1)
 
         return CanonicalComponentDraft(
             vendor_id=self.VENDOR_ID,
@@ -450,10 +614,12 @@ class JavanVendorAdapter(IVendorAdapter):
 
     def add_to_cart(self, product_ref: ProductReference, quantity: int) -> CartMutationResult:
         """
-        Internal Browser AJAX / Form cart mutation:
-        1. Click 'button.btn-success-outline[type="submit"]'.
-        2. Wait 2.0-2.5s settle window.
-        3. Intercept and translate any validation error alert.
+        Internal Browser AJAX / Modal cart mutation on Javan Electronic:
+        1. Auto-authenticate if not already logged in.
+        2. Resolve effective quantity respecting MOQ and packaging step.
+        3. Trigger Javan addToCart modal dialog.
+        4. Populate quantity and instant quantity, confirm modal form.
+        5. Intercept and translate any validation error alert.
         """
         if quantity <= 0:
             raise OrderMultipleViolationError(f"Quantity must be greater than 0 (got {quantity})", vendor_id=self.VENDOR_ID)
@@ -462,54 +628,145 @@ class JavanVendorAdapter(IVendorAdapter):
         target_url = product_ref.pdp_url
 
         try:
-            # Ensure we are on the PDP
-            if driver.current_url.lower() != target_url.lower():
-                driver.get(target_url)
-                self.session.wait_for_settle(1.5)
+            # 1. Ensure session is authenticated
+            try:
+                status = self.validate_session()
+                if not status.is_authenticated:
+                    self.authenticate()
+            except Exception:
+                pass
 
-            # Check if purchasable
+            # 2. Ensure we are on the PDP or base page
+            cur_url = getattr(driver, "current_url", "") or ""
+            if not cur_url or ("javanelec.com" not in cur_url):
+                driver.get(target_url)
+                self.session.wait_for_settle(2.0)
+
+            # 3. Check if purchasable and resolve constraints
             details = self.inspect_product(product_ref)
             if not details.can_order:
                 raise OutOfStockError(f"Javan product cannot be ordered (Status: {details.raw_status_text})", vendor_id=self.VENDOR_ID)
 
-            # Submit Add to Cart form via button click
-            js_mutation = """
-                var btn = document.querySelector('button.btn-success-outline[type="submit"], button[type="submit"]');
-                if (btn && !btn.classList.contains('disabled')) {
-                    btn.click();
-                    return true;
-                }
-                var form = document.querySelector('form[action*="shoppingcarts"], form.form-horizontal');
-                if (form) {
-                    form.submit();
-                    return true;
-                }
-                return false;
-            """
-            clicked = self.session.execute_script(js_mutation)
-            if not clicked:
-                raise DOMDriftError("Add to cart button not found or disabled on Javan PDP", vendor_id=self.VENDOR_ID)
+            # 4. Resolve effective quantity based on constraints
+            step = details.order_constraints.packaging_step_raw or 1
+            moq = details.order_constraints.moq_raw or 1
+            eff_qty = max(quantity, moq)
+            if step > 1:
+                rem = (eff_qty - moq) % step
+                if rem != 0:
+                    eff_qty += (step - rem)
 
-            # Enforce 2.0-2.5s asynchronous settle window
-            self.session.wait_for_settle(2.2)
+            # 5. Extract numeric product ID
+            p_id = product_ref.product_id or product_ref.vendor_sku
+            if not p_id or not str(p_id).isdigit():
+                m_dig = re.search(r"(\d+)", target_url)
+                p_id = m_dig.group(1) if m_dig else "0"
+
+            # 6. Execute modal trigger and quantity confirmation via JS
+            js_mutation = f"""
+                var reqQty = parseInt("{quantity}");
+                var pid = parseInt("{p_id}");
+                window._javanLastStagedQty = reqQty;
+                
+                // Trigger addToCart
+                if (typeof addToCart === 'function' && !isNaN(pid) && pid > 0) {{
+                    addToCart(null, pid);
+                }} else {{
+                    var btn = document.querySelector('.prd_dtl_add_cart_btn button, button.btn-success-outline, button[onclick*="addToCart"]');
+                    if (btn) btn.click();
+                }}
+                
+                // Poll for modal and submit quantity
+                var start = Date.now();
+                var timer = setInterval(function() {{
+                    var form = document.querySelector('#CreateShoppingCarts, .bootbox.modal form');
+                    if (form) {{
+                        clearInterval(timer);
+
+                        var moqEl = form.querySelector('#SaleMOQ, #SaleMOQExpositive');
+                        var ratioEl = form.querySelector('#SaleRatio');
+                        var moq = moqEl ? parseFloat(moqEl.value) : 1;
+                        var ratio = ratioEl ? parseFloat(ratioEl.value) : 1;
+                        if (isNaN(moq) || moq < 1) moq = 1;
+                        if (isNaN(ratio) || ratio < 1) ratio = 1;
+
+                        var eff = Math.max(reqQty, moq);
+                        if (ratio > 1) {{
+                            var rem = (eff - moq) % ratio;
+                            if (rem !== 0) {{
+                                eff += (ratio - rem);
+                            }}
+                        }}
+
+                        window._javanLastStagedQty = eff;
+
+                        var qInp = form.querySelector('#Quantity');
+                        if (qInp) {{
+                            qInp.value = eff.toString();
+                            if (typeof addShpCart === 'function') {{
+                                addShpCart();
+                            }} else if (window.jQuery) {{
+                                $(qInp).val(eff.toString()).trigger('input').trigger('change').trigger('keyup');
+                            }}
+                        }}
+
+                        setTimeout(function() {{
+                            var modal = form.closest('.modal, .bootbox');
+                            var cBtn = modal ? modal.querySelector('button[data-bb-handler="confirm"], button.btn-success') : null;
+                            if (cBtn) {{
+                                cBtn.click();
+                            }} else if (window.jQuery) {{
+                                $(form).submit();
+                            }}
+                        }}, 250);
+                    }}
+                    if (Date.now() - start > 5000) {{
+                        clearInterval(timer);
+                    }}
+                }}, 200);
+                return true;
+            """
+            self.session.execute_script(js_mutation)
+
+            # Enforce settle window
+            self.session.wait_for_settle(3.0)
+
+            # Get final staged quantity computed by modal
+            actual_staged_qty = self.session.execute_script("return window._javanLastStagedQty || arguments[0];", eff_qty)
+
+            # Fallback direct modal confirm from Python side if modal is still open
+            try:
+                modals = driver.find_elements(By.CSS_SELECTOR, "#CreateShoppingCarts, .bootbox.modal, #adcrt")
+                for m in modals:
+                    if m.is_displayed():
+                        q_inp = m.find_element(By.CSS_SELECTOR, "#Quantity")
+                        driver.execute_script("arguments[0].value = arguments[1]; if (typeof addShpCart === 'function') addShpCart();", q_inp, str(actual_staged_qty))
+                        time.sleep(0.3)
+                        c_btns = m.find_elements(By.CSS_SELECTOR, "button[data-bb-handler='confirm'], button.btn-success")
+                        for cb in c_btns:
+                            if cb.is_displayed():
+                                driver.execute_script("arguments[0].click();", cb)
+                                self.session.wait_for_settle(2.0)
+            except Exception:
+                pass
 
             # Check for error alerts
-            err_popups = driver.find_elements(By.CSS_SELECTOR, ".alert-danger, .validation-summary-errors, .toast-error")
+            err_popups = driver.find_elements(By.CSS_SELECTOR, ".alert-danger, .validation-summary-errors, .toast-error, .bootbox-alert")
             for ep in err_popups:
                 ep_text = ep.text.strip()
                 if ep_text and any(kw in ep_text for kw in ["ضریب", "موجودی", "خطا", "امکان", "ناموفق", "مضرب", "بسته", "حداقل"]):
                     self.session.dismiss_active_modal()
-                    err = JavanErrorTranslator.translate_modal_message(ep_text, {"requested_qty": quantity, "product_sku": product_ref.vendor_sku})
+                    err = JavanErrorTranslator.translate_modal_message(ep_text, {"requested_qty": eff_qty, "product_sku": product_ref.vendor_sku})
                     raise err
 
             return CartMutationResult(
                 vendor_id=self.VENDOR_ID,
                 vendor_sku=product_ref.vendor_sku,
                 requested_quantity=quantity,
-                actual_quantity_staged=quantity,
+                actual_quantity_staged=int(actual_staged_qty),
                 success=True,
                 error_category=None,
-                raw_vendor_message=f"Added {quantity} units to Javan shopping cart",
+                raw_vendor_message=f"Added {actual_staged_qty} units to Javan shopping cart",
                 cart_total_items=1,
             )
 
@@ -538,24 +795,58 @@ class JavanVendorAdapter(IVendorAdapter):
                 raise err
 
             soup = BeautifulSoup(driver.page_source, "html.parser")
-            rows = soup.select(JavanSelectors.CART_ITEM_ROWS)
-
+            
             cart_items: List[CartItem] = []
-            for r in rows:
-                tds = r.find_all("td")
-                if len(tds) >= 2:
-                    name = tds[0].get_text(strip=True)
-                    qty_str = tds[1].get_text(strip=True).replace(",", "")
-                    qm = re.search(r"(\d+)", qty_str)
-                    qty = int(qm.group(1)) if qm else 1
+            
+            # 1. Parse .basket-item / .cart-item containers
+            basket_items = soup.select(".basket-item, .cart-item, [class*='basket-item']")
+            for b in basket_items:
+                title_el = b.select_one(".product-title, h4, h5, .title, strong") or b
+                name = title_el.get_text(" ", strip=True) if title_el else ""
+                
+                # Qty input
+                qty = 1
+                qty_inp = b.select_one("input.card-dtl-qty-input, input[name*='Quantity'], input[id*='Quantity']")
+                if qty_inp and qty_inp.get("value"):
+                    qm = re.search(r"(\d+)", qty_inp.get("value", "1").replace(",", ""))
+                    if qm:
+                        qty = int(qm.group(1))
 
+                # Unit price
+                u_price = None
+                p_text = b.get_text(" ", strip=True)
+                pm = re.search(r"([\d,]{3,})\s*\|\s*قیمت واحد", p_text)
+                if pm:
+                    u_price = int(pm.group(1).replace(",", ""))
+
+                if name:
                     cart_items.append(
                         CartItem(
                             vendor_sku=name,
                             product_name=name,
                             quantity=qty,
+                            unit_price_irr=u_price,
                         )
                     )
+
+            # 2. Fallback to table rows if no basket items found
+            if not cart_items:
+                rows = soup.select(JavanSelectors.CART_ITEM_ROWS)
+                for r in rows:
+                    tds = r.find_all("td")
+                    if len(tds) >= 2:
+                        name = tds[0].get_text(strip=True)
+                        qty_str = tds[1].get_text(strip=True).replace(",", "")
+                        qm = re.search(r"(\d+)", qty_str)
+                        qty = int(qm.group(1)) if qm else 1
+
+                        cart_items.append(
+                            CartItem(
+                                vendor_sku=name,
+                                product_name=name,
+                                quantity=qty,
+                            )
+                        )
 
             return CartDetails(
                 vendor_id=self.VENDOR_ID,
@@ -814,3 +1105,15 @@ class JavanVendorAdapter(IVendorAdapter):
         """Cleanly terminate browser session."""
         self.session.close()
         self._is_ready = False
+
+    def get_cart_url(self) -> Optional[str]:
+        """Return the storefront cart URL for Javan Electronic."""
+        return JavanSelectors.CART_URL
+
+    def is_pdp_url(self, url: str) -> bool:
+        """Check whether the given URL matches a Javan Electronic Product Detail Page (PDP)."""
+        clean = (url or "").strip()
+        if not clean:
+            return False
+        return bool(JavanSelectors.PDP_URL_PATTERN.match(clean) or JavanSelectors.PDP_PATH_PATTERN.match(clean))
+

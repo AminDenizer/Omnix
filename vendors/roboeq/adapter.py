@@ -602,3 +602,15 @@ class RoboEqVendorAdapter(IVendorAdapter):
     def close(self) -> None:
         self.session.close()
         self._is_ready = False
+
+    def get_cart_url(self) -> Optional[str]:
+        """Return the storefront cart URL for RoboEq Electronic."""
+        return RoboEqSelectors.CART_URL
+
+    def is_pdp_url(self, url: str) -> bool:
+        """Check whether the given URL matches a RoboEq Electronic Product Detail Page (PDP)."""
+        clean = (url or "").strip()
+        if not clean:
+            return False
+        return bool(RoboEqSelectors.PDP_URL_PATTERN.match(clean) or RoboEqSelectors.PDP_PATH_PATTERN.match(clean))
+

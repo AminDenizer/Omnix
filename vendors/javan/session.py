@@ -37,7 +37,15 @@ class JavanSessionManager:
         """Create and configure Chrome WebDriver according to configuration."""
         options = Options()
 
-        if self.config.headless:
+        is_headless = self.config.headless
+        try:
+            from settings_manager import settings
+            if settings.get("show_browser", False):
+                is_headless = False
+        except Exception:
+            pass
+
+        if is_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
@@ -63,10 +71,18 @@ class JavanSessionManager:
         return driver
 
     def get_driver(self) -> webdriver.Chrome:
-        """Get or initialize active driver."""
-        if self.driver is None:
-            return self.create_driver()
-        return self.driver
+        """Get or initialize active driver with automatic liveness verification and recovery."""
+        if self.driver is not None:
+            try:
+                _ = self.driver.current_window_handle
+                return self.driver
+            except Exception:
+                try:
+                    self.driver.quit()
+                except Exception:
+                    pass
+                self.driver = None
+        return self.create_driver()
 
     def promote_to_headful(self) -> SessionPromotionResult:
         """

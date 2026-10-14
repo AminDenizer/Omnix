@@ -299,17 +299,36 @@ class LionVendorAdapter(IVendorAdapter):
                 except ValueError:
                     raw_step = 1
 
-            # Extract technical specifications table
+            # Extract technical specifications
             draft = self.extract_product_data(soup)
 
-            # Extract Price (if available)
+            # Extract Price and Volume Tiers
+            price_tiers = self._extract_price_tiers(soup)
             price_irr = None
-            price_el = soup.select_one(".product-price, .price-value, .price")
-            if price_el:
-                price_text = price_el.get_text(strip=True).replace(",", "").replace(" ", "")
-                pm = re.search(r"(\d+)", price_text)
-                if pm:
-                    price_irr = int(pm.group(1))
+            if price_tiers:
+                price_irr = price_tiers[0]["unit_price_irr"]
+                if raw_step == 1 and price_tiers[0]["min_quantity"] > 1:
+                    raw_step = price_tiers[0]["min_quantity"]
+            else:
+                price_el = soup.select_one(".product-price, .price-value, .price, .price-table, [class*='price']")
+                if price_el:
+                    price_text = price_el.get_text(strip=True).replace(",", "").replace(" ", "")
+                    pm = re.search(r"(\d+)", price_text)
+                    if pm:
+                        price_irr = int(pm.group(1))
+
+            if price_irr is None:
+                # Page-wide regex fallback for IRR prices
+                page_txt = soup.get_text(" ", strip=True)
+                all_prices = re.findall(r"([\d,]{3,})\s*(?:ریال|تومان|IRR)", page_txt)
+                if all_prices:
+                    for p_str in all_prices:
+                        val = int(p_str.replace(",", ""))
+                        if val > 100:  # Reasonable price threshold
+                            price_irr = val
+                            break
+
+            raw_data = {"price_tiers": price_tiers}
 
             return ProductDetails(
                 vendor_id=self.VENDOR_ID,
@@ -318,15 +337,16 @@ class LionVendorAdapter(IVendorAdapter):
                 stock_quantity=stock_qty,
                 can_order=can_order,
                 is_inquiry_only=is_inquiry,
-                raw_status_text=raw_status_text,
+                raw_status_text=raw_status_text or ("موجود" if can_order else "ناموجود"),
                 price_irr=price_irr,
-                mpn=draft.mpn,
+                mpn=draft.mpn or getattr(product_ref, "slug", None) or product_ref.vendor_sku,
                 manufacturer=draft.manufacturer,
                 package_raw=draft.package,
                 order_constraints=OrderConstraints(
                     packaging_step_raw=raw_step,
                     moq_raw=raw_step,
                 ),
+                raw_data=raw_data,
             )
 
         except Exception as e:
@@ -334,9 +354,37 @@ class LionVendorAdapter(IVendorAdapter):
                 raise
             raise LionErrorTranslator.translate_transport_exception(e, {"url": target_url, "operation": "inspect_product"})
 
+    def _extract_price_tiers(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
+        """Extract tiered pricing brackets from Lion PDP."""
+        tiers: List[Dict[str, Any]] = []
+        # Search all tables and rows
+        rows = soup.select("table tr, .price-table tr, div[class*='price'] tr, tr")
+        for row in rows:
+            tds = row.find_all(["td", "th", "div", "span"])
+            row_txt = row.get_text(" ", strip=True)
+            # Check pattern: Quantity (e.g. 10, 200, 2000) and Price (e.g. 366,226 ریال)
+            qm = re.search(r"^(\d+)", row_txt)
+            pm = re.search(r"([\d,]{3,})\s*(?:ریال|تومان)?", row_txt)
+            if qm and pm:
+                try:
+                    q = int(qm.group(1))
+                    p = int(pm.group(1).replace(",", ""))
+                    if p > 100 and q >= 1:
+                        tiers.append({"min_quantity": q, "unit_price_irr": p})
+                except Exception:
+                    pass
+        # Deduplicate and sort
+        seen_q = set()
+        unique_tiers = []
+        for t in sorted(tiers, key=lambda x: x["min_quantity"]):
+            if t["min_quantity"] not in seen_q:
+                seen_q.add(t["min_quantity"])
+                unique_tiers.append(t)
+        return unique_tiers
+
     def extract_product_data(self, dom_context: Any) -> CanonicalComponentDraft:
         """
-        Extract technical specs ('شماره فنی', 'سازنده', 'پکیج') from BeautifulSoup or HTML string.
+        Extract technical specs ('Part Number', 'Manufacture', 'Package', 'Lion Part') from BeautifulSoup or HTML.
         """
         if isinstance(dom_context, str):
             soup = BeautifulSoup(dom_context, "html.parser")
@@ -350,6 +398,7 @@ class LionVendorAdapter(IVendorAdapter):
         package = None
         specs: Dict[str, str] = {}
 
+        # 1. Check table rows
         rows = soup.select(LionSelectors.SPEC_TABLE_ROWS)
         for row in rows:
             tds = row.find_all(["td", "th"])
@@ -358,12 +407,30 @@ class LionVendorAdapter(IVendorAdapter):
                 val = tds[1].get_text(strip=True)
                 if key and val:
                     specs[key] = val
-                    if "شماره فنی" in key or "part number" in key.lower() or "mpn" in key.lower():
+                    k_lower = key.lower()
+                    if "شماره فنی" in key or "part number" in k_lower or "partnumber" in k_lower or "mpn" in k_lower:
                         mpn = val
-                    elif "سازنده" in key or "manufacturer" in key.lower() or "brand" in key.lower():
+                    elif "سازنده" in key or "manufacturer" in k_lower or "manufacture" in k_lower or "brand" in k_lower:
                         manufacturer = val
-                    elif "پکیج" in key or "package" in key.lower() or "case" in key.lower():
+                    elif "پکیج" in key or "package" in k_lower or "case" in k_lower or "footprint" in k_lower:
                         package = val
+
+        # 2. Check list items / text elements (e.g. • Part Number C3216X7R1H106K160AC)
+        full_text = soup.get_text("\n", strip=True)
+        for line in full_text.splitlines():
+            line_clean = line.strip(" •-\t\r")
+            if not mpn:
+                m_mpn = re.search(r"^(?:Part\s*Number|شماره\s*فنی|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
+                if m_mpn:
+                    mpn = m_mpn.group(1).strip()
+            if not manufacturer:
+                m_mfg = re.search(r"^(?:Manufacture|Manufacturer|سازنده|Brand|برند)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                if m_mfg:
+                    manufacturer = m_mfg.group(1).strip()
+            if not package:
+                m_pkg = re.search(r"^(?:Package|پکیج|سایز|Footprint)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                if m_pkg:
+                    package = m_pkg.group(1).strip()
 
         return CanonicalComponentDraft(
             vendor_id=self.VENDOR_ID,
@@ -784,3 +851,15 @@ class LionVendorAdapter(IVendorAdapter):
         """Cleanly terminate browser session."""
         self.session.close()
         self._is_ready = False
+
+    def get_cart_url(self) -> Optional[str]:
+        """Return the storefront cart URL for Lion Electronic."""
+        return LionSelectors.CART_URL
+
+    def is_pdp_url(self, url: str) -> bool:
+        """Check whether the given URL matches a Lion Electronic Product Detail Page (PDP)."""
+        clean = (url or "").strip()
+        if not clean:
+            return False
+        return bool(LionSelectors.PDP_URL_PATTERN.match(clean) or LionSelectors.PDP_PATH_PATTERN.match(clean))
+

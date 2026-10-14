@@ -84,6 +84,18 @@ class TestRoboEqAdapterContract:
         assert adapter.vendor_id == "vendor_roboeq"
         assert adapter.base_url == "https://roboeq.ir"
 
+    def test_get_cart_url(self):
+        adapter = RoboEqVendorAdapter()
+        assert adapter.get_cart_url() == "https://roboeq.ir/cart/"
+
+    def test_is_pdp_url(self):
+        adapter = RoboEqVendorAdapter()
+        assert adapter.is_pdp_url("https://roboeq.ir/products/detail/0315001/آی-سی-تایمر-NE555/") is True
+        assert adapter.is_pdp_url("https://roboeq.ir/cart/") is False
+        assert adapter.is_pdp_url("https://lionelectronic.ir/products/2070-NE555P") is False
+        assert adapter.is_pdp_url("") is False
+
+
 
 # ============================================================================
 # 2. SELECTOR REGEXES & URL PATTERNS

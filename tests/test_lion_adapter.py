@@ -75,6 +75,43 @@ class TestLionAdapterContract:
             assert hasattr(adapter, method_name), f"Missing method {method_name}"
             assert callable(getattr(adapter, method_name)), f"Attribute {method_name} is not callable"
 
+    def test_get_cart_url(self):
+        adapter = LionVendorAdapter()
+        assert adapter.get_cart_url() == "https://lionelectronic.ir/orders/cart"
+
+    def test_is_pdp_url(self):
+        adapter = LionVendorAdapter()
+        assert adapter.is_pdp_url("https://lionelectronic.ir/products/2070-NE555P") is True
+        assert adapter.is_pdp_url("https://lionelectronic.ir/orders/cart") is False
+        assert adapter.is_pdp_url("https://javanelec.com/shop/product/123") is False
+        assert adapter.is_pdp_url("") is False
+
+    def test_ivendor_adapter_base_cart_url_returns_none(self):
+        """Base IVendorAdapter.get_cart_url() returns None and does not invent a cart path."""
+        class MockMinimalAdapter(IVendorAdapter):
+            @property
+            def vendor_id(self): return "vendor_mock"
+            @property
+            def base_url(self): return "https://example.com"
+            def initialize(self, *a, **kw): pass
+            def search_part(self, *a, **kw): pass
+            def resolve_product(self, *a, **kw): pass
+            def inspect_product(self, *a, **kw): pass
+            def extract_product_data(self, *a, **kw): pass
+            def inspect_stock(self, *a, **kw): pass
+            def determine_order_constraints(self, *a, **kw): pass
+            def add_to_cart(self, *a, **kw): pass
+            def inspect_cart(self, *a, **kw): pass
+            def authenticate(self, *a, **kw): pass
+            def validate_session(self, *a, **kw): pass
+            def recover_from_error(self, *a, **kw): pass
+            def close(self): pass
+
+        adapter = MockMinimalAdapter()
+        assert adapter.get_cart_url() is None
+        assert adapter.is_pdp_url("https://example.com/pdp") is False
+
+
 
 class TestLionSelectorsAndPatterns:
     """Verify regex patterns and key selectors matching SITE_MAP_GRAPH.json."""
