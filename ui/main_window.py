@@ -692,36 +692,47 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_page_changed(self, page_id: str):
         """Routes sidebar clicks to corresponding view in content_stack or tabs."""
-        if page_id == "assembly_view":
-            self.content_stack.setCurrentWidget(self.tabs)
-            self.tabs.setCurrentIndex(0)
-            self.inventory_subtabs.setCurrentIndex(0)
-        elif page_id == "component_inventory":
-            self.content_stack.setCurrentWidget(self.tabs)
-            self.tabs.setCurrentIndex(0)
-            self.inventory_subtabs.setCurrentIndex(1)
-        elif page_id == "bom_audit":
-            self.content_stack.setCurrentWidget(self.tabs)
-            self.tabs.setCurrentIndex(1)
-        elif page_id in ("general_settings", "settings"):
-            self.content_stack.setCurrentWidget(self.general_settings_page)
-        elif page_id in ("backup_restore", "backup"):
-            if hasattr(self, "backup_restore_widget"):
-                self.backup_restore_widget.refresh_status()
-            self.content_stack.setCurrentWidget(self.backup_restore_page)
-        elif page_id == "reference_data":
-            if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
-                self.reference_data_widget.set_repository(self.inventory_repo)
-                self.reference_data_widget.refresh()
-            self.content_stack.setCurrentWidget(self.reference_data_page)
-        elif page_id == "provider_management":
-            if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
-                self.providers_widget.set_repository(self.inventory_repo)
-                self.providers_widget.refresh()
-            self.content_stack.setCurrentWidget(self.providers_page)
+        if getattr(self, "_is_syncing_navigation", False):
+            return
+        self._is_syncing_navigation = True
+        try:
+            if page_id == "assembly_view":
+                self.inventory_subtabs.setCurrentIndex(0)
+                self.tabs.setCurrentIndex(0)
+                self.content_stack.setCurrentWidget(self.tabs)
+            elif page_id == "component_inventory":
+                self.inventory_subtabs.setCurrentIndex(1)
+                self.tabs.setCurrentIndex(0)
+                self.content_stack.setCurrentWidget(self.tabs)
+            elif page_id == "bom_audit":
+                self.tabs.setCurrentIndex(1)
+                self.content_stack.setCurrentWidget(self.tabs)
+            elif page_id in ("general_settings", "settings"):
+                self.content_stack.setCurrentWidget(self.general_settings_page)
+            elif page_id in ("backup_restore", "backup"):
+                if hasattr(self, "backup_restore_widget"):
+                    self.backup_restore_widget.refresh_status()
+                self.content_stack.setCurrentWidget(self.backup_restore_page)
+            elif page_id == "reference_data":
+                if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
+                    self.reference_data_widget.set_repository(self.inventory_repo)
+                    self.reference_data_widget.refresh()
+                self.content_stack.setCurrentWidget(self.reference_data_page)
+            elif page_id == "provider_management":
+                if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
+                    self.providers_widget.set_repository(self.inventory_repo)
+                    self.providers_widget.refresh()
+                self.content_stack.setCurrentWidget(self.providers_page)
+
+            # Authoritatively guarantee sidebar active page reflects requested destination
+            self.sidebar.set_active_page(page_id)
+        finally:
+            self._is_syncing_navigation = False
 
     def _on_tab_changed(self, index: int):
         """Synchronizes tab changes with the sidebar state."""
+        if getattr(self, "_is_syncing_navigation", False):
+            return
         if hasattr(self, "sidebar") and self.content_stack.currentWidget() == self.tabs:
             if index == 0:
                 if hasattr(self, "inventory_subtabs") and self.inventory_subtabs.currentIndex() == 0:
@@ -2160,6 +2171,13 @@ class MainWindow(QMainWindow):
 
     def _on_inventory_subtab_changed(self, index: int):
         """Synchronize views and distribute table columns when switching inventory sub-tabs."""
+        if not getattr(self, "_is_syncing_navigation", False):
+            if hasattr(self, "sidebar") and self.content_stack.currentWidget() == self.tabs and self.tabs.currentIndex() == 0:
+                if index == 0:
+                    self.sidebar.set_active_page("assembly_view")
+                elif index == 1:
+                    self.sidebar.set_active_page("component_inventory")
+
         if index == 1:
             # Sub-tab 1: Component Inventory
             if hasattr(self, "stats_ribbon") and hasattr(self.stats_ribbon, "stat_incomplete_btn"):

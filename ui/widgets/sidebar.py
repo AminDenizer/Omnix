@@ -170,11 +170,15 @@ class SidebarNavButton(QPushButton):
             bg_color = "rgba(56, 189, 248, 0.14)"
             text_color = "#38bdf8"
             border_left = "3px solid #38bdf8"
+            hover_bg = "rgba(56, 189, 248, 0.22)"
+            hover_text = "#38bdf8"
             font_weight = "bold"
         else:
             bg_color = "transparent"
             text_color = "#94a3b8"
             border_left = "3px solid transparent"
+            hover_bg = "rgba(255, 255, 255, 0.08)"
+            hover_text = "#f1f5f9"
             font_weight = "600"
 
         align = "center" if self._is_collapsed else "left"
@@ -195,12 +199,11 @@ class SidebarNavButton(QPushButton):
                 font-family: 'Segoe UI', sans-serif;
             }}
             QPushButton:hover {{
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #f1f5f9;
+                background-color: {hover_bg};
+                color: {hover_text};
             }}
             QPushButton:focus {{
                 outline: none;
-                border-left: 3px solid #38bdf8;
             }}
         """)
 
