@@ -238,6 +238,11 @@ class MainWindow(QMainWindow):
         inv_layout.setSpacing(8)
 
         self.stats_ribbon = StatsRibbonWidget()
+        val_active = bool(
+            settings.get("stock_policy_enabled", True) and
+            settings.get("stock_policy_validation_enabled", True)
+        )
+        self.stats_ribbon.set_validation_enabled(val_active)
         self.stats_ribbon.orderShortagesRequested.connect(self._open_inventory_order_dialog)
         self.stats_ribbon.incompleteFilterRequested.connect(self._toggle_incomplete_filter)
         inv_layout.addWidget(self.stats_ribbon)
@@ -652,43 +657,110 @@ class MainWindow(QMainWindow):
         self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
         sub_layout.addWidget(self.side_stock_policy_show_columns_chk)
 
+        # Subtle horizontal divider
+        self.side_stock_policy_divider = QFrame()
+        self.side_stock_policy_divider.setFrameShape(QFrame.Shape.HLine)
+        self.side_stock_policy_divider.setFrameShadow(QFrame.Shadow.Plain)
+        self.side_stock_policy_divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
+        sub_layout.addSpacing(4)
+        sub_layout.addWidget(self.side_stock_policy_divider)
+        sub_layout.addSpacing(4)
+
+        # Automatically check inventory shortages on application startup
+        self.side_startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
+        self.side_startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
+        sub_layout.addWidget(self.side_startup_chk)
+
         card_layout.addLayout(sub_layout)
 
-        card_layout.addSpacing(8)
+        card_layout.addSpacing(12)
         self.side_match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.side_match_products_chk.setChecked(settings.get("match_products_enabled", True))
         card_layout.addWidget(self.side_match_products_chk)
 
-        card_layout.addSpacing(8)
-        self.side_startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
-        self.side_startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
-        card_layout.addWidget(self.side_startup_chk)
+        def _update_dependency_states():
+            master_on = self.side_stock_policy_enabled_chk.isChecked()
+            val_on = self.side_stock_policy_validation_chk.isChecked()
+
+            self.side_stock_policy_validation_chk.setEnabled(master_on)
+            self.side_stock_policy_show_columns_chk.setEnabled(master_on)
+            self.side_startup_chk.setEnabled(master_on and val_on)
+
+            # When startup check is re-enabled, restore the saved preference
+            saved_auto_check = settings.get("auto_check_startup_shortage", True)
+            if self.side_startup_chk.isChecked() != saved_auto_check:
+                self.side_startup_chk.blockSignals(True)
+                self.side_startup_chk.setChecked(saved_auto_check)
+                self.side_startup_chk.blockSignals(False)
 
         def _on_side_master_toggled(checked: bool):
-            self.side_stock_policy_validation_chk.setEnabled(checked)
-            self.side_stock_policy_show_columns_chk.setEnabled(checked)
             settings.set("stock_policy_enabled", checked)
+            _update_dependency_states()
+            self._update_table_display()
+            self._update_stats_ribbon()
+
+        def _on_side_validation_toggled(checked: bool):
+            settings.set("stock_policy_validation_enabled", checked)
+            _update_dependency_states()
+            self._update_table_display()
+            self._update_stats_ribbon()
+
+        def _on_side_columns_toggled(checked: bool):
+            settings.set("stock_policy_show_columns", checked)
             self._update_table_display()
 
-        def _on_side_sub_changed():
-            settings.set("stock_policy_validation_enabled", self.side_stock_policy_validation_chk.isChecked())
-            settings.set("stock_policy_show_columns", self.side_stock_policy_show_columns_chk.isChecked())
-            settings.set("auto_check_startup_shortage", self.side_startup_chk.isChecked())
-            settings.set("match_products_enabled", self.side_match_products_chk.isChecked())
-            self._apply_match_products_visibility(self.side_match_products_chk.isChecked())
+        def _on_side_startup_toggled(checked: bool):
+            if self.side_startup_chk.isEnabled():
+                settings.set("auto_check_startup_shortage", checked)
+
+        def _on_side_match_products_toggled(checked: bool):
+            settings.set("match_products_enabled", checked)
+            self._apply_match_products_visibility(checked)
             self._update_table_display()
 
         self.side_stock_policy_enabled_chk.toggled.connect(_on_side_master_toggled)
-        self.side_stock_policy_validation_chk.toggled.connect(_on_side_sub_changed)
-        self.side_stock_policy_show_columns_chk.toggled.connect(_on_side_sub_changed)
-        self.side_match_products_chk.toggled.connect(_on_side_sub_changed)
-        self.side_startup_chk.toggled.connect(_on_side_sub_changed)
+        self.side_stock_policy_validation_chk.toggled.connect(_on_side_validation_toggled)
+        self.side_stock_policy_show_columns_chk.toggled.connect(_on_side_columns_toggled)
+        self.side_startup_chk.toggled.connect(_on_side_startup_toggled)
+        self.side_match_products_chk.toggled.connect(_on_side_match_products_toggled)
 
-        _on_side_master_toggled(self.side_stock_policy_enabled_chk.isChecked())
+        _update_dependency_states()
 
         layout.addWidget(card)
         layout.addStretch()
         return page
+
+    def _sync_general_settings_page(self):
+        """Synchronizes the sidebar General Settings page with current SettingsManager values."""
+        if not hasattr(self, "side_stock_policy_enabled_chk"):
+            return
+        self.side_stock_policy_enabled_chk.blockSignals(True)
+        self.side_stock_policy_validation_chk.blockSignals(True)
+        self.side_stock_policy_show_columns_chk.blockSignals(True)
+        self.side_startup_chk.blockSignals(True)
+        self.side_match_products_chk.blockSignals(True)
+
+        master_on = bool(settings.get("stock_policy_enabled", True))
+        val_on = bool(settings.get("stock_policy_validation_enabled", True))
+        cols_on = bool(settings.get("stock_policy_show_columns", True))
+        startup_on = bool(settings.get("auto_check_startup_shortage", True))
+        match_on = bool(settings.get("match_products_enabled", True))
+
+        self.side_stock_policy_enabled_chk.setChecked(master_on)
+        self.side_stock_policy_validation_chk.setChecked(val_on)
+        self.side_stock_policy_show_columns_chk.setChecked(cols_on)
+        self.side_startup_chk.setChecked(startup_on)
+        self.side_match_products_chk.setChecked(match_on)
+
+        self.side_stock_policy_validation_chk.setEnabled(master_on)
+        self.side_stock_policy_show_columns_chk.setEnabled(master_on)
+        self.side_startup_chk.setEnabled(master_on and val_on)
+
+        self.side_stock_policy_enabled_chk.blockSignals(False)
+        self.side_stock_policy_validation_chk.blockSignals(False)
+        self.side_stock_policy_show_columns_chk.blockSignals(False)
+        self.side_startup_chk.blockSignals(False)
+        self.side_match_products_chk.blockSignals(False)
 
     def _on_sidebar_page_changed(self, page_id: str):
         """Routes sidebar clicks to corresponding view in content_stack or tabs."""
@@ -708,6 +780,7 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(1)
                 self.content_stack.setCurrentWidget(self.tabs)
             elif page_id in ("general_settings", "settings"):
+                self._sync_general_settings_page()
                 self.content_stack.setCurrentWidget(self.general_settings_page)
             elif page_id in ("backup_restore", "backup"):
                 if hasattr(self, "backup_restore_widget"):
@@ -1038,8 +1111,10 @@ class MainWindow(QMainWindow):
     def _open_settings(self, initial_tab: Optional[str] = None):
         dlg = SettingsDialog(self, initial_tab=initial_tab)
         dlg.exec()
+        self._sync_general_settings_page()
         # Refresh display in case stock policy columns or validation changed
         self._update_table_display()
+        self._update_stats_ribbon()
 
     def _open_quick_order(self):
         dlg = QuickOrderDialog(
@@ -1056,6 +1131,8 @@ class MainWindow(QMainWindow):
 
     def _check_startup_shortages(self):
         """Check if any inventory items are below minimum threshold on startup and alert the user."""
+        if not settings.get("stock_policy_enabled", True) or not settings.get("stock_policy_validation_enabled", True):
+            return
         if not settings.get("auto_check_startup_shortage", True):
             return
         if self.excel.total_rows == 0:
@@ -1273,6 +1350,10 @@ class MainWindow(QMainWindow):
         self._update_stats_ribbon()
 
     def _update_stats_ribbon(self):
+        validation_active = bool(
+            settings.get("stock_policy_enabled", True) and
+            settings.get("stock_policy_validation_enabled", True)
+        )
         if self.inventory_repo.is_loaded:
             all_groups = self.inventory_repo.get_all_groups()
             total_groups = len(all_groups)
@@ -1288,7 +1369,8 @@ class MainWindow(QMainWindow):
                 total_cols,
                 file_name,
                 shortage_count=shortage_count,
-                incomplete_count=incomplete_count
+                incomplete_count=incomplete_count,
+                validation_enabled=validation_active
             )
             return
 
@@ -1304,7 +1386,8 @@ class MainWindow(QMainWindow):
             total_cols,
             file_name,
             shortage_count=len(shortages),
-            incomplete_count=len(incomplete)
+            incomplete_count=len(incomplete),
+            validation_enabled=validation_active
         )
 
     def _open_inventory_order_dialog(self):

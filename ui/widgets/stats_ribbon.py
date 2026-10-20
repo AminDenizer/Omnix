@@ -14,6 +14,7 @@ class StatsRibbonWidget(QFrame):
         self.setObjectName("ribbonFrame")
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self._is_incomplete_active = False
+        self._validation_enabled = True
         self._init_ui()
 
     def _init_ui(self):
@@ -91,6 +92,11 @@ class StatsRibbonWidget(QFrame):
     def set_incomplete_active(self, is_active: bool):
         self._is_incomplete_active = is_active
 
+    def set_validation_enabled(self, enabled: bool):
+        """Show or hide the shortages action based on validation state."""
+        self._validation_enabled = enabled
+        self.order_shortages_btn.setVisible(enabled)
+
     def update_stats(
         self,
         total_rows: int,
@@ -98,9 +104,11 @@ class StatsRibbonWidget(QFrame):
         total_cols: int,
         file_name: str,
         shortage_count: int = 0,
-        incomplete_count: int = 0
+        incomplete_count: int = 0,
+        validation_enabled: bool = True
     ):
         """Update ribbon pills from current dataset state."""
+        self._validation_enabled = validation_enabled
         self.stat_total_rows.setText(f"Total Records: {total_rows:,}")
         self.stat_filtered_rows.setText(f"Matches: {filtered_rows:,}")
         self.stat_columns.setText(f"Columns: {total_cols:,}")
@@ -158,38 +166,42 @@ class StatsRibbonWidget(QFrame):
             """)
 
         # Shortages button update
-        if shortage_count > 0:
-            self.order_shortages_btn.setEnabled(True)
-            self.order_shortages_btn.setText(f"⚠️ Order Low Stock ({shortage_count})")
-            self.order_shortages_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(245, 158, 11, 0.18);
-                    border: 1.5px solid #f59e0b;
-                    border-radius: 6px;
-                    padding: 4px 12px;
-                    color: #fbbf24;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #f59e0b;
-                    color: #0f172a;
-                }
-            """)
+        if not validation_enabled:
+            self.order_shortages_btn.setVisible(False)
         else:
-            self.order_shortages_btn.setEnabled(False)
-            self.order_shortages_btn.setText("✅ All Stock OK")
-            self.order_shortages_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(16, 185, 129, 0.12);
-                    border: 1px solid rgba(16, 185, 129, 0.35);
-                    border-radius: 6px;
-                    padding: 4px 12px;
-                    color: #34d399;
-                    font-weight: 600;
-                    font-size: 11px;
-                }
-            """)
+            self.order_shortages_btn.setVisible(True)
+            if shortage_count > 0:
+                self.order_shortages_btn.setEnabled(True)
+                self.order_shortages_btn.setText(f"⚠️ Order Low Stock ({shortage_count})")
+                self.order_shortages_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: rgba(245, 158, 11, 0.18);
+                        border: 1.5px solid #f59e0b;
+                        border-radius: 6px;
+                        padding: 4px 12px;
+                        color: #fbbf24;
+                        font-weight: bold;
+                        font-size: 11px;
+                    }
+                    QPushButton:hover {
+                        background-color: #f59e0b;
+                        color: #0f172a;
+                    }
+                """)
+            else:
+                self.order_shortages_btn.setEnabled(False)
+                self.order_shortages_btn.setText("✅ All Stock OK")
+                self.order_shortages_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: rgba(16, 185, 129, 0.12);
+                        border: 1px solid rgba(16, 185, 129, 0.35);
+                        border-radius: 6px;
+                        padding: 4px 12px;
+                        color: #34d399;
+                        font-weight: 600;
+                        font-size: 11px;
+                    }
+                """)
 
         display_name = file_name if file_name else "No File Found"
         if len(display_name) > 35:

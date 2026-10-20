@@ -238,11 +238,7 @@ class SettingsDialog(QDialog):
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(10)
 
-        self.startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
-        self.startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
-        card_layout.addWidget(self.startup_chk)
-
-        # Stock Policy Master & Subordinate Checkboxes (Phase B)
+        # Stock Policy Master & Subordinate Checkboxes
         self.stock_policy_enabled_chk = QCheckBox("Enable stock-policy features")
         self.stock_policy_enabled_chk.setStyleSheet("font-weight: bold; color: #38bdf8;")
         self.stock_policy_enabled_chk.setChecked(settings.get("stock_policy_enabled", True))
@@ -260,19 +256,44 @@ class SettingsDialog(QDialog):
         self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
         sub_layout.addWidget(self.stock_policy_show_columns_chk)
 
+        # Subtle horizontal divider
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Plain)
+        divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
+        sub_layout.addSpacing(4)
+        sub_layout.addWidget(divider)
+        sub_layout.addSpacing(4)
+
+        self.startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
+        self.startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
+        sub_layout.addWidget(self.startup_chk)
+
         card_layout.addLayout(sub_layout)
 
-        def _on_stock_policy_toggled(checked: bool):
-            self.stock_policy_validation_chk.setEnabled(checked)
-            self.stock_policy_show_columns_chk.setEnabled(checked)
-
-        self.stock_policy_enabled_chk.toggled.connect(_on_stock_policy_toggled)
-        _on_stock_policy_toggled(self.stock_policy_enabled_chk.isChecked())
+        card_layout.addSpacing(12)
 
         # Match Products Display Checkbox
         self.match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.match_products_chk.setChecked(settings.get("match_products_enabled", True))
         card_layout.addWidget(self.match_products_chk)
+
+        def _update_dialog_dependencies():
+            master_on = self.stock_policy_enabled_chk.isChecked()
+            val_on = self.stock_policy_validation_chk.isChecked()
+            self.stock_policy_validation_chk.setEnabled(master_on)
+            self.stock_policy_show_columns_chk.setEnabled(master_on)
+            self.startup_chk.setEnabled(master_on and val_on)
+            if master_on and val_on:
+                saved = settings.get("auto_check_startup_shortage", True)
+                if self.startup_chk.isChecked() != saved:
+                    self.startup_chk.blockSignals(True)
+                    self.startup_chk.setChecked(saved)
+                    self.startup_chk.blockSignals(False)
+
+        self.stock_policy_enabled_chk.toggled.connect(lambda _: _update_dialog_dependencies())
+        self.stock_policy_validation_chk.toggled.connect(lambda _: _update_dialog_dependencies())
+        _update_dialog_dependencies()
 
         # Hidden/preserved spinboxes for backward compatibility
         self.min_stock_spin = QSpinBox()
@@ -308,7 +329,8 @@ class SettingsDialog(QDialog):
                 self.registry.set_vendor_enabled(vendor_id, cfg.enabled)
 
         # Save general settings
-        settings.set("auto_check_startup_shortage", self.startup_chk.isChecked())
+        if self.startup_chk.isEnabled():
+            settings.set("auto_check_startup_shortage", self.startup_chk.isChecked())
         settings.set("stock_policy_enabled", self.stock_policy_enabled_chk.isChecked())
         settings.set("stock_policy_validation_enabled", self.stock_policy_validation_chk.isChecked())
         settings.set("stock_policy_show_columns", self.stock_policy_show_columns_chk.isChecked())
