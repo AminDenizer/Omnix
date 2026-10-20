@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QStatusBar, QMenu, QMessageBox, QDialog,
     QTabWidget, QPushButton, QSplitter, QFrame, QToolButton, QLineEdit,
     QFileDialog, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox,
-    QStackedWidget, QCheckBox,
+    QStackedWidget, QCheckBox, QAbstractButton,
 )
 from PyQt6.QtCore import Qt, QTimer, QPoint, QEvent
 from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut, QIcon, QPixmap, QKeyEvent, QMouseEvent
@@ -889,7 +889,38 @@ class MainWindow(QMainWindow):
         ctrl_q.activated.connect(self.close)
 
     def eventFilter(self, watched, event):
-        if event.type() == QEvent.Type.KeyPress:
+        ev_type = event.type()
+        if ev_type in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
+            if isinstance(watched, QWidget) and (watched is self or self.isAncestorOf(watched)):
+                if hasattr(event, "globalPosition"):
+                    global_pos = event.globalPosition().toPoint()
+                    pos_in_win = self.mapFromGlobal(global_pos)
+                    if self.rect().contains(pos_in_win):
+                        edge = self._get_resize_edge(pos_in_win)
+                        self._resize_edge = edge
+                        self._update_cursor_for_edge(edge)
+                    else:
+                        self._resize_edge = None
+                        if self.testAttribute(Qt.WidgetAttribute.WA_SetCursor):
+                            self.unsetCursor()
+        elif ev_type == QEvent.Type.Leave:
+            if watched is self:
+                self._resize_edge = None
+                if self.testAttribute(Qt.WidgetAttribute.WA_SetCursor):
+                    self.unsetCursor()
+        elif ev_type == QEvent.Type.MouseButtonPress:
+            if isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
+                if not isinstance(watched, QAbstractButton):
+                    if hasattr(event, "globalPosition"):
+                        global_pos = event.globalPosition().toPoint()
+                        pos_in_win = self.mapFromGlobal(global_pos)
+                        edge = self._get_resize_edge(pos_in_win)
+                        if edge is not None:
+                            handle = self.windowHandle()
+                            if handle and hasattr(handle, "startSystemResize"):
+                                handle.startSystemResize(edge)
+                                return True
+        elif ev_type == QEvent.Type.KeyPress:
             if isinstance(event, QKeyEvent) and event.key() == Qt.Key.Key_Slash and event.modifiers() in (
                 Qt.KeyboardModifier.NoModifier,
                 Qt.KeyboardModifier.KeypadModifier,
@@ -1027,20 +1058,31 @@ class MainWindow(QMainWindow):
             return Qt.Edge.BottomEdge
         return None
 
-    def mouseMoveEvent(self, event: QMouseEvent):
-        edge = self._get_resize_edge(event.pos())
-        self._resize_edge = edge
-        if edge == (Qt.Edge.TopEdge | Qt.Edge.LeftEdge) or edge == (Qt.Edge.BottomEdge | Qt.Edge.RightEdge):
+    def _update_cursor_for_edge(self, edge: Optional[Qt.Edge]):
+        """Sets the appropriate resize cursor or unsets override when inside."""
+        if edge in ((Qt.Edge.TopEdge | Qt.Edge.LeftEdge), (Qt.Edge.BottomEdge | Qt.Edge.RightEdge)):
             self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif edge == (Qt.Edge.TopEdge | Qt.Edge.RightEdge) or edge == (Qt.Edge.BottomEdge | Qt.Edge.LeftEdge):
+        elif edge in ((Qt.Edge.TopEdge | Qt.Edge.RightEdge), (Qt.Edge.BottomEdge | Qt.Edge.LeftEdge)):
             self.setCursor(Qt.CursorShape.SizeBDiagCursor)
         elif edge in (Qt.Edge.LeftEdge, Qt.Edge.RightEdge):
             self.setCursor(Qt.CursorShape.SizeHorCursor)
         elif edge in (Qt.Edge.TopEdge, Qt.Edge.BottomEdge):
             self.setCursor(Qt.CursorShape.SizeVerCursor)
         else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            if self.testAttribute(Qt.WidgetAttribute.WA_SetCursor):
+                self.unsetCursor()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        edge = self._get_resize_edge(event.pos())
+        self._resize_edge = edge
+        self._update_cursor_for_edge(edge)
         super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: QEvent):
+        self._resize_edge = None
+        if self.testAttribute(Qt.WidgetAttribute.WA_SetCursor):
+            self.unsetCursor()
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton and self._resize_edge is not None:
