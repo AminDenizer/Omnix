@@ -85,11 +85,13 @@ class TestStockPolicySettingsDependency:
         win.side_stock_policy_validation_chk.setChecked(False)
 
         assert win.side_startup_chk.isEnabled() is False
+        assert win.side_startup_chk.isChecked() is False
 
         dlg = SettingsDialog(win)
         dlg.stock_policy_enabled_chk.setChecked(True)
         dlg.stock_policy_validation_chk.setChecked(False)
         assert dlg.startup_chk.isEnabled() is False
+        assert dlg.startup_chk.isChecked() is False
         dlg.close()
 
     def test_case_03_disabling_validation_preserves_saved_startup_check_preference(self, managed_window):
@@ -147,25 +149,57 @@ class TestStockPolicySettingsDependency:
         assert win.side_stock_policy_validation_chk.isEnabled() is True
         assert win.side_stock_policy_show_columns_chk.isEnabled() is True
         assert win.side_startup_chk.isEnabled() is True
+        assert win.side_stock_policy_validation_chk.isChecked() is True
+        assert win.side_startup_chk.isChecked() is True
 
-        # Disabling master toggle disables all subordinates
+        # Disabling master toggle disables all subordinates and visibly unchecks validation and startup
         win.side_stock_policy_enabled_chk.setChecked(False)
         assert win.side_stock_policy_validation_chk.isEnabled() is False
         assert win.side_stock_policy_show_columns_chk.isEnabled() is False
         assert win.side_startup_chk.isEnabled() is False
+        assert win.side_stock_policy_validation_chk.isChecked() is False
+        assert win.side_startup_chk.isChecked() is False
 
         # Re-enabling master restores validation & columns, and startup check if validation is checked
         win.side_stock_policy_enabled_chk.setChecked(True)
         assert win.side_stock_policy_validation_chk.isEnabled() is True
         assert win.side_stock_policy_show_columns_chk.isEnabled() is True
         assert win.side_startup_chk.isEnabled() is True
+        assert win.side_stock_policy_validation_chk.isChecked() is True
+        assert win.side_startup_chk.isChecked() is True
 
-        # If validation was unchecked when master is re-enabled, startup check remains disabled
+        # If validation was unchecked when master is re-enabled, startup check remains disabled and unchecked
         win.side_stock_policy_validation_chk.setChecked(False)
         win.side_stock_policy_enabled_chk.setChecked(False)
+        assert win.side_stock_policy_validation_chk.isChecked() is False
+        assert win.side_startup_chk.isChecked() is False
         win.side_stock_policy_enabled_chk.setChecked(True)
         assert win.side_stock_policy_validation_chk.isEnabled() is True
+        assert win.side_stock_policy_validation_chk.isChecked() is False
         assert win.side_startup_chk.isEnabled() is False
+        assert win.side_startup_chk.isChecked() is False
+
+        # Test identical behavior in SettingsDialog
+        dlg = SettingsDialog(win)
+        dlg.stock_policy_enabled_chk.setChecked(True)
+        dlg.stock_policy_validation_chk.setChecked(True)
+        assert dlg.stock_policy_validation_chk.isEnabled() is True
+        assert dlg.startup_chk.isEnabled() is True
+        assert dlg.stock_policy_validation_chk.isChecked() is True
+        assert dlg.startup_chk.isChecked() is True
+
+        dlg.stock_policy_enabled_chk.setChecked(False)
+        assert dlg.stock_policy_validation_chk.isEnabled() is False
+        assert dlg.stock_policy_validation_chk.isChecked() is False
+        assert dlg.startup_chk.isEnabled() is False
+        assert dlg.startup_chk.isChecked() is False
+
+        dlg.stock_policy_enabled_chk.setChecked(True)
+        assert dlg.stock_policy_validation_chk.isEnabled() is True
+        assert dlg.stock_policy_validation_chk.isChecked() is True
+        assert dlg.startup_chk.isEnabled() is True
+        assert dlg.startup_chk.isChecked() is True
+        dlg.close()
 
     def test_case_06_matched_products_independent_behavior(self, managed_window):
         win = managed_window
@@ -181,6 +215,74 @@ class TestStockPolicySettingsDependency:
 
         win.side_match_products_chk.setChecked(True)
         assert settings.get("match_products_enabled") is True
+
+    def test_case_06b_dependent_checkbox_visual_and_interactive_lifecycle(self, managed_window):
+        win = managed_window
+        # Start in fully-enabled state
+        settings.set("stock_policy_enabled", True)
+        settings.set("stock_policy_validation_enabled", True)
+        settings.set("auto_check_startup_shortage", True)
+        settings.set("match_products_enabled", True)
+        win._sync_general_settings_page()
+
+        assert win.side_stock_policy_enabled_chk.isChecked() is True
+        assert win.side_stock_policy_validation_chk.isChecked() is True
+        assert win.side_stock_policy_validation_chk.isEnabled() is True
+        assert win.side_startup_chk.isChecked() is True
+        assert win.side_startup_chk.isEnabled() is True
+        assert win.side_match_products_chk.isChecked() is True
+
+        # 1. Uncheck master -> both validation and startup visibly appear unchecked and disabled
+        win.side_stock_policy_enabled_chk.setChecked(False)
+        assert win.side_stock_policy_validation_chk.isChecked() is False
+        assert win.side_stock_policy_validation_chk.isEnabled() is False
+        assert win.side_startup_chk.isChecked() is False
+        assert win.side_startup_chk.isEnabled() is False
+        # Match products unaffected
+        assert win.side_match_products_chk.isChecked() is True
+        assert win.side_match_products_chk.isEnabled() is True
+        # Saved preferences remain True
+        assert settings.get("stock_policy_validation_enabled") is True
+        assert settings.get("auto_check_startup_shortage") is True
+
+        # 2. Re-enable master -> restores both
+        win.side_stock_policy_enabled_chk.setChecked(True)
+        assert win.side_stock_policy_validation_chk.isChecked() is True
+        assert win.side_stock_policy_validation_chk.isEnabled() is True
+        assert win.side_startup_chk.isChecked() is True
+        assert win.side_startup_chk.isEnabled() is True
+
+        # 3. Explicitly uncheck startup check (user preference = False)
+        win.side_startup_chk.setChecked(False)
+        assert settings.get("auto_check_startup_shortage") is False
+
+        # 4. Uncheck validation -> startup appears unchecked and disabled
+        win.side_stock_policy_validation_chk.setChecked(False)
+        assert win.side_stock_policy_validation_chk.isChecked() is False
+        assert win.side_startup_chk.isChecked() is False
+        assert win.side_startup_chk.isEnabled() is False
+
+        # 5. Re-enable validation -> startup restores its saved preference (False) and enabled
+        win.side_stock_policy_validation_chk.setChecked(True)
+        assert win.side_stock_policy_validation_chk.isChecked() is True
+        assert win.side_startup_chk.isChecked() is False
+        assert win.side_startup_chk.isEnabled() is True
+
+        # Verify lifecycle across SettingsDialog
+        dlg = SettingsDialog(win)
+        dlg.stock_policy_enabled_chk.setChecked(False)
+        assert dlg.stock_policy_validation_chk.isChecked() is False
+        assert dlg.stock_policy_validation_chk.isEnabled() is False
+        assert dlg.startup_chk.isChecked() is False
+        assert dlg.startup_chk.isEnabled() is False
+        assert dlg.match_products_chk.isEnabled() is True
+        dlg.stock_policy_enabled_chk.setChecked(True)
+        assert dlg.stock_policy_validation_chk.isChecked() is True
+        assert dlg.stock_policy_validation_chk.isEnabled() is True
+        # Startup restores previous preference of False
+        assert dlg.startup_chk.isChecked() is False
+        assert dlg.startup_chk.isEnabled() is True
+        dlg.close()
 
 
 class TestStartupExecutionDependency:

@@ -688,17 +688,32 @@ class MainWindow(QMainWindow):
 
         def _update_dependency_states():
             master_on = self.side_stock_policy_enabled_chk.isChecked()
-            val_on = self.side_stock_policy_validation_chk.isChecked()
-
             self.side_stock_policy_validation_chk.setEnabled(master_on)
             self.side_stock_policy_show_columns_chk.setEnabled(master_on)
-            self.side_startup_chk.setEnabled(master_on and val_on)
 
-            # When startup check is re-enabled, restore the saved preference
-            saved_auto_check = settings.get("auto_check_startup_shortage", True)
-            if self.side_startup_chk.isChecked() != saved_auto_check:
+            if not master_on:
+                self.side_stock_policy_validation_chk.blockSignals(True)
+                self.side_stock_policy_validation_chk.setChecked(False)
+                self.side_stock_policy_validation_chk.blockSignals(False)
+
+                self.side_startup_chk.setEnabled(False)
                 self.side_startup_chk.blockSignals(True)
-                self.side_startup_chk.setChecked(saved_auto_check)
+                self.side_startup_chk.setChecked(False)
+                self.side_startup_chk.blockSignals(False)
+            else:
+                saved_val = bool(settings.get("stock_policy_validation_enabled", True))
+                self.side_stock_policy_validation_chk.blockSignals(True)
+                self.side_stock_policy_validation_chk.setChecked(saved_val)
+                self.side_stock_policy_validation_chk.blockSignals(False)
+
+                val_active = self.side_stock_policy_validation_chk.isChecked()
+                self.side_startup_chk.setEnabled(val_active)
+                self.side_startup_chk.blockSignals(True)
+                if val_active:
+                    saved_auto_check = bool(settings.get("auto_check_startup_shortage", True))
+                    self.side_startup_chk.setChecked(saved_auto_check)
+                else:
+                    self.side_startup_chk.setChecked(False)
                 self.side_startup_chk.blockSignals(False)
 
         def _on_side_master_toggled(checked: bool):
@@ -708,7 +723,8 @@ class MainWindow(QMainWindow):
             self._update_stats_ribbon()
 
         def _on_side_validation_toggled(checked: bool):
-            settings.set("stock_policy_validation_enabled", checked)
+            if self.side_stock_policy_validation_chk.isEnabled():
+                settings.set("stock_policy_validation_enabled", checked)
             _update_dependency_states()
             self._update_table_display()
             self._update_stats_ribbon()
@@ -755,9 +771,9 @@ class MainWindow(QMainWindow):
         match_on = bool(settings.get("match_products_enabled", True))
 
         self.side_stock_policy_enabled_chk.setChecked(master_on)
-        self.side_stock_policy_validation_chk.setChecked(val_on)
+        self.side_stock_policy_validation_chk.setChecked(master_on and val_on)
         self.side_stock_policy_show_columns_chk.setChecked(cols_on)
-        self.side_startup_chk.setChecked(startup_on)
+        self.side_startup_chk.setChecked(master_on and val_on and startup_on)
         self.side_match_products_chk.setChecked(match_on)
 
         self.side_stock_policy_validation_chk.setEnabled(master_on)

@@ -282,21 +282,49 @@ class SettingsDialog(QDialog):
 
         card_layout.addLayout(display_layout)
 
+        self._user_val_preference = bool(settings.get("stock_policy_validation_enabled", True))
+        self._user_startup_preference = bool(settings.get("auto_check_startup_shortage", True))
+
         def _update_dialog_dependencies():
             master_on = self.stock_policy_enabled_chk.isChecked()
-            val_on = self.stock_policy_validation_chk.isChecked()
             self.stock_policy_validation_chk.setEnabled(master_on)
             self.stock_policy_show_columns_chk.setEnabled(master_on)
-            self.startup_chk.setEnabled(master_on and val_on)
-            if master_on and val_on:
-                saved = settings.get("auto_check_startup_shortage", True)
-                if self.startup_chk.isChecked() != saved:
-                    self.startup_chk.blockSignals(True)
-                    self.startup_chk.setChecked(saved)
-                    self.startup_chk.blockSignals(False)
+
+            if not master_on:
+                self.stock_policy_validation_chk.blockSignals(True)
+                self.stock_policy_validation_chk.setChecked(False)
+                self.stock_policy_validation_chk.blockSignals(False)
+
+                self.startup_chk.setEnabled(False)
+                self.startup_chk.blockSignals(True)
+                self.startup_chk.setChecked(False)
+                self.startup_chk.blockSignals(False)
+            else:
+                self.stock_policy_validation_chk.blockSignals(True)
+                self.stock_policy_validation_chk.setChecked(self._user_val_preference)
+                self.stock_policy_validation_chk.blockSignals(False)
+
+                val_active = self._user_val_preference
+                self.startup_chk.setEnabled(val_active)
+                self.startup_chk.blockSignals(True)
+                if val_active:
+                    self.startup_chk.setChecked(self._user_startup_preference)
+                else:
+                    self.startup_chk.setChecked(False)
+                self.startup_chk.blockSignals(False)
+
+        def _on_val_toggled(checked: bool):
+            if self.stock_policy_validation_chk.isEnabled():
+                self._user_val_preference = checked
+            _update_dialog_dependencies()
+
+        def _on_startup_toggled(checked: bool):
+            if self.startup_chk.isEnabled():
+                self._user_startup_preference = checked
 
         self.stock_policy_enabled_chk.toggled.connect(lambda _: _update_dialog_dependencies())
-        self.stock_policy_validation_chk.toggled.connect(lambda _: _update_dialog_dependencies())
+        self.stock_policy_validation_chk.toggled.connect(_on_val_toggled)
+        self.startup_chk.toggled.connect(_on_startup_toggled)
         _update_dialog_dependencies()
 
         # Hidden/preserved spinboxes for backward compatibility
@@ -333,10 +361,11 @@ class SettingsDialog(QDialog):
                 self.registry.set_vendor_enabled(vendor_id, cfg.enabled)
 
         # Save general settings
-        if self.startup_chk.isEnabled():
-            settings.set("auto_check_startup_shortage", self.startup_chk.isChecked())
+        val_pref = getattr(self, "_user_val_preference", self.stock_policy_validation_chk.isChecked())
+        startup_pref = getattr(self, "_user_startup_preference", self.startup_chk.isChecked())
+        settings.set("auto_check_startup_shortage", startup_pref)
         settings.set("stock_policy_enabled", self.stock_policy_enabled_chk.isChecked())
-        settings.set("stock_policy_validation_enabled", self.stock_policy_validation_chk.isChecked())
+        settings.set("stock_policy_validation_enabled", val_pref)
         settings.set("stock_policy_show_columns", self.stock_policy_show_columns_chk.isChecked())
         settings.set("default_min_stock", self.min_stock_spin.value())
         settings.set("default_target_stock", self.target_stock_spin.value())
