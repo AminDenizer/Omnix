@@ -4,6 +4,14 @@ import openpyxl
 from excel_loader import ExcelDataLoader
 
 class TestDialogAndEdgeCases:
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        from core.procurement.registry import VendorRegistry
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
+
     def test_mixed_batch_stock_increment(self, tmp_path):
         inv_path = os.path.join(str(tmp_path), 'Inventory.xlsx')
         wb = openpyxl.Workbook()

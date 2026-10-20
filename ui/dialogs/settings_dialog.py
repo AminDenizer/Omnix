@@ -3,6 +3,7 @@ Omnix UI - Multi-Vendor Settings Dialog
 Governing GAP: GAP-11.
 """
 
+from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QFrame, QTabWidget, QWidget,
@@ -11,7 +12,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from settings_manager import settings
 from core.models import VendorSettings
-from core.procurement.registry import default_registry
+from core.procurement.registry import VendorRegistry, default_registry
+
+
+from ui.dark_frame import apply_dark_window_frame
 
 
 class SettingsDialog(QDialog):
@@ -21,13 +25,42 @@ class SettingsDialog(QDialog):
     Governing GAP: GAP-11.
     """
 
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        parent=None,
+        registry: Optional[VendorRegistry] = None,
+        show_reference_data: bool = False,
+        initial_tab: Optional[str] = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Settings — Multi-Vendor Procurement & Accounts")
         self.resize(540, 440)
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.registry = registry or default_registry
         self._vendor_widgets = {}
+        self.show_reference_data = show_reference_data
         self._init_ui()
+
+        if initial_tab:
+            target = initial_tab.strip().lower()
+            if target == "general":
+                for idx in range(self.tabs.count()):
+                    if self.tabs.tabText(idx).strip().lower() == "general":
+                        self.tabs.setCurrentIndex(idx)
+                        break
+            elif target in ("plugins", "vendors", "vendor"):
+                self.tabs.setCurrentIndex(0)
+            elif target in ("reference", "reference_data"):
+                for idx in range(self.tabs.count()):
+                    if "reference" in self.tabs.tabText(idx).strip().lower():
+                        self.tabs.setCurrentIndex(idx)
+                        break
+
+        apply_dark_window_frame(self)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        apply_dark_window_frame(self)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -42,17 +75,36 @@ class SettingsDialog(QDialog):
         # Tab Widget
         self.tabs = QTabWidget()
 
-        # 1. Lion Electronic Tab
-        self.tabs.addTab(self._create_vendor_tab("vendor_lion", "Lion Electronic (lionelectronic.ir)", "Lion Electronic distributor credentials and automation."), "Lion Electronic")
+        # Dynamic Vendor Tabs
+        registered_vendors = self.registry.list_vendors()
+        if registered_vendors:
+            for vid in registered_vendors:
+                reg_meta = self.registry.get_registration(vid)
+                disp_name = reg_meta.display_name or vid.replace("vendor_", "").title()
+                domain_info = f" ({', '.join(reg_meta.domains)})" if reg_meta.domains else ""
+                desc = reg_meta.description or f"{disp_name} distributor credentials and automation."
+                self.tabs.addTab(
+                    self._create_vendor_tab(vid, f"{disp_name}{domain_info}", desc),
+                    disp_name,
+                )
+        else:
+            # Empty state tab when zero vendor plugins are installed
+            self.tabs.addTab(self._create_empty_vendor_tab(), "Vendors")
 
-        # 2. Javan Electronic Tab
-        self.tabs.addTab(self._create_vendor_tab("vendor_javan", "Javan Electronic (javanelec.com)", "Javan Electronic distributor credentials and automation."), "Javan Electronic")
-
-        # 3. RoboEq Electronic Tab
-        self.tabs.addTab(self._create_vendor_tab("vendor_roboeq", "RoboEq Electronic (roboeq.ir)", "RoboEq marketplace account and automation settings."), "RoboEq Electronic")
-
-        # 4. General Settings Tab
+        # General Settings Tab
         self.tabs.addTab(self._create_general_tab(), "General")
+
+        # Optional Reference Data Tab
+        if self.show_reference_data:
+            try:
+                from ui.widgets.reference_data_widget import ReferenceDataWidget
+                from core.inventory.repository import SqliteInventoryRepository, resolve_database_path
+                db_path = resolve_database_path()
+                repo = SqliteInventoryRepository(db_path)
+                self.ref_widget = ReferenceDataWidget(repository=repo, parent=self)
+                self.tabs.addTab(self.ref_widget, "🗂️ Reference Data")
+            except Exception:
+                pass
 
         layout.addWidget(self.tabs)
 
@@ -139,6 +191,42 @@ class SettingsDialog(QDialog):
         }
         return widget
 
+    def _create_empty_vendor_tab(self) -> QWidget:
+        widget = QWidget()
+        v_layout = QVBoxLayout(widget)
+        v_layout.setContentsMargins(24, 32, 24, 32)
+        v_layout.setSpacing(14)
+        v_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        card = QFrame()
+        card.setObjectName("cardFrame")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 24, 20, 24)
+        card_layout.setSpacing(12)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        icon_lbl = QLabel("🔌")
+        icon_lbl.setStyleSheet("font-size: 32px;")
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(icon_lbl)
+
+        title_lbl = QLabel("No Vendor Plugins Installed")
+        title_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #e2e8f0;")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(title_lbl)
+
+        msg_lbl = QLabel(
+            "No vendor plugins are installed. Vendor procurement features will remain unavailable until plugins are installed."
+        )
+        msg_lbl.setWordWrap(True)
+        msg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        msg_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; line-height: 1.4;")
+        card_layout.addWidget(msg_lbl)
+
+        v_layout.addWidget(card)
+        v_layout.addStretch()
+        return widget
+
     def _create_general_tab(self) -> QWidget:
         widget = QWidget()
         v_layout = QVBoxLayout(widget)
@@ -154,21 +242,49 @@ class SettingsDialog(QDialog):
         self.startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
         card_layout.addWidget(self.startup_chk)
 
-        # Stock defaults
-        stock_layout = QHBoxLayout()
-        stock_layout.addWidget(QLabel("Default Min Stock:"))
+        # Stock Policy Master & Subordinate Checkboxes (Phase B)
+        self.stock_policy_enabled_chk = QCheckBox("Enable stock-policy features")
+        self.stock_policy_enabled_chk.setStyleSheet("font-weight: bold; color: #38bdf8;")
+        self.stock_policy_enabled_chk.setChecked(settings.get("stock_policy_enabled", True))
+        card_layout.addWidget(self.stock_policy_enabled_chk)
+
+        sub_layout = QVBoxLayout()
+        sub_layout.setContentsMargins(20, 0, 0, 0)
+        sub_layout.setSpacing(6)
+
+        self.stock_policy_validation_chk = QCheckBox("Enable stock-policy validation / shortage checking")
+        self.stock_policy_validation_chk.setChecked(settings.get("stock_policy_validation_enabled", True))
+        sub_layout.addWidget(self.stock_policy_validation_chk)
+
+        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
+        self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
+        sub_layout.addWidget(self.stock_policy_show_columns_chk)
+
+        card_layout.addLayout(sub_layout)
+
+        def _on_stock_policy_toggled(checked: bool):
+            self.stock_policy_validation_chk.setEnabled(checked)
+            self.stock_policy_show_columns_chk.setEnabled(checked)
+
+        self.stock_policy_enabled_chk.toggled.connect(_on_stock_policy_toggled)
+        _on_stock_policy_toggled(self.stock_policy_enabled_chk.isChecked())
+
+        # Match Products Display Checkbox
+        self.match_products_chk = QCheckBox("Show Matched Products in Assembly View")
+        self.match_products_chk.setChecked(settings.get("match_products_enabled", True))
+        card_layout.addWidget(self.match_products_chk)
+
+        # Hidden/preserved spinboxes for backward compatibility
         self.min_stock_spin = QSpinBox()
         self.min_stock_spin.setRange(0, 100000)
         self.min_stock_spin.setValue(int(settings.get("default_min_stock", 0)))
-        stock_layout.addWidget(self.min_stock_spin)
+        self.min_stock_spin.hide()
 
-        stock_layout.addWidget(QLabel("Default Target Stock:"))
         self.target_stock_spin = QSpinBox()
         self.target_stock_spin.setRange(0, 100000)
         self.target_stock_spin.setValue(int(settings.get("default_target_stock", 0)))
-        stock_layout.addWidget(self.target_stock_spin)
+        self.target_stock_spin.hide()
 
-        card_layout.addLayout(stock_layout)
         v_layout.addWidget(card)
         v_layout.addStretch()
 
@@ -187,13 +303,17 @@ class SettingsDialog(QDialog):
             )
             settings.set_vendor_settings(vendor_id, cfg)
 
-            # Update default registry in memory if initialized
-            if default_registry.has_vendor(vendor_id):
-                default_registry.set_vendor_enabled(vendor_id, cfg.enabled)
+            # Update registry in memory if initialized
+            if self.registry.has_vendor(vendor_id):
+                self.registry.set_vendor_enabled(vendor_id, cfg.enabled)
 
         # Save general settings
         settings.set("auto_check_startup_shortage", self.startup_chk.isChecked())
+        settings.set("stock_policy_enabled", self.stock_policy_enabled_chk.isChecked())
+        settings.set("stock_policy_validation_enabled", self.stock_policy_validation_chk.isChecked())
+        settings.set("stock_policy_show_columns", self.stock_policy_show_columns_chk.isChecked())
         settings.set("default_min_stock", self.min_stock_spin.value())
         settings.set("default_target_stock", self.target_stock_spin.value())
+        settings.set("match_products_enabled", self.match_products_chk.isChecked())
 
         self.accept()

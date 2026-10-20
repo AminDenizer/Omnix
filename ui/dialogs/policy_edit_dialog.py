@@ -8,7 +8,7 @@ StockPolicyWriter to the underlying workbook, and ensures proper feedback.
 """
 
 import os
-from typing import Optional
+from typing import Optional, Any
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QIcon
@@ -77,17 +77,20 @@ class PolicyEditDialog(QDialog):
         inventory_path: str,
         parent: Optional[QWidget] = None,
         writer: Optional[StockPolicyWriter] = None,
+        repository: Optional[Any] = None,
     ):
         super().__init__(parent)
         self.group = group
         self.inventory_path = inventory_path
         self.writer = writer or StockPolicyWriter()
+        self.repository = repository
 
         self.setWindowTitle("Edit Stock Policy Thresholds")
         self.setModal(True)
-        self.setFont(QFont("Segoe UI", 10))
-        self.setMinimumWidth(460)
         self.setMinimumHeight(380)
+
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
 
         self._is_saving = False
         self._save_worker: Optional[PolicySaveWorker] = None
@@ -135,6 +138,11 @@ class PolicyEditDialog(QDialog):
 
         self._setup_ui()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
+
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(24, 24, 24, 24)
@@ -154,7 +162,7 @@ class PolicyEditDialog(QDialog):
         hdr_layout.setContentsMargins(12, 10, 12, 10)
         hdr_layout.setSpacing(6)
 
-        title_lbl = QLabel("⚙️ Stock Policy Thresholds")
+        title_lbl = QLabel("Stock Policy Thresholds")
         title_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #38bdf8;")
         hdr_layout.addWidget(title_lbl)
 
@@ -192,6 +200,7 @@ class PolicyEditDialog(QDialog):
         self.min_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.min_spin.setFixedHeight(36)
         self.min_spin.setValue(int(self.group.min_stock) if self.group.min_stock is not None else 0)
+        self.min_spin.wheelEvent = lambda event: event.ignore()
         self.min_spin.valueChanged.connect(self._validate_inputs_inline)
 
         self.min_up_btn = QToolButton()
@@ -246,6 +255,7 @@ class PolicyEditDialog(QDialog):
         self.target_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.target_spin.setFixedHeight(36)
         self.target_spin.setValue(int(self.group.target_stock) if self.group.target_stock is not None else 0)
+        self.target_spin.wheelEvent = lambda event: event.ignore()
         self.target_spin.valueChanged.connect(self._validate_inputs_inline)
 
         self.target_up_btn = QToolButton()
@@ -321,7 +331,7 @@ class PolicyEditDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
-        self.save_btn = QPushButton("💾 Save Changes")
+        self.save_btn = QPushButton("Save Changes")
         self.save_btn.setObjectName("saveBtn")
         self.save_btn.setFixedSize(140, 36)
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -396,7 +406,7 @@ class PolicyEditDialog(QDialog):
 
         if tgt_val < min_val:
             self.validation_lbl.setText(
-                f"⚠️ Target Stock ({tgt_val}) must be greater than or equal to Min Stock ({min_val}). "
+                f"Target Stock ({tgt_val}) must be greater than or equal to Min Stock ({min_val}). "
                 "Please increase Target Stock or reduce Min Stock."
             )
             self.save_btn.setEnabled(False)
@@ -421,6 +431,30 @@ class PolicyEditDialog(QDialog):
                 "Please adjust the values before saving.",
             )
             return
+
+        # Direct SQLite repository persistence
+        if self.repository is not None and hasattr(self.repository, "set_policy"):
+            try:
+                self.repository.set_policy(
+                    group_key=self.group.group_key,
+                    min_stock=min_val,
+                    target_stock=tgt_val,
+                    category=self.group.category,
+                    type_technology=self.group.type_technology,
+                    value=self.group.value,
+                    package=self.group.package,
+                    footprint=self.group.footprint,
+                    description=self.group.description,
+                )
+                self.accept()
+                return
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Database Error",
+                    f"Failed to update stock policy thresholds in SQLite database:\n\n{e}",
+                )
+                return
 
         # 1. Enter animated saving state on the Save Changes button
         self._is_saving = True
@@ -468,7 +502,7 @@ class PolicyEditDialog(QDialog):
         # Failure: restore original button state and re-enable form controls
         self.save_btn.setProperty("saving", "false")
         self.save_btn.setIcon(QIcon())
-        self.save_btn.setText("💾 Save Changes")
+        self.save_btn.setText("Save Changes")
         self.save_btn.style().unpolish(self.save_btn)
         self.save_btn.style().polish(self.save_btn)
 

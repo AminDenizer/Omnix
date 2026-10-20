@@ -349,7 +349,7 @@ class ExcelDataLoader:
                     return idx
         return None
 
-    def get_shortage_items(self) -> List[Dict[str, Any]]:
+    def get_shortage_items(self, registry: Optional[Any] = None) -> List[Dict[str, Any]]:
         """
         Scan all inventory rows and identify items where current stock <= Min Stock
         (with Min Stock > 0 or when explicitly flagged).
@@ -393,41 +393,63 @@ class ExcelDataLoader:
                 part_name = row_data[part_name_col] if part_name_col is not None and part_name_col < len(row_data) else ""
                 part_num = row_data[part_num_col] if part_num_col is not None and part_num_col < len(row_data) else ""
                 desc = row_data[desc_col] if desc_col is not None and desc_col < len(row_data) else ""
-                link = row_data[link_col] if link_col is not None and link_col < len(row_data) else ""
+                raw_link = row_data[link_col] if link_col is not None and link_col < len(row_data) else ""
+                raw_link_str = str(raw_link).strip() if raw_link is not None else ""
 
                 link_type = "NONE"
                 link_domain = ""
                 vendor_id = None
                 is_orderable = False
-                if link and link.strip():
-                    try:
-                        from urllib.parse import urlparse
-                        p = urlparse(link)
-                        link_domain = (p.netloc or link).replace("www.", "")
-                    except Exception:
-                        link_domain = link
+                vendor_links = {}
+                is_multi_vendor = False
+                link_error = None
+                effective_link = raw_link_str
 
+                if raw_link_str:
                     try:
-                        from core.procurement.registry import VendorRegistry
-                        vendor_id = VendorRegistry.get_default_registry().get_vendor_for_url(link)
-                        if vendor_id == "vendor_lion":
-                            link_type = "LION"
-                        elif vendor_id == "vendor_javan":
-                            link_type = "JAVAN"
-                        elif vendor_id == "vendor_roboeq":
-                            link_type = "ROBOEQ"
-                        elif vendor_id:
-                            link_type = vendor_id.replace("vendor_", "").upper()
-                        else:
+                        from core.procurement.vendor_links import parse_vendor_links
+                        parsed = parse_vendor_links(raw_link_str, registry=registry)
+                        if not parsed.is_valid:
                             link_type = "INVALID"
-                        is_orderable = vendor_id is not None
-                    except Exception:
-                        if "lionelectronic.ir" in link.lower():
-                            link_type = "LION"
-                            vendor_id = "vendor_lion"
+                            link_error = parsed.error_message
+                            is_orderable = False
+                        elif parsed.is_empty:
+                            link_type = "NONE"
+                            is_orderable = False
+                        elif parsed.count == 1:
+                            entry = parsed.get_single_entry()
+                            vendor_id = entry.vendor_id
+                            link_type = entry.vendor_label
+                            effective_link = entry.url
+                            vendor_links = {entry.vendor_id: entry.url}
                             is_orderable = True
+                            try:
+                                from urllib.parse import urlparse
+                                p = urlparse(entry.url)
+                                link_domain = (p.netloc or entry.url).replace("www.", "")
+                            except Exception:
+                                link_domain = entry.url
+                        elif parsed.count > 1:
+                            link_type = "MULTI"
+                            is_multi_vendor = True
+                            vendor_links = {vid: e.url for vid, e in parsed.links.items()}
+                            is_orderable = True
+                            vendor_id = None
+                            link_domain = "multi-vendor"
                         else:
+                            # Valid URL syntax but unrecognized legacy host
                             link_type = "INVALID"
+                            is_orderable = False
+                            try:
+                                from urllib.parse import urlparse
+                                p = urlparse(raw_link_str)
+                                link_domain = (p.netloc or raw_link_str).replace("www.", "")
+                            except Exception:
+                                link_domain = raw_link_str
+                    except Exception as e:
+                        link_type = "INVALID"
+                        link_error = str(e)
+                        is_orderable = False
 
                 shortages.append({
                     "orig_row_idx": orig_row_idx,
@@ -438,12 +460,16 @@ class ExcelDataLoader:
                     "min_stock": int(min_stock),
                     "target_stock": int(target_stock),
                     "needed_qty": needed_qty,
-                    "link": link,
+                    "link": effective_link,
+                    "raw_link": raw_link_str,
                     "link_type": link_type,
                     "link_domain": link_domain,
                     "vendor_id": vendor_id,
                     "is_orderable": is_orderable,
-                    "is_lion_orderable": is_orderable
+                    "is_lion_orderable": is_orderable,
+                    "vendor_links": vendor_links,
+                    "is_multi_vendor": is_multi_vendor,
+                    "link_error": link_error,
                 })
 
         return shortages

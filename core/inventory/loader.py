@@ -10,6 +10,7 @@ import openpyxl
 from core.inventory.models import (
     InventoryProduct,
     StockPolicyGroup,
+    ReferenceDataPayload,
     normalize_package,
     build_group_key,
 )
@@ -119,6 +120,7 @@ class InventoryDatabaseLoader:
 
     SHEET_STOCK_POLICY = "Stock Policy"
     SHEET_INVENTORY = "Inventory"
+    SHEET_REFERENCE_DATA = "Reference Data"
 
     def load_workbook(
         self,
@@ -177,6 +179,101 @@ class InventoryDatabaseLoader:
 
             return matched_groups, inventory_products, warnings
 
+        finally:
+            try:
+                wb.close()
+            except Exception:
+                pass
+
+    def load_reference_data(
+        self,
+        file_path: Optional[str] = None,
+    ) -> ReferenceDataPayload:
+        """
+        Load canonical reference data (manufacturers, categories, types) from the
+        workbook's 'Reference Data' sheet, if present.
+
+        Strictly read-only access.
+        """
+        resolved_path = resolve_inventory_database_path(file_path)
+        if not os.path.exists(resolved_path):
+            raise WorkbookAccessError(f"Inventory workbook not found at: {resolved_path}")
+
+        try:
+            wb = openpyxl.load_workbook(resolved_path, data_only=True, read_only=True)
+        except Exception as e:
+            raise WorkbookAccessError(f"Failed to open workbook '{resolved_path}': {e}") from e
+
+        try:
+            if self.SHEET_REFERENCE_DATA not in wb.sheetnames:
+                return ReferenceDataPayload()
+
+            ws = wb[self.SHEET_REFERENCE_DATA]
+            rows_iter = ws.iter_rows(values_only=True)
+            header = next(rows_iter, None)
+            if not header:
+                return ReferenceDataPayload()
+
+            mfrs: List[str] = []
+            seen_mfrs = set()
+            cats: List[str] = []
+            seen_cats = set()
+            types: List[Tuple[str, str]] = []
+            seen_types = set()
+
+            for row in rows_iter:
+                if not row:
+                    continue
+                # Column 0: Manufacturer
+                if len(row) > 0 and row[0]:
+                    m = str(row[0]).strip()
+                    if m and m.lower() != "manufacturer" and m.upper() not in seen_mfrs:
+                        seen_mfrs.add(m.upper())
+                        mfrs.append(m)
+
+                # Column 1 & 2: Category -> Type
+                if len(row) > 1 and row[1]:
+                    c = str(row[1]).strip()
+                    if c and c.lower() != "category":
+                        if c.upper() not in seen_cats:
+                            seen_cats.add(c.upper())
+                            cats.append(c)
+                        if len(row) > 2 and row[2]:
+                            t = str(row[2]).strip()
+                            if t and t.lower() != "type/technology":
+                                pair_key = (c.upper(), t.upper())
+                                if pair_key not in seen_types:
+                                    seen_types.add(pair_key)
+                                    types.append((c, t))
+
+                # Column 4: Category List
+                if len(row) > 4 and row[4]:
+                    c = str(row[4]).strip()
+                    if c and c.lower() != "category list" and c.upper() not in seen_cats:
+                        seen_cats.add(c.upper())
+                        cats.append(c)
+
+            # Category-specific columns in header (e.g. columns 23+)
+            if header:
+                for col_idx, col_name in enumerate(header):
+                    if col_name:
+                        col_str = str(col_name).strip()
+                        if col_str.upper() in seen_cats:
+                            canonical_cat = next((cat for cat in cats if cat.upper() == col_str.upper()), col_str)
+                            for r in ws.iter_rows(values_only=True):
+                                if len(r) > col_idx and r[col_idx]:
+                                    t_val = str(r[col_idx]).strip()
+                                    if t_val and t_val.upper() != col_str.upper():
+                                        pair_key = (canonical_cat.upper(), t_val.upper())
+                                        if pair_key not in seen_types:
+                                            seen_types.add(pair_key)
+                                            types.append((canonical_cat, t_val))
+
+            return ReferenceDataPayload(
+                manufacturers=tuple(mfrs),
+                categories=tuple(cats),
+                category_types=tuple(types),
+            )
         finally:
             try:
                 wb.close()

@@ -47,7 +47,7 @@ def validate_vendor_pdp_url(
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Validates that a URL is a recognized, enabled vendor AND matches a canonical product detail page (PDP).
-    
+
     Returns:
         (is_valid, vendor_id, error_message)
     """
@@ -56,19 +56,42 @@ def validate_vendor_pdp_url(
         return False, None, "Product URL is required and cannot be empty."
 
     reg = registry or VendorRegistry.get_default_registry()
-    vendor_id = reg.get_vendor_for_url(clean_url, enabled_only=False)
+    adapter: Optional[IVendorAdapter] = None
+    reg_meta: Optional[PluginVersionRegistration] = None
+    vendor_id: Optional[str] = None
+
+    # Prefer atomic route-to-adapter resolution (zero TOCTOU race)
+    if hasattr(reg, "resolve_adapter_for_url"):
+        try:
+            resolved = reg.resolve_adapter_for_url(clean_url, enabled_only=False)
+            if isinstance(resolved, tuple) and len(resolved) == 2:
+                adapter, reg_meta = resolved
+                if reg_meta is not None:
+                    vendor_id = reg_meta.vendor_id
+        except Exception:
+            pass
+
+    # Fallback to get_vendor_for_url for mock registries or legacy implementations
     if not vendor_id:
-        return False, None, "The provided URL domain is not recognized as a registered vendor (supported: Lion, Javan, RoboEq)."
+        vendor_id = reg.get_vendor_for_url(clean_url, enabled_only=False)
+
+    if not vendor_id:
+        registered_vendors = reg.list_vendors() if hasattr(reg, "list_vendors") and callable(reg.list_vendors) else []
+        if registered_vendors:
+            v_names = ", ".join(reg.get_vendor_name(v) if hasattr(reg, "get_vendor_name") else v for v in registered_vendors)
+            return False, None, f"The provided URL domain is not recognized as a registered vendor (installed plugins: {v_names})."
+        return False, None, "No vendor plugins are currently installed. Please install a vendor plugin to order."
 
     if not reg.is_vendor_enabled(vendor_id):
-        v_title = vendor_id.replace("vendor_", "").title()
+        v_title = (reg_meta.display_name if reg_meta else None) or (reg.get_vendor_name(vendor_id) if hasattr(reg, "get_vendor_name") else vendor_id.replace("vendor_", "").title())
         return False, vendor_id, f"Vendor '{v_title}' is currently disabled in Settings. Please enable it to proceed."
 
-    # Validate PDP path via vendor adapter - fail closed
-    try:
-        adapter = reg.get_adapter(vendor_id)
-    except Exception as e:
-        return False, vendor_id, f"Vendor adapter for '{vendor_id}' is unavailable: {e}"
+    # If adapter was not obtained through atomic resolution, instantiate via get_adapter
+    if adapter is None:
+        try:
+            adapter = reg.get_adapter(vendor_id)
+        except Exception as e:
+            return False, vendor_id, f"Vendor adapter for '{vendor_id}' is unavailable: {e}"
 
     if not hasattr(adapter, "is_pdp_url") or not callable(adapter.is_pdp_url):
         return False, vendor_id, f"Vendor adapter for '{vendor_id}' does not support URL validation capability."
@@ -136,7 +159,16 @@ class URLInspectWorker(QThread):
 
     def run(self):
         try:
-            adapter = self.registry.get_adapter(self.vendor_id)
+            adapter = None
+            if hasattr(self.registry, "resolve_adapter_for_url"):
+                try:
+                    resolved = self.registry.resolve_adapter_for_url(self.url)
+                    if isinstance(resolved, tuple) and len(resolved) == 2:
+                        adapter = resolved[0]
+                except Exception:
+                    pass
+            if adapter is None:
+                adapter = self.registry.get_adapter(self.vendor_id)
             pref = adapter.resolve_product(self.url)
             details = adapter.inspect_product(pref)
             stock = adapter.inspect_stock(pref)
@@ -239,7 +271,15 @@ class QuickOrderDialog(QDialog):
         self.url_worker: Optional[URLInspectWorker] = None
         self.stage_worker: Optional[CartStageWorker] = None
 
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
+
         self._init_ui()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)

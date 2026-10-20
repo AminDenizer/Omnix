@@ -29,6 +29,8 @@ from core.models import (
     AuthResult,
     SessionStatus,
     RecoveryResult,
+    PluginCapability,
+    PluginProcurementMode,
 )
 from core.errors import (
     OmnixVendorError,
@@ -48,7 +50,19 @@ from vendors.javan.errors import JavanErrorTranslator
 from vendors.javan.session import JavanSessionManager
 
 
+def _normalize_persian_text(text: str) -> str:
+    """Normalize Persian unicode characters, ZWNJ, spaces, and character variants."""
+    if not text:
+        return ""
+    t = text.replace("\u200c", " ").replace("\u200b", " ").replace("\xa0", " ")
+    t = t.replace("ك", "ک").replace("ي", "ی").replace("ئ", "ی").replace("ة", "ه")
+    t = t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    t = t.replace("ـ", "").replace("–", "-").replace("—", "-")
+    return " ".join(t.split()).strip()
+
+
 class JavanVendorAdapter(IVendorAdapter):
+
     """
     Formal Vendor Adapter for Javan Electronic (https://www.javanelec.com).
     Implements all 13 IVendorAdapter operations without Core procurement math.
@@ -56,6 +70,21 @@ class JavanVendorAdapter(IVendorAdapter):
 
     VENDOR_ID = "vendor_javan"
     BASE_URL = JavanSelectors.BASE_URL
+
+    _SUPPORTED_CAPABILITIES: frozenset = frozenset({
+        PluginCapability.PRODUCT_URL_RECOGNITION,
+        PluginCapability.PRODUCT_INSPECTION,
+        PluginCapability.CART_URL_RESOLUTION,
+        PluginCapability.MPN_SEARCH,
+        PluginCapability.LIVE_STOCK_PROBE,
+        PluginCapability.TIERED_PRICING,
+        PluginCapability.MODE_A_STAGING,
+        PluginCapability.MODE_B_STAGING,
+    })
+    _SUPPORTED_MODES: frozenset = frozenset({
+        PluginProcurementMode.MODE_A,
+        PluginProcurementMode.MODE_B,
+    })
 
     def __init__(self, config: Optional[AdapterConfig] = None):
         self._config = config or AdapterConfig(
@@ -347,11 +376,77 @@ class JavanVendorAdapter(IVendorAdapter):
 
             # Check stock and add to cart button presence
             add_btn = soup.select_one(JavanSelectors.BTN_ADD_TO_CART)
+
+            # Extract dedicated status badge/element if present
+            status_el = soup.select_one(
+                ".product-status, .stock-status, .availability, [class*='status'], .badge-success, .badge-danger, .badge-warning, .label-success, .label-danger, .label-warning"
+            )
+            raw_badge_text = status_el.get_text(strip=True) if status_el else ""
+
             page_text = soup.get_text(" ", strip=True)
-            has_stock_badge = "موجود در انبار" in page_text or "موجود" in page_text
-            is_out_of_stock = "ناموجود" in page_text or "عدم موجودی" in page_text
-            can_order = (add_btn is not None or has_stock_badge) and not is_out_of_stock
-            stock_qty = 1000 if can_order else 0
+            norm_badge = _normalize_persian_text(raw_badge_text)
+            norm_page = _normalize_persian_text(page_text)
+            badge_compact = re.sub(r"[\s\-_]+", "", norm_badge)
+            page_compact = re.sub(r"[\s\-_]+", "", norm_page)
+
+            # 1. Prohibited statuses (FAIL-CLOSED: BLOCK)
+            # A lead time, an order/request button, or text suggesting later delivery
+            # MUST NOT override any prohibited status.
+            is_prohibited = False
+            prohibited_reason = ""
+
+            # Check تامین (excluding تامین کننده)
+            if re.search(r"\bتامین(?!\s*کننده)\b", norm_badge) or norm_badge == "تامین":
+                is_prohibited = True
+                prohibited_reason = "تأمین"
+            elif re.search(r"\bاتمام\b", norm_badge) or "اتمام موجودی" in norm_badge:
+                is_prohibited = True
+                prohibited_reason = "اتمام"
+            elif "ناموجودسفارشدهید" in badge_compact or ("ناموجود" in norm_badge and ("سفارشدهید" in badge_compact or "سفارش" in norm_badge)):
+                is_prohibited = True
+                prohibited_reason = "ناموجود-سفارش دهید"
+            elif "ناموجود" in norm_badge or "عدم موجودی" in norm_badge:
+                is_prohibited = True
+                prohibited_reason = "ناموجود"
+            else:
+                # Check within page / product container
+                if re.search(r"\bتامین(?!\s*کننده)\b", norm_page):
+                    is_prohibited = True
+                    prohibited_reason = "تأمین"
+                elif re.search(r"\bاتمام\b", norm_page) or "اتمام موجودی" in norm_page:
+                    is_prohibited = True
+                    prohibited_reason = "اتمام"
+                elif "ناموجودسفارشدهید" in page_compact or ("ناموجود" in norm_page and ("سفارشدهید" in page_compact or "سفارش دهید" in norm_page)):
+                    is_prohibited = True
+                    prohibited_reason = "ناموجود-سفارش دهید"
+                elif "ناموجود" in norm_page or "عدم موجودی" in norm_page:
+                    is_prohibited = True
+                    prohibited_reason = "ناموجود"
+
+            # 2. Check for explicit permitted open/available status (ALLOW)
+            # Must be explicitly open/available for purchase under agreed storefront semantics
+            has_explicit_stock = False
+            if "موجود در انبار" in norm_badge or norm_badge == "موجود":
+                has_explicit_stock = True
+            elif "موجود در انبار" in norm_page or re.search(r"\bوضعیت\s*[:\s]+\s*موجود\b", norm_page):
+                has_explicit_stock = True
+            elif "موجود" in norm_page and add_btn is not None and not is_prohibited:
+                has_explicit_stock = True
+
+            # Determine initial orderability
+            if is_prohibited:
+                can_order = False
+                stock_qty = 0
+                raw_status_text = prohibited_reason or raw_badge_text or "ناموجود"
+            elif has_explicit_stock and add_btn is not None:
+                can_order = True
+                stock_qty = 1000
+                raw_status_text = raw_badge_text or "موجود در انبار"
+            else:
+                # Status cannot be reliably identified -> BLOCK (Fail-Closed)
+                can_order = False
+                stock_qty = 0
+                raw_status_text = raw_badge_text or "وضعیت نامشخص (Status Unidentified - Fail-Closed)"
 
             # Extract technical specifications table
             draft = self.extract_product_data(soup)
@@ -420,14 +515,19 @@ class JavanVendorAdapter(IVendorAdapter):
                         } catch(e) {}
                         return res;
                     """, p_id_probe)
-                    if modal_data:
+                    if modal_data and isinstance(modal_data, dict):
                         packaging_step = int(modal_data.get("ratio") or packaging_step or 1)
                         moq = int(modal_data.get("moq") or moq or 1)
                         if modal_data.get("price"):
                             price_irr = int(modal_data["price"])
                         if modal_data.get("inventory") is not None:
-                            stock_qty = int(modal_data["inventory"])
-                            can_order = stock_qty > 0
+                            modal_inv = int(modal_data["inventory"])
+                            if modal_inv <= 0:
+                                stock_qty = 0
+                                can_order = False
+                                raw_status_text = "اتمام موجودی (Modal Inventory: 0)"
+                            elif can_order:
+                                stock_qty = modal_inv
                 except Exception:
                     pass
 
@@ -457,7 +557,7 @@ class JavanVendorAdapter(IVendorAdapter):
                 stock_quantity=stock_qty,
                 can_order=can_order,
                 is_inquiry_only=False,
-                raw_status_text="موجود در انبار" if can_order else "ناموجود",
+                raw_status_text=raw_status_text,
                 price_irr=price_irr,
                 mpn=mpn,
                 manufacturer=mfr,
@@ -598,7 +698,7 @@ class JavanVendorAdapter(IVendorAdapter):
             vendor_id=self.VENDOR_ID,
             vendor_sku=product_ref.vendor_sku,
             stock_quantity=details.stock_quantity,
-            in_stock=details.can_order,
+            in_stock=details.can_order and details.stock_quantity > 0,
             can_order=details.can_order,
             is_inquiry_only=details.is_inquiry_only,
             is_restock_pipeline=False,

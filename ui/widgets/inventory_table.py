@@ -62,9 +62,13 @@ class EmptyStateOverlay(QWidget):
 
         layout.addWidget(self.card, 0, Qt.AlignmentFlag.AlignCenter)
 
-    def set_state(self, is_filter_mode: bool):
+    def set_state(self, is_filter_mode: bool, title: Optional[str] = None, desc: Optional[str] = None):
         self._is_filter_mode = is_filter_mode
-        if is_filter_mode:
+        if title:
+            self.icon_lbl.setText("🔍" if is_filter_mode else "📦")
+            self.title_lbl.setText(title)
+            self.desc_lbl.setText(desc or "")
+        elif is_filter_mode:
             self.icon_lbl.setText("🔍")
             self.title_lbl.setText("No Matching Records Found")
             self.desc_lbl.setText("Try adjusting your search keywords or press [Esc] to clear.")
@@ -111,41 +115,72 @@ class InventoryTableWidget(QTableWidget):
 
         self._is_distributing_columns = True
         try:
+            visible_cols = [c for c in range(col_count) if not self.isColumnHidden(c)]
+            if not visible_cols:
+                return
+
             base_widths = {}
-            for c in range(col_count):
+            for c in visible_cols:
                 base_widths[c] = self._min_column_widths.get(c, 100)
 
             total_base = sum(base_widths.values())
-            flex_cols = [c for c in self._flexible_columns if c < col_count]
+            flex_cols = [c for c in self._flexible_columns if c in visible_cols]
             if not flex_cols:
-                flex_cols = list(range(col_count))
+                flex_cols = list(visible_cols)
 
             if vp_width > total_base:
                 excess = vp_width - total_base
                 add_each = excess // len(flex_cols)
                 rem = excess % len(flex_cols)
 
-                for c in range(col_count):
+                for c in visible_cols:
                     extra = 0
                     if c in flex_cols:
                         idx_in_flex = flex_cols.index(c)
                         extra = add_each + (1 if idx_in_flex < rem else 0)
-                    self.setColumnWidth(c, base_widths[c] + extra)
+                    target_w = base_widths[c] + extra
+                    if self.columnWidth(c) != target_w:
+                        self.setColumnWidth(c, target_w)
+            elif vp_width < total_base:
+                deficit = total_base - vp_width
+                sub_each = deficit // len(flex_cols)
+                rem = deficit % len(flex_cols)
+                for c in visible_cols:
+                    shrink = 0
+                    if c in flex_cols:
+                        idx_in_flex = flex_cols.index(c)
+                        shrink = sub_each + (1 if idx_in_flex < rem else 0)
+                    target_w = max(30, base_widths[c] - shrink)
+                    if self.columnWidth(c) != target_w:
+                        self.setColumnWidth(c, target_w)
             else:
-                for c in range(col_count):
-                    self.setColumnWidth(c, base_widths[c])
+                for c in visible_cols:
+                    target_w = base_widths[c]
+                    if self.columnWidth(c) != target_w:
+                        self.setColumnWidth(c, target_w)
         finally:
             self._is_distributing_columns = False
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
         self.empty_overlay.setGeometry(0, 0, self.viewport().width(), self.viewport().height())
+        win = self.window()
+        if win and win.isMinimized():
+            return
+        if event.oldSize() == event.size():
+            return
         self.distribute_columns()
 
-    def update_empty_state(self, is_empty: bool, is_filter_active: bool = False):
+    def update_empty_state(
+        self,
+        is_empty: bool,
+        is_filter_active: bool = False,
+        title: Optional[str] = None,
+        desc: Optional[str] = None,
+    ):
         """Show or hide the empty state placeholder overlay."""
         if is_empty:
-            self.empty_overlay.set_state(is_filter_active)
+            self.empty_overlay.set_state(is_filter_active, title=title, desc=desc)
             self.empty_overlay.setGeometry(0, 0, self.viewport().width(), self.viewport().height())
             self.empty_overlay.show()
         else:

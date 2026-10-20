@@ -149,6 +149,13 @@ class MockTestAdapter(IVendorAdapter):
 class TestProcurementBridgeClassification:
     """Tests URL classification and vendor resolution via ProcurementBridge."""
 
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
+
     def test_classify_lion_link(self):
         link = "https://lionelectronic.ir/products/2070-NE555P"
         l_type, domain, vendor_id = ProcurementBridge.classify_link(link)
@@ -217,6 +224,13 @@ class TestProcurementBridgeClassification:
 
 class TestProcurementBridgeRequestTranslation:
     """Tests translation of legacy shortage dicts into immutable ProcurementRequests."""
+
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
 
     def test_item_to_request_bom_shortage(self):
         item = {

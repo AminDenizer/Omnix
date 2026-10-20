@@ -30,8 +30,11 @@ from core.models import (
     AuthResult,
     SessionStatus,
     RecoveryResult,
+    PluginCapability,
+    PluginProcurementMode,
 )
 from core.errors import (
+    OmnixVendorError,
     ProductNotFoundError,
     ZeroSearchResultsError,
     OutOfStockError,
@@ -48,7 +51,19 @@ from vendors.lion.errors import LionErrorTranslator
 from vendors.lion.session import LionSessionManager
 
 
+def _normalize_persian_text(text: str) -> str:
+    """Normalize Persian unicode characters, ZWNJ, spaces, and character variants."""
+    if not text:
+        return ""
+    t = text.replace("\u200c", " ").replace("\u200b", " ").replace("\xa0", " ")
+    t = t.replace("ك", "ک").replace("ي", "ی").replace("ئ", "ی").replace("ة", "ه")
+    t = t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    t = t.replace("ـ", "").replace("–", "-").replace("—", "-")
+    return " ".join(t.split()).strip()
+
+
 class LionVendorAdapter(IVendorAdapter):
+
     """
     Formal Vendor Adapter for Lion Electronic (https://lionelectronic.ir).
     Implements all 13 IVendorAdapter operations without Core procurement math.
@@ -56,6 +71,21 @@ class LionVendorAdapter(IVendorAdapter):
 
     VENDOR_ID = "vendor_lion"
     BASE_URL = LionSelectors.BASE_URL
+
+    _SUPPORTED_CAPABILITIES: frozenset = frozenset({
+        PluginCapability.PRODUCT_URL_RECOGNITION,
+        PluginCapability.PRODUCT_INSPECTION,
+        PluginCapability.CART_URL_RESOLUTION,
+        PluginCapability.MPN_SEARCH,
+        PluginCapability.LIVE_STOCK_PROBE,
+        PluginCapability.TIERED_PRICING,
+        PluginCapability.MODE_A_STAGING,
+        PluginCapability.MODE_B_STAGING,
+    })
+    _SUPPORTED_MODES: frozenset = frozenset({
+        PluginProcurementMode.MODE_A,
+        PluginProcurementMode.MODE_B,
+    })
 
     def __init__(self, config: Optional[AdapterConfig] = None):
         self._config = config or AdapterConfig(
@@ -264,14 +294,24 @@ class LionVendorAdapter(IVendorAdapter):
             soup = BeautifulSoup(html, "html.parser")
 
             # Extract window.productCanOrder via JS
-            can_order_js = self.session.execute_script(
-                "return (typeof window.productCanOrder !== 'undefined') ? window.productCanOrder : null;"
-            )
+            can_order_js = None
+            try:
+                can_order_js = self.session.execute_script(
+                    "return (typeof window.productCanOrder !== 'undefined') ? window.productCanOrder : null;"
+                )
+            except Exception:
+                can_order_js = None
 
-            # Extract Stock amount text
+            # Extract Stock amount text and status indicators
             stock_qty = 0
             stock_span = soup.select_one(LionSelectors.STOCK_AMOUNT_SPAN)
-            raw_status_text = stock_span.get_text(strip=True) if stock_span else ""
+            stock_container = soup.select_one(LionSelectors.STOCK_CONTAINER)
+
+            raw_status_text = ""
+            if stock_span:
+                raw_status_text = stock_span.get_text(strip=True)
+            elif stock_container:
+                raw_status_text = stock_container.get_text(strip=True)
 
             if raw_status_text:
                 clean_digits = raw_status_text.replace(",", "").replace(" ", "")
@@ -279,15 +319,59 @@ class LionVendorAdapter(IVendorAdapter):
                 if sm:
                     stock_qty = int(sm.group(1))
 
-            # Determine can_order and inquiry state
+            # Determine inquiry state
             is_inquiry = False
             inquiry_btn = soup.select_one(LionSelectors.BTN_INQUIRY_PRIMARY)
             if inquiry_btn is not None:
                 is_inquiry = True
 
-            can_order = True
-            if can_order_js is False or stock_qty == 0 or "اتمام موجودی" in raw_status_text or "به زودی" in raw_status_text:
+            # Normalize Persian status strings
+            norm_status = _normalize_persian_text(raw_status_text)
+            norm_compact = re.sub(r"[\s\-_]+", "", norm_status)
+
+            page_stock_text = ""
+            if stock_container:
+                page_stock_text = _normalize_persian_text(stock_container.get_text(" ", strip=True))
+            page_stock_compact = re.sub(r"[\s\-_]+", "", page_stock_text)
+
+            is_coming_soon = (
+                "به زودی" in norm_status
+                or "بهزودی" in norm_compact
+                or "به زودی" in page_stock_text
+                or "بهزودی" in page_stock_compact
+            )
+            is_out_of_stock = (
+                "اتمام موجودی" in norm_status
+                or "ناموجود" in norm_status
+                or "عدم موجودی" in norm_status
+                or "تمام شد" in norm_status
+                or "اتمام موجودی" in page_stock_text
+                or "ناموجود" in page_stock_text
+            )
+
+            # Fail-closed procurement eligibility gate for Lion:
+            # - Explicitly available and eligible for immediate purchase -> ALLOW
+            # - به‌زودی -> BLOCK
+            # - اتمام موجودی -> BLOCK
+            # - Status cannot be reliably identified -> BLOCK
+            if is_inquiry:
                 can_order = False
+                raw_status_text = raw_status_text or "استعلام (Inquiry-only)"
+            elif can_order_js is False:
+                can_order = False
+                raw_status_text = raw_status_text or "سفارش غیرفعال (productCanOrder=false)"
+            elif is_coming_soon:
+                can_order = False
+                raw_status_text = "به‌زودی"
+            elif is_out_of_stock or (stock_span and stock_qty == 0):
+                can_order = False
+                raw_status_text = raw_status_text if (raw_status_text and not raw_status_text.isdigit()) else "اتمام موجودی"
+            elif stock_qty > 0 and not is_coming_soon and not is_out_of_stock:
+                can_order = True
+            else:
+                # Status cannot be reliably identified -> BLOCK (Fail-Closed)
+                can_order = False
+                raw_status_text = raw_status_text or "وضعیت نامشخص (Fail-Closed: Status Unidentified)"
 
             # Extract raw packaging step from #quantity-cell attribute
             qty_input = soup.select_one(LionSelectors.INPUT_QUANTITY_CSS)
@@ -448,7 +532,9 @@ class LionVendorAdapter(IVendorAdapter):
         """
         details = self.inspect_product(product_ref)
         raw_text = details.raw_status_text
-        is_restock = "به زودی" in raw_text
+        norm_text = _normalize_persian_text(raw_text)
+        norm_compact = re.sub(r"[\s\-_]+", "", norm_text)
+        is_restock = "به زودی" in norm_text or "بهزودی" in norm_compact
 
         return StockStatus(
             vendor_id=self.VENDOR_ID,

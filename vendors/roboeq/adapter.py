@@ -28,6 +28,8 @@ from core.models import (
     AuthResult,
     SessionStatus,
     RecoveryResult,
+    PluginCapability,
+    PluginProcurementMode,
 )
 from core.errors import (
     OmnixVendorError,
@@ -55,6 +57,20 @@ class RoboEqVendorAdapter(IVendorAdapter):
 
     VENDOR_ID = "vendor_roboeq"
     BASE_URL = RoboEqSelectors.BASE_URL
+
+    _SUPPORTED_CAPABILITIES: frozenset = frozenset({
+        PluginCapability.PRODUCT_URL_RECOGNITION,
+        PluginCapability.PRODUCT_INSPECTION,
+        PluginCapability.CART_URL_RESOLUTION,
+        PluginCapability.MPN_SEARCH,
+        PluginCapability.LIVE_STOCK_PROBE,
+        PluginCapability.MODE_A_STAGING,
+        PluginCapability.MODE_B_STAGING,
+    })
+    _SUPPORTED_MODES: frozenset = frozenset({
+        PluginProcurementMode.MODE_A,
+        PluginProcurementMode.MODE_B,
+    })
 
     def __init__(self, config: Optional[AdapterConfig] = None):
         self._config = config or AdapterConfig(

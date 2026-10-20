@@ -129,34 +129,41 @@ class BOMItem:
             self.approved_manufacturers = [brand_name]
             self.manufacturer = brand_name
 
+    def _parse_links(self):
+        if not self.link or not self.link.strip():
+            return None
+        try:
+            from core.procurement.vendor_links import parse_vendor_links
+            from core.procurement.registry import VendorRegistry
+            reg = VendorRegistry.get_default_registry()
+            return parse_vendor_links(self.link.strip(), registry=reg)
+        except Exception:
+            return None
+
     @property
     def link_type(self) -> str:
-        """Returns 'LION', 'JAVAN', 'ROBOEQ', or vendor-specific string; 'DIRECT_BOM', 'INVALID', or 'NONE'."""
+        """Returns 'LION', 'JAVAN', 'ROBOEQ', or vendor-specific string; 'MULTI', 'DIRECT_BOM', 'INVALID', or 'NONE'."""
         if self.mode == ProcurementMode.DIRECT_BOM:
             return "DIRECT_BOM"
         if not self.link or not self.link.strip():
             return "NONE"
-        try:
-            from core.procurement.registry import VendorRegistry
-            vendor_id = VendorRegistry.get_default_registry().get_vendor_for_url(self.link)
-            if vendor_id == "vendor_lion":
-                return "LION"
-            elif vendor_id == "vendor_javan":
-                return "JAVAN"
-            elif vendor_id == "vendor_roboeq":
-                return "ROBOEQ"
-            elif vendor_id:
-                return vendor_id.replace("vendor_", "").upper()
-        except Exception:
-            if "lionelectronic.ir" in self.link.lower():
-                return "LION"
+        parsed = self._parse_links()
+        if parsed is None or not parsed.is_valid:
+            return "INVALID"
+        if parsed.is_empty:
+            return "NONE"
+        if parsed.count > 1:
+            return "MULTI"
+        if parsed.count == 1:
+            entry = parsed.get_single_entry()
+            return entry.vendor_label
         return "INVALID"
 
     @property
     def is_orderable(self) -> bool:
         """
         Returns True if the line item is eligible for automated procurement.
-        In Mode A: Requires a valid registered vendor URL in Inventory.xlsx.
+        In Mode A: Requires a valid registered vendor URL (or multi-vendor links) in Inventory.xlsx.
         In Mode B: Requires valid CAD MPN and positive quantity (sourced via multi-vendor search).
         """
         if not self.is_valid or not self.part_number or not self.part_number.strip():
@@ -165,29 +172,56 @@ class BOMItem:
             return True
         if not self.link or not self.link.strip():
             return False
-        try:
-            from core.procurement.registry import VendorRegistry
-            return VendorRegistry.get_default_registry().get_vendor_for_url(self.link) is not None
-        except Exception:
-            return "lionelectronic.ir" in self.link.lower()
+        parsed = self._parse_links()
+        if parsed is None or not parsed.is_valid:
+            return False
+        return parsed.count >= 1
 
     @property
     def vendor_id(self) -> Optional[str]:
-        """Returns the registered vendor identifier or None."""
+        """Returns the registered vendor identifier if exactly 1 link, or None."""
         if self.mode == ProcurementMode.DIRECT_BOM:
             return None
         if not self.link or not self.link.strip():
             return None
-        try:
-            from core.procurement.registry import VendorRegistry
-            return VendorRegistry.get_default_registry().get_vendor_for_url(self.link)
-        except Exception:
-            return "vendor_lion" if "lionelectronic.ir" in self.link.lower() else None
+        parsed = self._parse_links()
+        if parsed is not None and parsed.is_valid and parsed.count == 1:
+            return parsed.get_single_entry().vendor_id
+        return None
+
+    @property
+    def is_multi_vendor(self) -> bool:
+        """Returns True if item has multiple valid vendor links configured."""
+        if self.mode == ProcurementMode.DIRECT_BOM:
+            return False
+        parsed = self._parse_links()
+        return bool(parsed and parsed.is_valid and parsed.count > 1)
+
+    @property
+    def vendor_links(self) -> Dict[str, str]:
+        """Returns mapping of vendor_id -> url for all valid links."""
+        if self.mode == ProcurementMode.DIRECT_BOM:
+            return {}
+        parsed = self._parse_links()
+        if parsed and parsed.is_valid and parsed.count > 0:
+            return {vid: e.url for vid, e in parsed.links.items()}
+        return {}
 
     @property
     def link_domain(self) -> str:
         if not self.link or not self.link.strip():
             return ""
+        parsed = self._parse_links()
+        if parsed and parsed.is_valid:
+            if parsed.count > 1:
+                return "multi-vendor"
+            elif parsed.count == 1:
+                try:
+                    from urllib.parse import urlparse
+                    p = urlparse(parsed.get_single_entry().url)
+                    return (p.netloc or parsed.get_single_entry().url).replace("www.", "")
+                except Exception:
+                    return parsed.get_single_entry().url
         try:
             from urllib.parse import urlparse
             p = urlparse(self.link)
@@ -197,6 +231,15 @@ class BOMItem:
             return self.link
 
     def to_dict(self) -> Dict[str, Any]:
+        parsed = self._parse_links()
+        effective_link = self.link
+        link_error = None
+        if parsed is not None:
+            if not parsed.is_valid:
+                link_error = parsed.error_message
+            elif parsed.count == 1:
+                effective_link = parsed.get_single_entry().url
+
         return {
             "row_idx": self.row_idx,
             "designator": self.designator,
@@ -217,12 +260,16 @@ class BOMItem:
             "shortage": self.shortage_qty,
             "shortage_qty": self.shortage_qty,
             "status": self.status,
-            "link": self.link,
+            "link": effective_link,
+            "raw_link": self.link,
             "link_type": self.link_type,
             "link_domain": self.link_domain,
             "is_orderable": self.is_orderable,
             "is_lion_orderable": self.is_orderable,
             "vendor_id": self.vendor_id,
+            "vendor_links": self.vendor_links,
+            "is_multi_vendor": self.is_multi_vendor,
+            "link_error": link_error,
             "db_part_name": self.db_part_name,
             "mode": self.mode.value if isinstance(self.mode, ProcurementMode) else str(self.mode),
             "canonical_component_id": self.canonical_component_id,

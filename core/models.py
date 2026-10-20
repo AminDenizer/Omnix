@@ -4,6 +4,7 @@ Governing Document: docs/VENDORS/LION/ADAPTER_SPECIFICATION.md
 """
 
 from dataclasses import dataclass, field
+import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 
@@ -244,3 +245,126 @@ class RecoveryResult:
     recovered: bool
     action_taken: str
     message: str
+
+
+class PluginCapability(str, Enum):
+    """
+    Canonical fine-grained functional capabilities for Omnix vendor plugins.
+    Reconciled with OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 7.1
+    and manifest.schema.json.
+    """
+    # Layer A/B Capabilities (Deterministic offline contracts & mock test harness)
+    PRODUCT_URL_RECOGNITION = "PRODUCT_URL_RECOGNITION"
+    PRODUCT_INSPECTION = "PRODUCT_INSPECTION"
+    CART_URL_RESOLUTION = "CART_URL_RESOLUTION"
+    MPN_SEARCH = "MPN_SEARCH"
+    LIVE_STOCK_PROBE = "LIVE_STOCK_PROBE"
+    TIERED_PRICING = "TIERED_PRICING"
+    MODE_A_STAGING = "MODE_A_STAGING"
+    MODE_B_STAGING = "MODE_B_STAGING"
+
+    # Layer C Capabilities (Live vendor integration, anti-bot, and interactive verification)
+    LIVE_CONNECTIVITY_TEST = "LIVE_CONNECTIVITY_TEST"
+    LIVE_STRUCTURE_TEST = "LIVE_STRUCTURE_TEST"
+    LOGIN_TEST = "LOGIN_TEST"
+    CAPTCHA_DETECTION = "CAPTCHA_DETECTION"
+    CAPTCHA_HUMAN_ASSIST = "CAPTCHA_HUMAN_ASSIST"
+    LIVE_PRODUCT_DISCOVERY = "LIVE_PRODUCT_DISCOVERY"
+    LIVE_QUANTITY_VALIDATION = "LIVE_QUANTITY_VALIDATION"
+    LIVE_ADD_TO_CART = "LIVE_ADD_TO_CART"
+
+
+class CapabilityStatus(str, Enum):
+    """
+    Operational verification status for a plugin capability.
+    Mutually exclusive operational states.
+    """
+    PASSED = "PASSED"
+    FAILED = "FAILED"
+    NOT_RUN = "NOT_RUN"
+    NOT_SUPPORTED = "NOT_SUPPORTED"
+    BLOCKED = "BLOCKED"
+
+
+class CapabilityBlockingReason(str, Enum):
+    """
+    Structured reasons explaining why a capability evaluation is BLOCKED.
+    Reconciled with OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 7.2.
+    """
+    MISSING_CREDENTIALS = "MISSING_CREDENTIALS"
+    UNVERIFIED_DOMAIN = "UNVERIFIED_DOMAIN"
+    PREREQUISITE_GATE_FAILED = "PREREQUISITE_GATE_FAILED"
+    REVOCATION_BLACKLISTED = "REVOCATION_BLACKLISTED"
+    SECURITY_POLICY_RESTRICTION = "SECURITY_POLICY_RESTRICTION"
+    VENDOR_ACCESS_BLOCKED = "VENDOR_ACCESS_BLOCKED"
+    OPERATOR_OPT_IN_REQUIRED = "OPERATOR_OPT_IN_REQUIRED"
+
+
+class PluginProcurementMode(str, Enum):
+    """
+    Procurement execution modes supported by vendor plugins.
+    """
+    MODE_A = "MODE_A"
+    MODE_B = "MODE_B"
+
+
+@dataclass
+class CapabilityEvaluationRecord:
+    """
+    Structured record of an individual capability evaluation result.
+    Enforces strict consistency between BLOCKED status and blocking_reason,
+    and protects against recording sensitive credentials in diagnostic details.
+    """
+    capability: PluginCapability
+    status: CapabilityStatus
+    blocking_reason: Optional[CapabilityBlockingReason] = None
+    evaluated_at: str = ""
+    details: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.capability, PluginCapability):
+            try:
+                self.capability = PluginCapability(self.capability)
+            except Exception as e:
+                raise ValueError(f"Invalid capability: {self.capability}") from e
+
+        if not isinstance(self.status, CapabilityStatus):
+            try:
+                self.status = CapabilityStatus(self.status)
+            except Exception as e:
+                raise ValueError(f"Invalid capability status: {self.status}") from e
+
+        if self.blocking_reason is not None and not isinstance(self.blocking_reason, CapabilityBlockingReason):
+            try:
+                self.blocking_reason = CapabilityBlockingReason(self.blocking_reason)
+            except Exception as e:
+                raise ValueError(f"Invalid capability blocking reason: {self.blocking_reason}") from e
+
+        if self.status == CapabilityStatus.BLOCKED:
+            if self.blocking_reason is None:
+                raise ValueError("A BLOCKED capability evaluation record must specify an explicit blocking_reason.")
+        else:
+            if self.blocking_reason is not None:
+                raise ValueError(
+                    f"A capability evaluation record with status '{self.status.value}' must not specify a blocking_reason."
+                )
+
+        if not self.evaluated_at:
+            self.evaluated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        # Sanitize diagnostic details: forbid keys matching sensitive credential patterns
+        sensitive_patterns = ("password", "passwd", "secret", "token", "cookie", "credential")
+        if self.details:
+            for k in self.details:
+                k_lower = str(k).lower()
+                if any(p in k_lower for p in sensitive_patterns):
+                    raise ValueError(f"Diagnostic details must not contain sensitive credential key '{k}'.")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "capability": self.capability.value,
+            "status": self.status.value,
+            "blocking_reason": self.blocking_reason.value if self.blocking_reason else None,
+            "evaluated_at": self.evaluated_at,
+            "details": dict(self.details),
+        }

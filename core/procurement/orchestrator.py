@@ -58,20 +58,60 @@ class UniversalProcurementOrchestrator:
         Query vendor adapters to gather normalized product candidates for a ProcurementRequest.
         """
         candidates: List[VendorProcurementCandidate] = []
+
+        # Case A: Explicit product URL provided — Atomic Version-Aware Resolution
+        if request.explicit_vendor_url:
+            clean_url = str(request.explicit_vendor_url).strip()
+            if not clean_url:
+                return []
+
+            adapter = None
+            reg_meta = None
+            resolved_vid = None
+
+            if hasattr(self.registry, "resolve_adapter_for_url"):
+                try:
+                    resolved = self.registry.resolve_adapter_for_url(clean_url, enabled_only=True)
+                    if isinstance(resolved, tuple) and len(resolved) == 2:
+                        adapter, reg_meta = resolved
+                        if reg_meta is not None:
+                            resolved_vid = getattr(reg_meta, "vendor_id", None)
+                except Exception:
+                    adapter = None
+                    reg_meta = None
+                    resolved_vid = None
+            elif hasattr(self.registry, "get_vendor_for_url"):
+                # Fallback for fake/mock registries lacking resolve_adapter_for_url
+                resolved_vid = self.registry.get_vendor_for_url(clean_url, enabled_only=True)
+                if resolved_vid and hasattr(self.registry, "get_adapter"):
+                    try:
+                        adapter = self.registry.get_adapter(resolved_vid)
+                    except Exception:
+                        adapter = None
+                        resolved_vid = None
+
+            if not adapter or not resolved_vid:
+                return []
+
+            if vendor_ids and resolved_vid not in vendor_ids:
+                return []
+
+            if request.explicit_vendor_id:
+                clean_exp_vid = str(request.explicit_vendor_id).strip()
+                if clean_exp_vid != resolved_vid:
+                    return []
+
+            candidate = self._inspect_explicit_url(adapter, resolved_vid, clean_url)
+            if candidate:
+                candidates.append(candidate)
+            return candidates
+
+        # Case B: Catalog search by part number across target vendors
         target_vendors = self._resolve_target_vendors(request, vendor_ids)
 
         for vid in target_vendors:
             try:
                 adapter = self.registry.get_adapter(vid)
-
-                # Case A: Explicit product URL provided
-                if request.explicit_vendor_url:
-                    candidate = self._inspect_explicit_url(adapter, vid, request.explicit_vendor_url)
-                    if candidate:
-                        candidates.append(candidate)
-                    continue
-
-                # Case B: Catalog search by part number
                 search_res = adapter.search_part(request.part_number)
                 if not search_res or not search_res.items:
                     continue
@@ -296,10 +336,12 @@ class UniversalProcurementOrchestrator:
         # 7. Stock and Orderability
         # -------------------------------------------------------------
         if not candidate.can_order:
-            reasons.append("Item is not orderable (inquiry-only, coming-soon, or sale closed).")
+            status_desc = f" (Status: {candidate.raw_status_text})" if candidate.raw_status_text else ""
+            reasons.append(f"Item is not orderable{status_desc} (inquiry-only, coming-soon, or sale closed).")
             primary_failures.append(EvaluationState.UNORDERABLE)
         if not candidate.in_stock:
-            reasons.append("Item is out of stock.")
+            status_desc = f" (Status: {candidate.raw_status_text})" if candidate.raw_status_text else ""
+            reasons.append(f"Item is out of stock{status_desc}.")
             primary_failures.append(EvaluationState.OUT_OF_STOCK)
 
         # -------------------------------------------------------------
@@ -825,20 +867,41 @@ class UniversalProcurementOrchestrator:
         vendor_ids: Optional[List[str]] = None,
     ) -> List[str]:
         """Resolve list of target vendor IDs for a request, respecting vendor enabled state (GAP-11)."""
-        # 1. Explicit vendor ID
+        # 1. Explicit vendor URL
+        if request.explicit_vendor_url:
+            clean_url = str(request.explicit_vendor_url).strip()
+            if not clean_url:
+                return []
+            resolved_vid = None
+            if hasattr(self.registry, "resolve_adapter_for_url"):
+                try:
+                    _, reg_meta = self.registry.resolve_adapter_for_url(clean_url, enabled_only=True)
+                    if reg_meta is not None:
+                        resolved_vid = getattr(reg_meta, "vendor_id", None)
+                except Exception:
+                    resolved_vid = None
+            elif hasattr(self.registry, "get_vendor_for_url"):
+                resolved_vid = self.registry.get_vendor_for_url(clean_url, enabled_only=True)
+
+            if not resolved_vid:
+                return []
+
+            if request.explicit_vendor_id:
+                if str(request.explicit_vendor_id).strip() != resolved_vid:
+                    return []
+
+            if vendor_ids and resolved_vid not in vendor_ids:
+                return []
+
+            return [resolved_vid]
+
+        # 2. Explicit vendor ID (when no explicit URL)
         if request.explicit_vendor_id:
             if self.registry.has_vendor(request.explicit_vendor_id):
                 if self.registry.is_vendor_enabled(request.explicit_vendor_id):
                     return [request.explicit_vendor_id]
                 return []  # Explicit vendor is disabled
             raise UnknownVendorError(f"Requested vendor '{request.explicit_vendor_id}' is not registered.", vendor_id=request.explicit_vendor_id)
-
-        # 2. Explicit vendor URL
-        if request.explicit_vendor_url:
-            resolved_vid = self.registry.get_vendor_for_url(request.explicit_vendor_url, enabled_only=True)
-            if resolved_vid:
-                return [resolved_vid]
-            return []
 
         # 3. Caller-specified vendor IDs (filtered by enabled state)
         if vendor_ids:

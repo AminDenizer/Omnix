@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -34,6 +35,7 @@ from PyQt6.QtWidgets import (
 
 from core.models import CartMutationResult
 from core.procurement.bridge import ProcurementBridge
+from core.procurement.vendor_links import parse_vendor_links
 from core.procurement.models import (
     BOMProcurementPlan,
     CandidateEvaluation,
@@ -227,6 +229,159 @@ class OrderWorkerThread(QThread):
         })
 
 
+class VendorSelectionDialog(QDialog):
+    """
+    Minimal dialog prompting the user to select which vendor to purchase from
+    for components that have multiple valid supplier URLs (Mode A Case B).
+
+    Guarantees:
+    1. Shows human-readable vendor display names ("Lion Electronic", "Javan Electronic").
+    2. Never exposes raw combined URL string as selection label.
+    3. Presents only vendors with valid parsed URLs for that specific component.
+    4. If cancelled, safely cancels procurement dispatch.
+    5. Preserves user selection into item['selected_vendor_id'] and item['selected_url'].
+    """
+
+    def __init__(
+        self,
+        items_needing_selection: List[Dict[str, Any]],
+        registry: Optional[VendorRegistry] = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.items = items_needing_selection
+        self.registry = registry or VendorRegistry.get_default_registry()
+
+        self.setWindowTitle("Select Vendor — Multi-Link Components")
+        self.resize(540, min(600, 200 + len(self.items) * 70))
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0f172a;
+                color: #f8fafc;
+            }
+            QLabel {
+                color: #f8fafc;
+            }
+            QComboBox {
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: #f8fafc;
+                font-size: 13px;
+                min-width: 180px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QPushButton#primaryBtn {
+                background-color: #059669;
+                color: #ffffff;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px 18px;
+            }
+            QPushButton#primaryBtn:hover { background-color: #10b981; }
+            QPushButton#secondaryBtn {
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                color: #94a3b8;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton#secondaryBtn:hover { background-color: #334155; color: #f8fafc; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        header = QLabel("⚡ Select Vendor for Multi-Link Components")
+        header.setStyleSheet("font-size: 15px; font-weight: bold; color: #38bdf8;")
+        layout.addWidget(header)
+
+        desc = QLabel(
+            "The following component(s) have multiple supplier options configured. "
+            "Please select which vendor to use for procurement dispatch:"
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.addWidget(desc)
+
+        self.combo_boxes: List[Tuple[Dict[str, Any], QComboBox]] = []
+
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(0, 4, 0, 4)
+        scroll_layout.setSpacing(10)
+
+        for it in self.items:
+            row_frame = QFrame()
+            row_frame.setStyleSheet("""
+                QFrame {
+                    background-color: #1e293b;
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                    padding: 6px 10px;
+                }
+            """)
+            row_layout = QHBoxLayout(row_frame)
+            row_layout.setContentsMargins(8, 6, 8, 6)
+
+            p_name = it.get("part_name") or it.get("part_number") or it.get("designator") or "Component"
+            needed = it.get("needed_qty") if it.get("needed_qty") is not None else it.get("shortage_qty", 1)
+            info_lbl = QLabel(f"<b>{p_name}</b> &nbsp;<span style='color: #fbbf24;'>({needed} pcs)</span>")
+            info_lbl.setTextFormat(Qt.TextFormat.RichText)
+            row_layout.addWidget(info_lbl, 1)
+
+            combo = QComboBox()
+            vendor_links = it.get("vendor_links", {})
+            for vid in sorted(vendor_links.keys()):
+                disp_name = (
+                    self.registry.get_vendor_name(vid)
+                    if hasattr(self.registry, "get_vendor_name")
+                    else vid.replace("vendor_", "").title()
+                )
+                combo.addItem(disp_name, vid)
+
+            if it.get("selected_vendor_id"):
+                idx = combo.findData(it["selected_vendor_id"])
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+
+            row_layout.addWidget(combo)
+            scroll_layout.addWidget(row_frame)
+            self.combo_boxes.append((it, combo))
+
+        layout.addWidget(scroll_widget)
+
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryBtn")
+        cancel_btn.clicked.connect(self.reject)
+        btn_box.addWidget(cancel_btn)
+
+        confirm_btn = QPushButton("Confirm Selection")
+        confirm_btn.setObjectName("primaryBtn")
+        confirm_btn.clicked.connect(self._on_confirm)
+        btn_box.addWidget(confirm_btn)
+
+        layout.addLayout(btn_box)
+
+    def _on_confirm(self):
+        for it, combo in self.combo_boxes:
+            selected_vid = combo.currentData()
+            vendor_links = it.get("vendor_links", {})
+            if selected_vid in vendor_links:
+                it["selected_vendor_id"] = selected_vid
+                it["selected_url"] = vendor_links[selected_vid]
+                it["vendor_id"] = selected_vid
+                it["link"] = vendor_links[selected_vid]
+        self.accept()
+
+
 class OrderPreviewDialog(QDialog):
     """
     Unified Procurement & Order Confirmation Dialog supporting:
@@ -289,6 +444,14 @@ class OrderPreviewDialog(QDialog):
             self.resize(980, 620)
             self._init_mode_a_ui()
 
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        from ui.dark_frame import apply_dark_window_frame
+        apply_dark_window_frame(self)
+
     # =========================================================================
     # MODE A: FAST DIRECT CONFIRMATION UI (IMAGE 2)
     # =========================================================================
@@ -297,26 +460,45 @@ class OrderPreviewDialog(QDialog):
         # Classify shortages
         self.lion_items: List[Dict[str, Any]] = []
         self.other_vendor_items: List[Dict[str, Any]] = []
+        self.multi_vendor_items: List[Dict[str, Any]] = []
         self.external_items: List[Dict[str, Any]] = []
         self.blank_link_items: List[Dict[str, Any]] = []
 
         for it in self.all_shortages:
             link = str(it.get("link", "")).strip()
-            if not link:
+            raw_link = str(it.get("raw_link") or link).strip()
+
+            parsed = parse_vendor_links(raw_link or link, registry=self.registry)
+            if parsed.is_empty:
                 self.blank_link_items.append(it)
                 continue
-
-            vid = it.get("vendor_id") or self.registry.get_vendor_for_url(link, enabled_only=True)
-            if vid == "vendor_lion" or "lionelectronic.ir" in link.lower() or it.get("link_type") == "LION":
-                self.lion_items.append(it)
-            elif vid:
-                self.other_vendor_items.append(it)
-            elif link.startswith("http"):
+            if not parsed.is_valid:
                 self.external_items.append(it)
-            else:
-                self.blank_link_items.append(it)
+                continue
 
-        self.orderable_items = self.lion_items + self.other_vendor_items
+            if "vendor_links" not in it or not it["vendor_links"]:
+                it["vendor_links"] = {vid: e.url for vid, e in parsed.links.items()}
+
+            if parsed.count > 1:
+                it["is_multi_vendor"] = True
+                self.multi_vendor_items.append(it)
+            elif parsed.count == 1:
+                entry = parsed.get_single_entry()
+                vid = entry.vendor_id
+                it["vendor_id"] = vid
+                it["selected_url"] = entry.url
+                it["link"] = entry.url
+                if self.registry.has_vendor(vid) and self.registry.is_vendor_enabled(vid):
+                    if vid == "vendor_lion":
+                        self.lion_items.append(it)
+                    else:
+                        self.other_vendor_items.append(it)
+                else:
+                    self.external_items.append(it)
+            else:
+                self.external_items.append(it)
+
+        self.orderable_items = self.lion_items + self.other_vendor_items + self.multi_vendor_items
         self.invalid_items = self.external_items + self.blank_link_items
 
         layout = QVBoxLayout(self)
@@ -567,55 +749,76 @@ class OrderPreviewDialog(QDialog):
             item3.setForeground(QColor("#fbbf24"))
             self.table.setItem(row, 3, item3)
 
-            # 4. Store Link
+            # 4. Store Link & 5. Validation & Status
+            vendor_links = it.get("vendor_links") or {}
+            is_multi = it.get("is_multi_vendor") or len(vendor_links) > 1
+            selected_vid = it.get("selected_vendor_id")
             link = str(it.get("link", "")).strip()
+
             item4 = QTableWidgetItem()
             item4.setFont(font_txt)
-
-            vid = it.get("vendor_id") or self.registry.get_vendor_for_url(link, enabled_only=True)
-            is_lion = (vid == "vendor_lion") or ("lionelectronic.ir" in link.lower())
-
-            if is_lion or (vid and self.registry.has_vendor(vid)):
-                v_display = self._get_vendor_name(vid)
-                item4.setText(link)
-                item4.setForeground(QColor("#38bdf8"))
-                item4.setToolTip(f"{v_display} link (Auto-Order Ready):\n{link}")
-            elif link.startswith("http"):
-                domain = it.get("link_domain") or link.split("/")[2] if "//" in link else "external"
-                item4.setText(f"❌ Non-registered URL ({domain})")
-                item4.setForeground(QColor("#f87171"))
-                item4.setToolTip(f"Unsupported store URL: {link}\nAction: Update to a registered vendor in Inventory.xlsx.")
-            else:
-                item4.setText("❌ Blank Store Link")
-                item4.setForeground(QColor("#f87171"))
-                item4.setToolTip("Store link is missing in database. Please add vendor URL in Inventory.xlsx.")
-            self.table.setItem(row, 4, item4)
-
-            # 5. Validation & Status
             item5 = QTableWidgetItem()
             item5.setFont(font_txt)
-            if is_lion:
-                item5.setText("✅ Lion Ready")
-                item5.setForeground(QColor("#34d399"))
-            elif vid and self.registry.has_vendor(vid):
-                v_name = self._get_vendor_name(vid)
-                item5.setText(f"✅ {v_name} Ready")
-                item5.setForeground(QColor("#34d399"))
-            elif link.startswith("http"):
-                item5.setText("❌ Invalid Link")
-                item5.setForeground(QColor("#f87171"))
+
+            if is_multi:
+                v_names = [self._get_vendor_name(v) for v in sorted(vendor_links.keys())]
+                if selected_vid and selected_vid in vendor_links:
+                    sel_name = self._get_vendor_name(selected_vid)
+                    sel_url = it.get("selected_url") or vendor_links[selected_vid]
+                    item4.setText(f"{sel_name}: {sel_url}")
+                    item4.setForeground(QColor("#38bdf8"))
+                    item4.setToolTip(f"Selected: {sel_name}\nURL: {sel_url}\nAvailable: {', '.join(v_names)}")
+                    item5.setText(f"✅ {sel_name} Selected")
+                    item5.setForeground(QColor("#34d399"))
+                else:
+                    item4.setText(f"⚡ Multi-Vendor ({', '.join(v_names)})")
+                    item4.setForeground(QColor("#a78bfa"))
+                    tt = "Multiple vendor options configured:\n" + "\n".join(f"• {self._get_vendor_name(v)}: {u}" for v, u in vendor_links.items()) + "\n\nDouble-click row to select vendor."
+                    item4.setToolTip(tt)
+                    item5.setText("⚡ Selection Required")
+                    item5.setForeground(QColor("#a78bfa"))
             else:
-                item5.setText("⚠️ Blank Link")
-                item5.setForeground(QColor("#fbbf24"))
+                vid = it.get("vendor_id") or self.registry.get_vendor_for_url(link, enabled_only=True)
+                is_registered_and_enabled = bool(vid and self.registry.has_vendor(vid) and self.registry.is_vendor_enabled(vid))
+
+                if is_registered_and_enabled:
+                    v_display = self._get_vendor_name(vid)
+                    item4.setText(link)
+                    item4.setForeground(QColor("#38bdf8"))
+                    item4.setToolTip(f"{v_display} link (Auto-Order Ready):\n{link}")
+                    item5.setText(f"✅ {v_display} Ready")
+                    item5.setForeground(QColor("#34d399"))
+                elif link.startswith("http"):
+                    domain = it.get("link_domain") or (link.split("/")[2] if "//" in link else "external")
+                    item4.setText(f"❌ Non-registered URL ({domain})")
+                    item4.setForeground(QColor("#f87171"))
+                    item4.setToolTip(f"No vendor plugin installed for this storefront URL: {link}\nAction: Install a compatible vendor plugin or update to a registered vendor in Inventory.xlsx.")
+                    item5.setText("❌ No Plugin Installed")
+                    item5.setForeground(QColor("#f87171"))
+                else:
+                    item4.setText("❌ Blank Store Link")
+                    item4.setForeground(QColor("#f87171"))
+                    item4.setToolTip("Store link is missing in database. Please add vendor URL in Inventory.xlsx.")
+                    item5.setText("⚠️ Blank Link")
+                    item5.setForeground(QColor("#fbbf24"))
+
+            self.table.setItem(row, 4, item4)
             self.table.setItem(row, 5, item5)
 
     def _on_mode_a_item_double_clicked(self, item: QTableWidgetItem):
         if not item:
             return
         row = item.row()
+        raw_it = self.all_shortages[row] if row < len(self.all_shortages) else {}
+        vendor_links = raw_it.get("vendor_links") or {}
+        if len(vendor_links) > 1:
+            dlg = VendorSelectionDialog([raw_it], registry=self.registry, parent=self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self._populate_mode_a_table()
+            return
+
         link_item = self.table.item(row, 4)
         if link_item:
-            raw_it = self.all_shortages[row] if row < len(self.all_shortages) else {}
             link = raw_it.get("link") or link_item.text()
             if link and link.startswith("http"):
                 webbrowser.open(link)
@@ -626,8 +829,26 @@ class OrderPreviewDialog(QDialog):
             QMessageBox.warning(self, "No Items", "There are no valid vendor items to order.")
             return
 
-        # Check credentials for Lion items if present
-        if self.lion_items:
+        # Prompt for any multi-vendor items lacking user selection
+        items_needing_selection = [
+            it for it in self.orderable_items
+            if it.get("vendor_links") and len(it.get("vendor_links")) > 1 and not it.get("selected_vendor_id")
+        ]
+        if items_needing_selection:
+            dlg = VendorSelectionDialog(items_needing_selection, registry=self.registry, parent=self)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                # User cancelled selection dialog: abort order safely without dispatching
+                return
+            self._populate_mode_a_table()
+
+        # Check credentials for Lion items if present in final selections
+        has_lion_order = any(
+            (it.get("selected_vendor_id") == "vendor_lion") or
+            (it.get("vendor_id") == "vendor_lion") or
+            (it in self.lion_items)
+            for it in self.orderable_items
+        )
+        if has_lion_order:
             user = settings.get("lion_username", "").strip()
             pwd = settings.get("lion_password", "").strip()
             if not user or not pwd:

@@ -222,6 +222,9 @@ class TestInteractiveAuthenticationFlow:
         mock_btn = MagicMock()
         mock_driver.find_element = lambda by, val: mock_user if "username" in val or "login" in val else mock_btn
 
+        adapter.session.driver = mock_driver
+        adapter.session.get_driver = MagicMock(return_value=mock_driver)
+
         handler = CallbackChallengeHandler(default_state=ChallengeState.SOLVED)
 
         # After submit, page source contains OTP prompt

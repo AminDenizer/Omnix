@@ -31,6 +31,14 @@ def sample_inventory_and_bom(tmp_path):
     return inv_path, bom_path
 
 class TestBOMAuditor:
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        from core.procurement.registry import VendorRegistry
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
+
     def test_bom_audit_and_multiplier(self, sample_inventory_and_bom):
         inv_path, bom_path = sample_inventory_and_bom
         inv_loader = ExcelDataLoader()

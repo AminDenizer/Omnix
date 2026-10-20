@@ -46,15 +46,53 @@ class ProcurementBridge:
         Returns:
             Tuple of (link_type, link_domain, vendor_id):
             - link_type: 'LION', 'JAVAN', 'ROBOEQ', or uppercase vendor identifier;
-                         'INVALID' if domain is unrecognized;
+                         'MULTI' if multiple valid vendor links are present;
+                         'INVALID' if domain is unrecognized or link is malformed;
                          'NONE' if link is empty.
-            - link_domain: Normalized domain string (e.g. 'lionelectronic.ir').
+            - link_domain: Normalized domain string (e.g. 'lionelectronic.ir', 'multi-vendor').
             - vendor_id: Registered vendor identifier (e.g. 'vendor_lion'), or None.
         """
         if not link or not link.strip():
             return "NONE", "", None
 
         raw_link = link.strip()
+        reg = registry if registry is not None else VendorRegistry.get_default_registry()
+
+        try:
+            from core.procurement.vendor_links import parse_vendor_links
+            parsed = parse_vendor_links(raw_link, registry=reg)
+            if not parsed.is_valid:
+                return "INVALID", "", None
+            if parsed.is_empty:
+                return "NONE", "", None
+            if parsed.count == 1:
+                entry = parsed.get_single_entry()
+                domain = ""
+                try:
+                    p = urlparse(entry.url)
+                    domain = (p.netloc or entry.url).replace("www.", "").lower()
+                    if ":" in domain:
+                        domain = domain.split(":")[0]
+                except Exception:
+                    domain = entry.url.lower()
+                return entry.vendor_label, domain, entry.vendor_id
+            elif parsed.count > 1:
+                return "MULTI", "multi-vendor", None
+            else:
+                # Valid legacy URL syntax, but unknown / unsupported vendor domain
+                domain = ""
+                try:
+                    p = urlparse(raw_link)
+                    domain = (p.netloc or raw_link).replace("www.", "").lower()
+                    if ":" in domain:
+                        domain = domain.split(":")[0]
+                except Exception:
+                    domain = raw_link.lower()
+                return "INVALID", domain, None
+        except Exception:
+            pass
+
+        # Fallback to existing logic if parse_vendor_links is unavailable
         domain = ""
         try:
             parsed = urlparse(raw_link)
@@ -64,7 +102,6 @@ class ProcurementBridge:
         except Exception:
             domain = raw_link.lower()
 
-        reg = registry if registry is not None else VendorRegistry.get_default_registry()
         vendor_id = reg.get_vendor_for_url(raw_link)
 
         if vendor_id:
@@ -90,7 +127,7 @@ class ProcurementBridge:
         Determines whether a shortage or direct BOM item dictionary contains an automated-orderable request.
 
         In Mode B (DIRECT_BOM): Returns True if item has valid non-empty MPN and is marked valid.
-        In Mode A (DATABASE_AWARE): Returns True if item has a valid registered vendor URL.
+        In Mode A (DATABASE_AWARE): Returns True if item has a valid registered vendor URL or multi-vendor links.
 
         Returns:
             (is_orderable, vendor_id)
@@ -103,8 +140,26 @@ class ProcurementBridge:
                 return True, None
             return False, None
 
+        # Check if an explicit vendor has been selected for a multi-vendor item
+        selected_vid = item.get("selected_vendor_id") or item.get("selected_vendor")
+        vendor_links = item.get("vendor_links")
+
+        if vendor_links:
+            if selected_vid:
+                if selected_vid in vendor_links:
+                    return True, selected_vid
+                return False, None
+            elif len(vendor_links) == 1:
+                vid = next(iter(vendor_links.keys()))
+                return True, vid
+            elif len(vendor_links) > 1:
+                # Multi-vendor item: it is orderable in Mode A once a vendor is chosen
+                return True, None
+
         link = str(item.get("link", "")).strip()
-        _, _, vendor_id = ProcurementBridge.classify_link(link, registry)
+        link_type, _, vendor_id = ProcurementBridge.classify_link(link, registry)
+        if link_type == "MULTI":
+            return True, None
         return vendor_id is not None, vendor_id
 
     @staticmethod
@@ -187,11 +242,45 @@ class ProcurementBridge:
             req_dims = item.get("required_dimensions") or {}
         else:
             # Mode A: DATABASE_AWARE
+            selected_vendor = item.get("selected_vendor_id") or item.get("selected_vendor")
             raw_link = str(item.get("link", "")).strip()
-            explicit_url = raw_link if raw_link.startswith("http") else None
+            vendor_links = item.get("vendor_links")
+
+            if vendor_links is None and raw_link:
+                try:
+                    from core.procurement.vendor_links import parse_vendor_links
+                    parsed = parse_vendor_links(raw_link, registry=registry)
+                    if parsed.is_valid and parsed.count > 0:
+                        vendor_links = {vid: e.url for vid, e in parsed.links.items()}
+                except Exception:
+                    vendor_links = None
+
+            explicit_url = None
             target_vendor = None
-            if explicit_url:
-                _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
+
+            if vendor_links:
+                if selected_vendor:
+                    # Case D: Selected vendor has no link in component's mapping
+                    if selected_vendor not in vendor_links:
+                        raise ValueError(
+                            f"Selected vendor '{selected_vendor}' has no valid URL for component '{part_number}'. "
+                            f"Available vendors: {list(vendor_links.keys())}."
+                        )
+                    explicit_url = vendor_links[selected_vendor]
+                    target_vendor = selected_vendor
+                elif len(vendor_links) == 1:
+                    # Case A: Exactly one valid URL
+                    target_vendor, explicit_url = next(iter(vendor_links.items()))
+                else:
+                    # Case B: Multiple valid URLs, but no vendor selected
+                    raise ValueError(
+                        f"Component '{part_number}' has multiple vendor links {list(vendor_links.keys())}. "
+                        "Vendor selection is required before procurement dispatch."
+                    )
+            else:
+                explicit_url = raw_link if raw_link.startswith("http") else None
+                if explicit_url:
+                    _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
 
             exact_mpn = item.get("exact_mpn_required", True)
             package = str(item.get("package") or "").strip() or None

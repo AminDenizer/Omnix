@@ -40,7 +40,7 @@ class FilterBarWidget(QFrame):
         filter_layout.setSpacing(0)
 
         self.search_input = SearchLineEdit()
-        self.search_input.setPlaceholderText("Search across all columns, part numbers, values, footprints, links... (Press / to focus, Esc to deselect/clear)")
+        self.search_input.setPlaceholderText("Search by MPN, Manufacturer, or Value...")
         self.search_input.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.search_input.textChanged.connect(self.searchChanged.emit)
         self.search_input.returnPressed.connect(self.enterPressed.emit)

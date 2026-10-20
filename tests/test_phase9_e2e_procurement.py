@@ -359,7 +359,8 @@ def clean_registry():
     FakeRoboEqE2EAdapter.FAIL_ON_STAGE = False
     FakeRoboEqE2EAdapter.FAIL_ERROR_TYPE = None
 
-    reg = VendorRegistry()
+    reg = VendorRegistry.get_default_registry()
+    reg.clear()
 
     reg.register_adapter(
         vendor_id="vendor_lion",
@@ -380,12 +381,13 @@ def clean_registry():
         domains=["roboeq.ir", "www.roboeq.ir"],
     )
 
-    return {
+    yield {
         "registry": reg,
         "lion_cls": FakeLionE2EAdapter,
         "javan_cls": FakeJavanE2EAdapter,
         "roboeq_cls": FakeRoboEqE2EAdapter,
     }
+    reg.clear()
 
 
 # ============================================================================

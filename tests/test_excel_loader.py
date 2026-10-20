@@ -34,6 +34,14 @@ def temp_excel_file(tmp_path):
 
 
 class TestExcelDataLoader:
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        from core.procurement.registry import VendorRegistry
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
+
     def test_normalize_string(self):
         assert normalize_string('  NE555P  ') == 'ne555p'
         assert normalize_string('تست‌نرم‌افزار') == 'تستنرمافزار'

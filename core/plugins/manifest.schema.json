@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnix.dot.org/schemas/v1/plugin-manifest.json",
+  "title": "Omnix Vendor Plugin Manifest Schema",
+  "description": "Authoritative JSON Schema for Omnix vendor plugin manifest.json (Phase 1 Baseline)",
+  "type": "object",
+  "required": [
+    "manifest_version",
+    "plugin_id",
+    "vendor_id",
+    "display_name",
+    "version",
+    "min_omnix_version",
+    "omnix_contract_version",
+    "entry_point",
+    "publisher",
+    "capabilities",
+    "supported_modes",
+    "routes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": {
+      "description": "Schema version of the manifest file format.",
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "plugin_id": {
+      "description": "Unique reverse-DNS plugin identifier (max 64 chars).",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+      "maxLength": 64
+    },
+    "vendor_id": {
+      "description": "Canonical vendor identifier prefix 'vendor_' followed by lowercase alphanumeric/underscore (max 32 chars).",
+      "type": "string",
+      "pattern": "^vendor_[a-z0-9_]+$",
+      "maxLength": 32
+    },
+    "display_name": {
+      "description": "Human-readable storefront / vendor name.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "description": {
+      "description": "Brief description of the vendor plugin.",
+      "type": "string",
+      "maxLength": 1024
+    },
+    "version": {
+      "description": "Plugin release version conforming to SemVer 2.0.0.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "min_omnix_version": {
+      "description": "Minimum required host Omnix application version (SemVer 2.0.0).",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "max_omnix_version": {
+      "description": "Maximum compatible host Omnix application version (SemVer 2.0.0) or null for open upper bound.",
+      "type": ["string", "null"],
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "omnix_contract_version": {
+      "description": "Target IVendorAdapter contract version (e.g. '1.0.0'). Major version must match Core contract.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "entry_point": {
+      "description": "Package-relative Python module and class name in 'module.path:ClassName' format.",
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_.]+(?:\\.[a-zA-Z0-9_]+)*:[a-zA-Z0-9_]+$",
+      "maxLength": 128
+    },
+    "publisher": {
+      "description": "Publisher identity and claimed trust tier metadata.",
+      "type": "object",
+      "required": ["name", "type", "key_id"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Publisher or organization name.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "description": "Claimed publisher trust tier. Note: Validated independently against Core trust store during Gate B.",
+          "type": "string",
+          "enum": ["OFFICIAL", "THIRD_PARTY_VERIFIED", "COMMUNITY"]
+        },
+        "key_id": {
+          "description": "Cryptographic public key identifier matching Core trust store or certificate.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "contact": {
+          "description": "Contact email or URL for publisher support.",
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "capabilities": {
+      "description": "Fine-grained functional capabilities declared by the plugin adapter.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "PRODUCT_URL_RECOGNITION",
+          "PRODUCT_INSPECTION",
+          "CART_URL_RESOLUTION",
+          "MPN_SEARCH",
+          "LIVE_STOCK_PROBE",
+          "TIERED_PRICING",
+          "MODE_A_STAGING",
+          "MODE_B_STAGING"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "supported_modes": {
+      "description": "Procurement modes supported by this plugin. Plugins may support Mode A only, Mode B only, or both.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["MODE_A", "MODE_B"]
+      },
+      "uniqueItems": true
+    },
+    "routes": {
+      "description": "Storefront routing and URL resolution configuration.",
+      "type": "object",
+      "required": ["base_url", "cart_url", "domains"],
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "description": "Authoritative base storefront URL.",
+          "type": "string",
+          "pattern": "^https?://[a-zA-Z0-9.-]+(?:/.*)?$"
+        },
+        "cart_url": {
+          "description": "Authoritative storefront shopping cart URL.",
+          "type": "string",
+          "pattern": "^https?://[a-zA-Z0-9.-]+(?:/.*)?$"
+        },
+        "domains": {
+          "description": "List of domains and subdomains owned by this storefront.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$"
+          },
+          "uniqueItems": true
+        },
+        "pdp_patterns": {
+          "description": "Regular expression patterns matching Product Detail Page (PDP) URLs or paths.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "dependencies": {
+      "description": "Runtime dependency declarations.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "python": {
+          "description": "Python version compatibility specifier (e.g. '>=3.11').",
+          "type": "string"
+        },
+        "external_libraries": {
+          "description": "List of external library package dependencies.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "config_schema": {
+      "description": "Optional declarative vendor configuration schema for dynamic UI generation and credential routing.",
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "List of configuration fields declared by the vendor plugin.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "label", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "description": "Identifier for the configuration field in snake_case.",
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "label": {
+                "description": "Human-readable label for UI rendering.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "type": {
+                "description": "Data type for the configuration field.",
+                "type": "string",
+                "enum": ["string", "password", "integer", "boolean", "select"]
+              },
+              "required": {
+                "description": "Whether the field must be supplied by the user.",
+                "type": "boolean"
+              },
+              "is_secret": {
+                "description": "Whether the field contains sensitive credentials requiring encrypted storage.",
+                "type": "boolean"
+              },
+              "default": {
+                "description": "Default value for the field.",
+                "type": ["string", "number", "boolean", "null"]
+              },
+              "options": {
+                "description": "Selectable options for select-type fields.",
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "anyOf": [
+
+                    { "type": "string" },
+                    {
+                      "type": "object",
+                      "required": ["value", "label"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "value": { "type": ["string", "number", "boolean"] },
+                        "label": { "type": "string" }
+                      }
+                    }
+                  ]
+                }
+              },
+              "description": {
+                "description": "Help tooltip or field description.",
+                "type": "string",
+                "maxLength": 512
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -263,6 +263,11 @@ class BOMAuditWidget(QWidget):
         self.export_report_btn.clicked.connect(self._export_missing_report)
         action_layout.addWidget(self.export_report_btn)
 
+        self.validate_links_btn = QPushButton("🔗 Validate Links")
+        self.validate_links_btn.setObjectName("secondaryBtn")
+        self.validate_links_btn.setVisible(False)
+        self.validate_links_btn.clicked.connect(self._open_link_validation)
+
         action_layout.addStretch()
 
         self.order_btn = QPushButton("🛒 Order Project Shortages")
@@ -531,10 +536,16 @@ class BOMAuditWidget(QWidget):
                 item10 = QTableWidgetItem()
                 item10.setFont(font_txt)
                 if it.is_orderable:
-                    v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
-                    item10.setText(it.link)
-                    item10.setForeground(QColor("#38bdf8"))
-                    item10.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
+                    if it.is_multi_vendor:
+                        item10.setText("⚡ Multi-Vendor Link")
+                        item10.setForeground(QColor("#a855f7"))
+                        vendor_names = ", ".join(k.replace("vendor_", "").title() for k in it.vendor_links.keys())
+                        item10.setToolTip(f"Multiple vendor links available ({vendor_names}):\n{it.link}\n(Select vendor in Order Preview)")
+                    else:
+                        v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
+                        item10.setText(it.link)
+                        item10.setForeground(QColor("#38bdf8"))
+                        item10.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
                 elif it.link_type == "INVALID":
                     item10.setText(f"❌ Unsupported URL ({it.link_domain})")
                     item10.setForeground(QColor("#f87171"))
@@ -586,6 +597,26 @@ class BOMAuditWidget(QWidget):
             return
 
         res = self.audit_result
+
+        # Section 7: Automatic Link Validation before OrderPreviewDialog
+        items_to_check = res.get_all_shortages() if res.mode != ProcurementMode.DIRECT_BOM else res.get_orderable_shortages()
+        links_to_validate = []
+        for it in items_to_check:
+            link = (it.get("link") or it.get("raw_link") or "").strip()
+            if link and (link.startswith("http://") or link.startswith("https://")):
+                from core.procurement.link_validator import LinkValidationItem
+                links_to_validate.append(LinkValidationItem(
+                    component_name=it.get("part_name") or it.get("part_number") or it.get("designator", ""),
+                    manufacturer=it.get("manufacturer") or "",
+                    mpn=it.get("part_number") or it.get("mpn") or "",
+                    url=link,
+                ))
+
+        if links_to_validate:
+            from ui.dialogs.link_validation_dialog import LinkValidationDialog
+            val_dlg = LinkValidationDialog(links_to_validate, parent=self)
+            val_dlg.exec()
+
         if res.mode == ProcurementMode.DIRECT_BOM:
             all_items = res.get_all_shortages()
             dlg = OrderPreviewDialog(
@@ -802,3 +833,25 @@ class BOMAuditWidget(QWidget):
                 open_link_act.triggered.connect(lambda _, url=it.link: webbrowser.open(url))
 
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _open_link_validation(self):
+        if not self.audit_result:
+            return
+        from core.procurement.link_validator import LinkValidationItem
+        items = []
+        for it in (self.audit_result.shortage_items + self.audit_result.in_stock_items):
+            link = str(it.get("link", "") or it.get("raw_link", "")).strip()
+            if link:
+                items.append(LinkValidationItem(
+                    component_name=it.get("part_name") or it.get("part_number") or it.get("designator", ""),
+                    manufacturer=it.get("manufacturer") or "",
+                    mpn=it.get("part_number") or it.get("mpn") or "",
+                    url=link,
+                ))
+        if not items:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "No Links Found", "No store links were found on items in this BOM.")
+            return
+        from ui.dialogs.link_validation_dialog import LinkValidationDialog
+        dlg = LinkValidationDialog(items, parent=self)
+        dlg.exec()

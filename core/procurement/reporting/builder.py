@@ -442,16 +442,9 @@ class ProcurementReportBuilder:
                     from core.procurement.registry import VendorRegistry
                     vid = VendorRegistry.get_default_registry().get_vendor_for_url(link)
                 except Exception:
-                    if "lionelectronic.ir" in link.lower():
-                        vid = "vendor_lion"
-                    elif "javanelec.com" in link.lower():
-                        vid = "vendor_javan"
+                    vid = None
 
-            is_lion = (vid == "vendor_lion") or ("lionelectronic.ir" in link.lower())
-            if is_lion:
-                vid = "vendor_lion"
-                v_name = "Lion Electronic"
-            elif vid:
+            if vid:
                 v_name = _format_vendor_name(vid)
             else:
                 v_name = "—"

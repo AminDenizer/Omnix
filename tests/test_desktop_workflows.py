@@ -46,6 +46,7 @@ def qapp():
 @pytest.fixture
 def mock_registry():
     """Create a mock vendor registry with Lion, Javan, and RoboEq."""
+    VendorRegistry.get_default_registry().register_default_adapters()
     reg = MagicMock(spec=VendorRegistry)
     reg.enabled_vendor_ids = ["vendor_lion", "vendor_javan", "vendor_roboeq"]
     reg.is_vendor_enabled.side_effect = lambda v: v in reg.enabled_vendor_ids
@@ -74,7 +75,8 @@ def mock_registry():
         return VendorRegistry.get_default_registry().get_adapter(vid)
 
     reg.get_adapter.side_effect = _get_adapter
-    return reg
+    yield reg
+    VendorRegistry.get_default_registry().clear()
 
 
 
@@ -168,6 +170,13 @@ def sample_candidate_offers():
 
 class TestGAP07MultiCandidateComparison:
     """Test suite for GAP-07 in OrderPreviewDialog."""
+
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
 
     def test_master_detail_structure_and_population(self, qapp, sample_candidate_offers):
         """Verify Master Table displays line items and selecting a row displays Detail Table offers."""

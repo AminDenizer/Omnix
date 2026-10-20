@@ -64,6 +64,14 @@ def sample_bom_file():
 class TestDualProcurementModes:
     """Tests evaluating Mode A and Mode B isolation, calculation, and bridge translation."""
 
+    @pytest.fixture(autouse=True)
+    def register_test_adapters(self):
+        from core.procurement.registry import VendorRegistry
+        reg = VendorRegistry.get_default_registry()
+        reg.register_default_adapters()
+        yield
+        reg.clear()
+
     def test_mode_a_database_aware_reconciliation(self, sample_inventory_file, sample_bom_file):
         inv_loader = ExcelDataLoader()
         inv_loader.load_file(sample_inventory_file)

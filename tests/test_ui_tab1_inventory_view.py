@@ -233,8 +233,14 @@ class TestTab1InventoryView:
             for i in range(header_layout.count())
             if header_layout.itemAt(i).widget() is not None
         ]
-        assert win.quick_order_btn not in widgets_in_header
-        assert win.settings_btn in widgets_in_header
+        # Actions (Settings, Reference Data, Export Excel) have been relocated from in-content header to top window title bar
+        assert win.settings_btn not in widgets_in_header
+        assert win.manage_reference_btn not in widgets_in_header
+        assert win.export_excel_btn not in widgets_in_header
+        assert hasattr(win, "title_bar")
+        assert win.title_bar.settings_btn is win.settings_btn
+        assert win.title_bar.manage_reference_btn is win.manage_reference_btn
+        assert win.title_bar.export_excel_btn is win.export_excel_btn
 
     def test_stock_policy_table_column_widths_responsive_distribution(self, main_window, qapp):
         win = main_window

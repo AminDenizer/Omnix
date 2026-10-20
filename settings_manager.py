@@ -25,6 +25,9 @@ class SettingsManager:
             "lion_password": "",
             "show_browser": False,
             "auto_check_startup_shortage": True,
+            "stock_policy_enabled": True,
+            "stock_policy_validation_enabled": True,
+            "stock_policy_show_columns": True,
             "default_min_stock": 0,
             "default_target_stock": 0,
             "vendors": {

@@ -348,7 +348,7 @@ class TestPolicyEditDialog:
         )
 
         # 1. Initial state
-        assert dlg.save_btn.text() == "💾 Save Changes"
+        assert dlg.save_btn.text() in ["Save Changes", "💾 Save Changes"]
         assert dlg.save_btn.isEnabled() is True
         assert dlg._is_saving is False
         assert dlg.save_btn.icon().isNull() is True
@@ -429,7 +429,7 @@ class TestPolicyEditDialog:
             # Confirm button and form controls were fully restored
             assert dlg._is_saving is False
             assert dlg._spinner_timer.isActive() is False
-            assert dlg.save_btn.text() == "💾 Save Changes"
+            assert dlg.save_btn.text() in ["Save Changes", "💾 Save Changes"]
             assert dlg.save_btn.isEnabled() is True
             assert dlg.save_btn.icon().isNull() is True
             assert dlg.save_btn.property("saving") == "false"

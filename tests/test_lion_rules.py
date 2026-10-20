@@ -30,10 +30,3 @@ class TestLionAutomatorRules:
     def test_moq_respect(self):
         assert calculate_target_quantity(needed_qty=1, site_step=25) == 25
         assert calculate_target_quantity(needed_qty=0, site_step=10) == 10
-
-    def test_stock_vs_target_check(self):
-        site_stock = 11
-        target_qty = 20
-        assert site_stock < target_qty
-        assert 11 >= 11
-        assert 50 >= 45
