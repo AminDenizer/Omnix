@@ -252,31 +252,35 @@ class SettingsDialog(QDialog):
         self.stock_policy_validation_chk.setChecked(settings.get("stock_policy_validation_enabled", True))
         sub_layout.addWidget(self.stock_policy_validation_chk)
 
-        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
-        self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
-        sub_layout.addWidget(self.stock_policy_show_columns_chk)
-
-        # Subtle horizontal divider
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Plain)
-        divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
-        sub_layout.addSpacing(4)
-        sub_layout.addWidget(divider)
-        sub_layout.addSpacing(4)
-
         self.startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
         self.startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
         sub_layout.addWidget(self.startup_chk)
 
         card_layout.addLayout(sub_layout)
 
-        card_layout.addSpacing(12)
+        # Subtle horizontal divider
+        card_layout.addSpacing(4)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Plain)
+        divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
+        card_layout.addWidget(divider)
+        card_layout.addSpacing(4)
+
+        display_layout = QVBoxLayout()
+        display_layout.setContentsMargins(0, 0, 0, 0)
+        display_layout.setSpacing(6)
+
+        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
+        self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
+        display_layout.addWidget(self.stock_policy_show_columns_chk)
 
         # Match Products Display Checkbox
         self.match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.match_products_chk.setChecked(settings.get("match_products_enabled", True))
-        card_layout.addWidget(self.match_products_chk)
+        display_layout.addWidget(self.match_products_chk)
+
+        card_layout.addLayout(display_layout)
 
         def _update_dialog_dependencies():
             master_on = self.stock_policy_enabled_chk.isChecked()

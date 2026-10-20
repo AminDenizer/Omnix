@@ -643,40 +643,48 @@ class MainWindow(QMainWindow):
         self.side_stock_policy_enabled_chk.setChecked(settings.get("stock_policy_enabled", True))
         card_layout.addWidget(self.side_stock_policy_enabled_chk)
 
+        # Stock-policy and shortage-automation group
         sub_layout = QVBoxLayout()
         sub_layout.setContentsMargins(24, 0, 0, 0)
         sub_layout.setSpacing(8)
 
-        # Subordinate 1: Enable stock-policy validation / shortage checking
+        # 2. Subordinate 1: Enable stock-policy validation / shortage checking
         self.side_stock_policy_validation_chk = QCheckBox("Enable stock-policy validation / shortage checking")
         self.side_stock_policy_validation_chk.setChecked(settings.get("stock_policy_validation_enabled", True))
         sub_layout.addWidget(self.side_stock_policy_validation_chk)
 
-        # Subordinate 2: Show Min Stock and Target Stock columns in Assembly View
-        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
-        self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
-        sub_layout.addWidget(self.side_stock_policy_show_columns_chk)
-
-        # Subtle horizontal divider
-        self.side_stock_policy_divider = QFrame()
-        self.side_stock_policy_divider.setFrameShape(QFrame.Shape.HLine)
-        self.side_stock_policy_divider.setFrameShadow(QFrame.Shadow.Plain)
-        self.side_stock_policy_divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
-        sub_layout.addSpacing(4)
-        sub_layout.addWidget(self.side_stock_policy_divider)
-        sub_layout.addSpacing(4)
-
-        # Automatically check inventory shortages on application startup
+        # 3. Subordinate 2: Automatically check inventory shortages on application startup
         self.side_startup_chk = QCheckBox("Automatically check inventory shortages on application startup")
         self.side_startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
         sub_layout.addWidget(self.side_startup_chk)
 
         card_layout.addLayout(sub_layout)
 
-        card_layout.addSpacing(12)
+        # 4. Subtle horizontal divider immediately after the startup-check option
+        card_layout.addSpacing(4)
+        self.side_stock_policy_divider = QFrame()
+        self.side_stock_policy_divider.setFrameShape(QFrame.Shape.HLine)
+        self.side_stock_policy_divider.setFrameShadow(QFrame.Shadow.Plain)
+        self.side_stock_policy_divider.setStyleSheet("background-color: #334155; max-height: 1px; border: none;")
+        card_layout.addWidget(self.side_stock_policy_divider)
+        card_layout.addSpacing(4)
+
+        # Assembly View display settings group
+        display_layout = QVBoxLayout()
+        display_layout.setContentsMargins(0, 0, 0, 0)
+        display_layout.setSpacing(8)
+
+        # 5. Show Min Stock and Target Stock columns in Assembly View
+        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
+        self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
+        display_layout.addWidget(self.side_stock_policy_show_columns_chk)
+
+        # 6. Show Matched Products in Assembly View
         self.side_match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.side_match_products_chk.setChecked(settings.get("match_products_enabled", True))
-        card_layout.addWidget(self.side_match_products_chk)
+        display_layout.addWidget(self.side_match_products_chk)
+
+        card_layout.addLayout(display_layout)
 
         def _update_dependency_states():
             master_on = self.side_stock_policy_enabled_chk.isChecked()

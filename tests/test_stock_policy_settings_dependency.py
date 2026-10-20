@@ -310,25 +310,28 @@ class TestSettingsLayoutHierarchy:
         assert card is not None
         card_layout = card.layout()
 
-        # Item 0 in card layout is the Master Checkbox
+        # Item 0 in card layout is the Master Checkbox (1. Enable stock-policy features)
         assert card_layout.itemAt(0).widget() is win.side_stock_policy_enabled_chk
 
-        # Item 1 in card layout is the sub_layout containing validation, columns, divider, startup check
+        # Item 1 in card layout is the sub_layout containing:
+        # 2. Enable stock-policy validation / shortage checking
+        # 3. Automatically check inventory shortages on application startup
         sub_layout = card_layout.itemAt(1).layout()
         assert sub_layout is not None
-
-        # Verify order within subordinate layout:
-        # 1. Validation checkbox
-        # 2. Show columns checkbox
-        # 3. Spacing / Divider
-        # 4. Startup check
         sub_widgets = [sub_layout.itemAt(i).widget() for i in range(sub_layout.count()) if sub_layout.itemAt(i).widget()]
         assert sub_widgets[0] is win.side_stock_policy_validation_chk
-        assert sub_widgets[1] is win.side_stock_policy_show_columns_chk
-        assert sub_widgets[2] is win.side_stock_policy_divider
-        assert sub_widgets[3] is win.side_startup_chk
+        assert sub_widgets[1] is win.side_startup_chk
 
-        # Match products must be in the outer card layout, clearly separated
+        # 4. Divider follows immediately after the startup-check group
         outer_widgets = [card_layout.itemAt(i).widget() for i in range(card_layout.count()) if card_layout.itemAt(i).widget()]
-        assert win.side_match_products_chk in outer_widgets
-        assert outer_widgets.index(win.side_match_products_chk) > outer_widgets.index(win.side_stock_policy_enabled_chk)
+        assert win.side_stock_policy_divider in outer_widgets
+
+        # Display layout contains Assembly View display settings:
+        # 5. Show Min Stock and Target Stock columns in Assembly View
+        # 6. Show Matched Products in Assembly View
+        layouts = [card_layout.itemAt(i).layout() for i in range(card_layout.count()) if card_layout.itemAt(i).layout()]
+        assert len(layouts) >= 2
+        display_layout = layouts[1]
+        disp_widgets = [display_layout.itemAt(i).widget() for i in range(display_layout.count()) if display_layout.itemAt(i).widget()]
+        assert disp_widgets[0] is win.side_stock_policy_show_columns_chk
+        assert disp_widgets[1] is win.side_match_products_chk
