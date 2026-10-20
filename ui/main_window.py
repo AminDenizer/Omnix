@@ -1,5 +1,7 @@
 import os
 import sys
+import platform
+import sqlite3
 import webbrowser
 from typing import Optional, Any, List, Dict, Tuple
 from PyQt6.QtWidgets import (
@@ -10,11 +12,23 @@ from PyQt6.QtWidgets import (
     QFileDialog, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox,
     QStackedWidget, QCheckBox, QAbstractButton,
 )
-from PyQt6.QtCore import Qt, QTimer, QPoint, QEvent
+from PyQt6.QtCore import Qt, QTimer, QPoint, QEvent, QT_VERSION_STR
 from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut, QIcon, QPixmap, QKeyEvent, QMouseEvent
 
-from config import APP_NAME, APP_SUBTITLE, get_app_dir, get_bundle_dir
+from config import (
+    APP_NAME,
+    APP_SUBTITLE,
+    APP_VERSION,
+    DEVELOPER_NAME,
+    DEVELOPER_ORG,
+    DEVELOPER_EMAIL,
+    REPOSITORY_URL,
+    LICENSE_TYPE,
+    get_app_dir,
+    get_bundle_dir,
+)
 from excel_loader import ExcelDataLoader, find_local_excel_file, normalize_string
+from core.procurement.registry import default_registry
 from core.inventory import (
     IInventoryRepository,
     ExcelInventoryRepository,
@@ -40,6 +54,7 @@ from ui.widgets import (
 from ui.widgets.sidebar import CollapsibleSidebar
 from ui.widgets.backup_restore_widget import DatabaseBackupRestoreWidget
 from ui.widgets.reference_data_widget import ReferenceDataWidget, ReferenceDataDialog
+from ui.widgets.vendor_plugins_widget import VendorPluginsWidget
 from core.procurement.link_validator import LinkValidator, LinkValidationItem
 from ui.dialogs.link_validation_dialog import LinkValidationDialog
 from ui.dialogs import (
@@ -188,44 +203,13 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(16, 12, 16, 8)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Top In-Content Header with Brand Logo & Title (Actions relocated to Title Bar)
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 2)
-
-        brand_layout = QHBoxLayout()
-        brand_layout.setSpacing(10)
-        brand_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        logo_lbl = QLabel()
-        logo_path = os.path.join(get_bundle_dir(), "ui", "icons", "app_logo.png")
-        if os.path.exists(logo_path):
-            logo_pix = QPixmap(logo_path).scaled(38, 38, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            logo_lbl.setPixmap(logo_pix)
-        brand_layout.addWidget(logo_lbl)
-
-        brand_text_layout = QVBoxLayout()
-        brand_text_layout.setSpacing(2)
-        brand_text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        brand_title = QLabel(APP_NAME)
-        brand_title.setObjectName("brandTitle")
-        brand_sub = QLabel("")
-        brand_sub.setObjectName("brandSubtitle")
-        brand_sub.setVisible(False)
-        brand_text_layout.addWidget(brand_title)
-        brand_layout.addLayout(brand_text_layout)
-
-        header_layout.addLayout(brand_layout)
-        header_layout.addStretch()
-
-        # Quick Order Button (preserved for keyboard shortcuts and test compatibility; removed from header)
-        self.quick_order_btn = QPushButton("Quick Order")
+        # Quick Order Button (preserved on self for keyboard shortcuts and test compatibility)
+        self.quick_order_btn = QPushButton("Quick Order", self)
         self.quick_order_btn.setVisible(False)
         self.quick_order_btn.clicked.connect(self._open_quick_order)
-
-        main_layout.addLayout(header_layout)
 
         # 2. Main Dual-Tab Widget Container
         self.tabs = QTabWidget()
@@ -569,35 +553,80 @@ class MainWindow(QMainWindow):
         self.bom_audit_widget.bomUnloaded.connect(self.assembly_widget.clear_bom)
         self.assembly_widget.bomFileRequested.connect(self.bom_audit_widget.load_bom_file)
 
-        # 3. Stacked Container for Mode A Views (Section 5)
+        # 3. Stacked Container for Primary Navigation
         self.content_stack = QStackedWidget()
 
-        # Page 0: Main Dual-Tab / Tri-Tab Container (Inventory, BOM Audit, Assembly Prep)
+        # Workspace Container (Index 0): Tabs (Inventory/Assembly, BOM Audit, Assembly Prep)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.content_stack.addWidget(self.tabs)
 
-        # Page 1: Dedicated Reference Data View
+        # Tools Container (Index 1): Vendor Plugins
+        self.vendor_plugins_page = QWidget()
+        plugins_page_layout = QVBoxLayout(self.vendor_plugins_page)
+        plugins_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.vendor_plugins_widget = VendorPluginsWidget(default_registry, parent=self)
+        plugins_page_layout.addWidget(self.vendor_plugins_widget)
+        self.content_stack.addWidget(self.vendor_plugins_page)
+
+        # Settings Container (Index 2): Subsections in tabs
+        self.settings_page = QWidget()
+        settings_page_layout = QVBoxLayout(self.settings_page)
+        settings_page_layout.setContentsMargins(12, 12, 12, 12)
+        settings_page_layout.setSpacing(0)
+
+        self.settings_subtabs = QTabWidget()
+        self.settings_subtabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #1e293b;
+                background-color: #0b101b;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background-color: #0f172a;
+                color: #94a3b8;
+                padding: 8px 18px;
+                border: 1px solid #1e293b;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                font-weight: 600;
+                font-size: 12px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #1e293b;
+                color: #38bdf8;
+                border-color: #38bdf8;
+                border-bottom: 2px solid #38bdf8;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #1a2234;
+                color: #e2e8f0;
+            }
+        """)
+
+        # Settings Subsection 1: General (General settings & stock policy)
+        self.general_settings_page = self._build_general_settings_page()
+        self.settings_subtabs.addTab(self.general_settings_page, "General")
+
+        # Settings Subsection 2: Reference Data
         self.reference_data_page = QWidget()
         ref_page_layout = QVBoxLayout(self.reference_data_page)
         ref_page_layout.setContentsMargins(0, 0, 0, 0)
         self.reference_data_widget = ReferenceDataWidget(repository=self.inventory_repo, parent=self)
         self.reference_data_widget.referenceDataChanged.connect(self.reload_database)
         ref_page_layout.addWidget(self.reference_data_widget)
-        self.content_stack.addWidget(self.reference_data_page)
+        self.settings_subtabs.addTab(self.reference_data_page, "Reference Data")
 
-        # Page 2: General Settings & Stock Policy Page (Section 11)
-        self.general_settings_page = self._build_general_settings_page()
-        self.content_stack.addWidget(self.general_settings_page)
-
-        # Page 3: Vendor & Link Providers Page (Section 12)
+        # Settings Subsection 3: Supplier Directory
         self.providers_page = QWidget()
         prov_page_layout = QVBoxLayout(self.providers_page)
         prov_page_layout.setContentsMargins(0, 0, 0, 0)
         self.providers_widget = ProviderManagementDialog(repository=self.inventory_repo, parent=self, is_embedded=True)
         prov_page_layout.addWidget(self.providers_widget)
-        self.content_stack.addWidget(self.providers_page)
+        self.settings_subtabs.addTab(self.providers_page, "Supplier Directory")
 
-        # Page 4: Database Backup & Restore Page (Section 6)
+        # Settings Subsection 4: Backup & Restore
         self.backup_restore_page = QWidget()
         backup_page_layout = QVBoxLayout(self.backup_restore_page)
         backup_page_layout.setContentsMargins(0, 0, 0, 0)
@@ -605,7 +634,15 @@ class MainWindow(QMainWindow):
         self.backup_restore_widget = DatabaseBackupRestoreWidget(repository=self.inventory_repo, db_path=db_file, parent=self)
         self.backup_restore_widget.restored_signal.connect(self.reload_database)
         backup_page_layout.addWidget(self.backup_restore_widget)
-        self.content_stack.addWidget(self.backup_restore_page)
+        self.settings_subtabs.addTab(self.backup_restore_page, "Backup & Restore")
+
+        # Settings Subsection 5: About
+        self.about_page = self._build_about_page()
+        self.settings_subtabs.addTab(self.about_page, "About")
+
+        self.settings_subtabs.currentChanged.connect(self._on_settings_subtab_changed)
+        settings_page_layout.addWidget(self.settings_subtabs)
+        self.content_stack.addWidget(self.settings_page)
 
         # Body Layout: Collapsible Sidebar on left, Content Stack on right (Section 5)
         body_h_layout = QHBoxLayout()
@@ -786,6 +823,112 @@ class MainWindow(QMainWindow):
         self.side_startup_chk.blockSignals(False)
         self.side_match_products_chk.blockSignals(False)
 
+    def _build_about_page(self) -> QWidget:
+        """Constructs the dedicated About view in Settings."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # Header with Logo, Name, Version
+        hdr = QHBoxLayout()
+        hdr.setSpacing(16)
+        hdr.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        logo_lbl = QLabel()
+        logo_path = os.path.join(get_bundle_dir(), "ui", "icons", "app_logo.png")
+        if os.path.exists(logo_path):
+            logo_pix = QPixmap(logo_path).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            logo_lbl.setPixmap(logo_pix)
+            logo_lbl.setFixedSize(64, 64)
+        hdr.addWidget(logo_lbl)
+
+        title_vbox = QVBoxLayout()
+        title_vbox.setSpacing(4)
+
+        name_ver_box = QHBoxLayout()
+        name_ver_box.setSpacing(10)
+
+        app_name_lbl = QLabel(APP_NAME)
+        app_name_lbl.setStyleSheet("font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: 0.5px;")
+        name_ver_box.addWidget(app_name_lbl)
+
+        ver_badge = QLabel(f"v{APP_VERSION}")
+        ver_badge.setStyleSheet("""
+            background-color: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        name_ver_box.addWidget(ver_badge)
+        name_ver_box.addStretch()
+        title_vbox.addLayout(name_ver_box)
+
+        sub_lbl = QLabel(APP_SUBTITLE)
+        sub_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        title_vbox.addWidget(sub_lbl)
+
+        hdr.addLayout(title_vbox)
+        layout.addLayout(hdr)
+
+        # Info Card
+        card = QFrame()
+        card.setObjectName("aboutCardFrame")
+        card.setStyleSheet("""
+            QFrame#aboutCardFrame {
+                background-color: #0b101b;
+                border: 1px solid #1e293b;
+                border-radius: 6px;
+                padding: 16px;
+            }
+        """)
+        c_layout = QVBoxLayout(card)
+        c_layout.setSpacing(10)
+
+        def add_meta_row(label_text: str, val_text: str, is_link: bool = False):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 600; min-width: 130px;")
+            val = QLabel(val_text)
+            if is_link:
+                val.setOpenExternalLinks(True)
+                val.setStyleSheet("color: #38bdf8; font-size: 12px;")
+            else:
+                val.setStyleSheet("color: #e2e8f0; font-size: 12px;")
+            row.addWidget(lbl)
+            row.addWidget(val, 1)
+            c_layout.addLayout(row)
+
+        add_meta_row("Developer:", f"{DEVELOPER_NAME} ({DEVELOPER_ORG})")
+        add_meta_row("Contact:", DEVELOPER_EMAIL)
+        add_meta_row("Repository:", f'<a href="{REPOSITORY_URL}" style="color: #38bdf8; text-decoration: none;">{REPOSITORY_URL}</a>', is_link=True)
+        add_meta_row("License:", LICENSE_TYPE)
+        add_meta_row("Execution Mode:", "Mode A (BOM & Inventory Reconciliation)")
+        add_meta_row("Runtime:", f"Python {platform.python_version()} | PyQt6 / Qt {QT_VERSION_STR} | SQLite {sqlite3.sqlite_version}")
+        add_meta_row("Platform:", f"{platform.system()} {platform.release()} ({platform.machine()})")
+
+        layout.addWidget(card)
+        layout.addStretch()
+        return widget
+
+    def _on_settings_subtab_changed(self, index: int):
+        """Refreshes relevant data when switching settings subsections."""
+        if index == 0:
+            self._sync_general_settings_page()
+        elif index == 1:
+            if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
+                self.reference_data_widget.set_repository(self.inventory_repo)
+                self.reference_data_widget.refresh()
+        elif index == 2:
+            if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
+                self.providers_widget.set_repository(self.inventory_repo)
+                self.providers_widget.refresh()
+        elif index == 3:
+            if hasattr(self, "backup_restore_widget"):
+                self.backup_restore_widget.refresh_status()
+
     def _on_sidebar_page_changed(self, page_id: str):
         """Routes sidebar clicks to corresponding view in content_stack or tabs."""
         if getattr(self, "_is_syncing_navigation", False):
@@ -803,23 +946,34 @@ class MainWindow(QMainWindow):
             elif page_id == "bom_audit":
                 self.tabs.setCurrentIndex(1)
                 self.content_stack.setCurrentWidget(self.tabs)
-            elif page_id in ("general_settings", "settings"):
+            elif page_id == "vendor_plugins":
+                if hasattr(self, "vendor_plugins_widget"):
+                    self.vendor_plugins_widget.refresh_plugins()
+                self.content_stack.setCurrentWidget(self.vendor_plugins_page)
+            elif page_id in ("settings", "general_settings"):
                 self._sync_general_settings_page()
-                self.content_stack.setCurrentWidget(self.general_settings_page)
-            elif page_id in ("backup_restore", "backup"):
-                if hasattr(self, "backup_restore_widget"):
-                    self.backup_restore_widget.refresh_status()
-                self.content_stack.setCurrentWidget(self.backup_restore_page)
+                self.content_stack.setCurrentWidget(self.settings_page)
+                self.settings_subtabs.setCurrentIndex(0)
             elif page_id == "reference_data":
                 if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
                     self.reference_data_widget.set_repository(self.inventory_repo)
                     self.reference_data_widget.refresh()
-                self.content_stack.setCurrentWidget(self.reference_data_page)
+                self.content_stack.setCurrentWidget(self.settings_page)
+                self.settings_subtabs.setCurrentIndex(1)
             elif page_id == "provider_management":
                 if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
                     self.providers_widget.set_repository(self.inventory_repo)
                     self.providers_widget.refresh()
-                self.content_stack.setCurrentWidget(self.providers_page)
+                self.content_stack.setCurrentWidget(self.settings_page)
+                self.settings_subtabs.setCurrentIndex(2)
+            elif page_id in ("backup_restore", "backup"):
+                if hasattr(self, "backup_restore_widget"):
+                    self.backup_restore_widget.refresh_status()
+                self.content_stack.setCurrentWidget(self.settings_page)
+                self.settings_subtabs.setCurrentIndex(3)
+            elif page_id == "about":
+                self.content_stack.setCurrentWidget(self.settings_page)
+                self.settings_subtabs.setCurrentIndex(4)
 
             # Authoritatively guarantee sidebar active page reflects requested destination
             self.sidebar.set_active_page(page_id)

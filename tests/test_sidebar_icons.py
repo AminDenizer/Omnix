@@ -36,10 +36,8 @@ class TestSidebarIcons:
             "assembly_view",
             "component_inventory",
             "bom_audit",
-            "reference_data",
-            "general_settings",
-            "provider_management",
-            "backup_restore",
+            "vendor_plugins",
+            "settings",
         ]
         for page_id in expected_pages:
             assert page_id in SIDEBAR_ICON_SVGS, f"Missing SVG definition for {page_id}"
@@ -50,7 +48,7 @@ class TestSidebarIcons:
 
     def test_sidebar_buttons_have_valid_non_null_icons(self, sidebar):
         """Every button in the sidebar must have a valid non-null outline QIcon."""
-        assert len(sidebar.PAGES) == 7
+        assert len(sidebar.PAGES) == 5
         for page_id, label, icon_key in sidebar.PAGES:
             btn = sidebar._buttons[page_id]
             assert not btn.icon().isNull(), f"Icon for {page_id} is null"
@@ -94,10 +92,10 @@ class TestSidebarIcons:
         assert sidebar._buttons["bom_audit"]._is_active is True
         assert sidebar._buttons["assembly_view"]._is_active is False
 
-        # Click provider management
-        sidebar._buttons["provider_management"].click()
-        assert sidebar.active_page() == "provider_management"
-        assert "provider_management" in emitted_pages
+        # Click settings
+        sidebar._buttons["settings"].click()
+        assert sidebar.active_page() == "settings"
+        assert "settings" in emitted_pages
 
     def test_legacy_emoji_mapping_compatibility(self):
         """Passing legacy emoji string gracefully maps to the correct outline SVG pixmap."""

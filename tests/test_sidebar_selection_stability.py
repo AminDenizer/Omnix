@@ -34,14 +34,12 @@ class TestSidebarSelectionStability:
         "assembly_view",
         "component_inventory",
         "bom_audit",
-        "reference_data",
-        "general_settings",
-        "provider_management",
-        "backup_restore",
+        "vendor_plugins",
+        "settings",
     ]
 
     def test_pairwise_navigation_matrix(self, main_window, qapp):
-        """All 49 pairwise transitions between sidebar pages must leave the correct button active."""
+        """All pairwise transitions between sidebar pages must leave the correct button active."""
         win = main_window
 
         for src in self.DESTINATIONS:
@@ -81,8 +79,8 @@ class TestSidebarSelectionStability:
         assert win.sidebar.active_page() == "assembly_view"
         assert active_btn._is_active is True
         assert inactive_btn._is_active is False
-        assert "border-left: 3px solid #38bdf8" in active_btn.styleSheet()
-        assert "border-left: 3px solid transparent" in inactive_btn.styleSheet()
+        assert "border-left: 2px solid #38bdf8" in active_btn.styleSheet()
+        assert "border-left: 2px solid transparent" in inactive_btn.styleSheet()
 
         # Simulate mouse leave
         leave_ev = QEvent(QEvent.Type.Leave)
@@ -96,22 +94,22 @@ class TestSidebarSelectionStability:
     def test_focus_does_not_paint_active_border_on_inactive_button(self, main_window, qapp):
         """Keyboard focus on an inactive button must not display the active cyan left border."""
         win = main_window
-        win.sidebar.set_active_page("general_settings")
+        win.sidebar.set_active_page("settings")
         qapp.processEvents()
 
-        inactive_btn = win.sidebar._buttons["reference_data"]
+        inactive_btn = win.sidebar._buttons["assembly_view"]
         inactive_btn.setFocus()
         qapp.processEvents()
 
-        # Inactive button's stylesheet must not contain focus border-left: #38bdf8
+        # Inactive button's stylesheet must not contain active border-left: 2px solid #38bdf8
         sheet = inactive_btn.styleSheet()
-        assert "QPushButton:focus {\n                outline: none;\n                border-left: 3px solid #38bdf8;" not in sheet
-        assert "border-left: 3px solid transparent" in sheet
+        assert "border-left: 2px solid #38bdf8" not in sheet
+        assert "border-left: 2px solid transparent" in sheet
 
     def test_collapse_and_expand_preserves_selection(self, main_window, qapp):
         """Toggling between collapsed and expanded rail must preserve active selection and tooltips."""
         win = main_window
-        for page_id in ["component_inventory", "backup_restore", "assembly_view"]:
+        for page_id in ["component_inventory", "vendor_plugins", "assembly_view"]:
             win.sidebar._on_button_clicked(page_id)
             qapp.processEvents()
 

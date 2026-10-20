@@ -3,16 +3,31 @@ Omnix UI - Multi-Vendor Settings Dialog
 Governing GAP: GAP-11.
 """
 
+import os
+import platform
+import sqlite3
 from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QFrame, QTabWidget, QWidget,
     QSpinBox, QMessageBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QT_VERSION_STR
+from PyQt6.QtGui import QPixmap
 from settings_manager import settings
 from core.models import VendorSettings
 from core.procurement.registry import VendorRegistry, default_registry
+from config import (
+    APP_NAME,
+    APP_VERSION,
+    APP_SUBTITLE,
+    DEVELOPER_NAME,
+    DEVELOPER_ORG,
+    DEVELOPER_EMAIL,
+    REPOSITORY_URL,
+    LICENSE_TYPE,
+    get_bundle_dir,
+)
 
 
 from ui.dark_frame import apply_dark_window_frame
@@ -102,9 +117,12 @@ class SettingsDialog(QDialog):
                 db_path = resolve_database_path()
                 repo = SqliteInventoryRepository(db_path)
                 self.ref_widget = ReferenceDataWidget(repository=repo, parent=self)
-                self.tabs.addTab(self.ref_widget, "🗂️ Reference Data")
+                self.tabs.addTab(self.ref_widget, "Reference Data")
             except Exception:
                 pass
+
+        # About Tab
+        self.tabs.addTab(self._create_about_tab(), "About")
 
         layout.addWidget(self.tabs)
 
@@ -341,6 +359,95 @@ class SettingsDialog(QDialog):
         v_layout.addWidget(card)
         v_layout.addStretch()
 
+        return widget
+
+    def _create_about_tab(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
+
+        # Header with Logo, Name, Version
+        hdr = QHBoxLayout()
+        hdr.setSpacing(14)
+        hdr.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        logo_lbl = QLabel()
+        logo_path = os.path.join(get_bundle_dir(), "ui", "icons", "app_logo.png")
+        if os.path.exists(logo_path):
+            logo_pix = QPixmap(logo_path).scaled(54, 54, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            logo_lbl.setPixmap(logo_pix)
+            logo_lbl.setFixedSize(54, 54)
+        hdr.addWidget(logo_lbl)
+
+        title_vbox = QVBoxLayout()
+        title_vbox.setSpacing(2)
+
+        name_ver_box = QHBoxLayout()
+        name_ver_box.setSpacing(8)
+
+        app_name_lbl = QLabel(APP_NAME)
+        app_name_lbl.setStyleSheet("font-size: 18px; font-weight: 800; color: #f8fafc; letter-spacing: 0.5px;")
+        name_ver_box.addWidget(app_name_lbl)
+
+        ver_badge = QLabel(f"v{APP_VERSION}")
+        ver_badge.setStyleSheet("""
+            background-color: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        name_ver_box.addWidget(ver_badge)
+        name_ver_box.addStretch()
+        title_vbox.addLayout(name_ver_box)
+
+        sub_lbl = QLabel(APP_SUBTITLE)
+        sub_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        title_vbox.addWidget(sub_lbl)
+
+        hdr.addLayout(title_vbox)
+        layout.addLayout(hdr)
+
+        # Info Card
+        card = QFrame()
+        card.setObjectName("cardFrame")
+        card.setStyleSheet("""
+            QFrame#cardFrame {
+                background-color: #0b101b;
+                border: 1px solid #1e293b;
+                border-radius: 6px;
+                padding: 14px;
+            }
+        """)
+        c_layout = QVBoxLayout(card)
+        c_layout.setSpacing(8)
+
+        def add_meta_row(label_text: str, val_text: str, is_link: bool = False):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet("color: #64748b; font-size: 11px; font-weight: 600; min-width: 120px;")
+            val = QLabel(val_text)
+            if is_link:
+                val.setOpenExternalLinks(True)
+                val.setStyleSheet("color: #38bdf8; font-size: 11px;")
+            else:
+                val.setStyleSheet("color: #e2e8f0; font-size: 11px;")
+            row.addWidget(lbl)
+            row.addWidget(val, 1)
+            c_layout.addLayout(row)
+
+        add_meta_row("Developer:", f"{DEVELOPER_NAME} ({DEVELOPER_ORG})")
+        add_meta_row("Contact:", DEVELOPER_EMAIL)
+        add_meta_row("Repository:", f'<a href="{REPOSITORY_URL}" style="color: #38bdf8; text-decoration: none;">{REPOSITORY_URL}</a>', is_link=True)
+        add_meta_row("License:", LICENSE_TYPE)
+        add_meta_row("Execution Mode:", "Mode A (BOM & Inventory Reconciliation)")
+        add_meta_row("Runtime:", f"Python {platform.python_version()} | PyQt6 / Qt {QT_VERSION_STR} | SQLite {sqlite3.sqlite_version}")
+        add_meta_row("Platform:", f"{platform.system()} {platform.release()} ({platform.machine()})")
+
+        layout.addWidget(card)
+        layout.addStretch()
         return widget
 
     def _save_and_close(self):

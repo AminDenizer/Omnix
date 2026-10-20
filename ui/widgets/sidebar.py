@@ -67,6 +67,15 @@ SIDEBAR_ICON_SVGS: Dict[str, str] = {
   <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/>
   <path d="M7 3v4a1 1 0 0 0 1 1h7"/>
 </svg>""",
+    "vendor_plugins": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+  <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+  <line x1="12" y1="22.08" x2="12" y2="12"/>
+</svg>""",
+    "settings": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+  <circle cx="12" cy="12" r="3"/>
+</svg>""",
 }
 
 # Compatibility mapping for legacy emoji strings
@@ -167,19 +176,19 @@ class SidebarNavButton(QPushButton):
 
     def _apply_style(self):
         if self._is_active:
-            bg_color = "rgba(56, 189, 248, 0.14)"
-            text_color = "#38bdf8"
-            border_left = "3px solid #38bdf8"
-            hover_bg = "rgba(56, 189, 248, 0.22)"
-            hover_text = "#38bdf8"
-            font_weight = "bold"
+            bg_color = "#1e293b"
+            text_color = "#f8fafc"
+            border_left = "2px solid #38bdf8"
+            hover_bg = "#273549"
+            hover_text = "#ffffff"
+            font_weight = "600"
         else:
             bg_color = "transparent"
             text_color = "#94a3b8"
-            border_left = "3px solid transparent"
-            hover_bg = "rgba(255, 255, 255, 0.08)"
-            hover_text = "#f1f5f9"
-            font_weight = "600"
+            border_left = "2px solid transparent"
+            hover_bg = "rgba(255, 255, 255, 0.05)"
+            hover_text = "#e2e8f0"
+            font_weight = "500"
 
         align = "center" if self._is_collapsed else "left"
         padding_left = "0px" if self._is_collapsed else "10px"
@@ -196,11 +205,15 @@ class SidebarNavButton(QPushButton):
                 text-align: {align};
                 font-size: 11px;
                 font-weight: {font_weight};
-                font-family: 'Segoe UI', sans-serif;
+                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
                 color: {hover_text};
+            }}
+            QPushButton:pressed {{
+                background-color: #334155;
+                color: #ffffff;
             }}
             QPushButton:focus {{
                 outline: none;
@@ -208,10 +221,27 @@ class SidebarNavButton(QPushButton):
         """)
 
 
+class _ButtonsDict(dict):
+    """Dictionary supporting transparent alias lookups for legacy page IDs."""
+    def __init__(self, alias_map: Dict[str, str], *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._alias_map = alias_map
+
+    def __getitem__(self, key: str):
+        if key not in self and key in self._alias_map:
+            return super().__getitem__(self._alias_map[key])
+        return super().__getitem__(key)
+
+    def get(self, key: str, default=None):
+        if key not in self and key in self._alias_map:
+            return super().get(self._alias_map[key], default)
+        return super().get(key, default)
+
+
 class CollapsibleSidebar(QFrame):
     """
     Collapsible side navigation rail for Omnix desktop application.
-    Hosts all primary Mode A views and system utilities with standardized outline icons.
+    Hosts Workspace, Tools, and Settings destinations with minimal outline icons.
     """
 
     pageChanged = pyqtSignal(str)
@@ -220,22 +250,44 @@ class CollapsibleSidebar(QFrame):
     EXPANDED_WIDTH = 210
     COLLAPSED_WIDTH = 50
 
+    SECTIONS = [
+        ("WORKSPACE", [
+            ("assembly_view", "Assembly & Stock", "assembly_view"),
+            ("component_inventory", "Component Inventory", "component_inventory"),
+            ("bom_audit", "BOM Audit", "bom_audit"),
+        ]),
+        ("TOOLS", [
+            ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
+        ]),
+        ("SETTINGS", [
+            ("settings", "Settings", "settings"),
+        ]),
+    ]
+
     PAGES = [
         ("assembly_view", "Assembly & Stock", "assembly_view"),
         ("component_inventory", "Component Inventory", "component_inventory"),
         ("bom_audit", "BOM Audit", "bom_audit"),
-        ("reference_data", "Reference Data", "reference_data"),
-        ("general_settings", "General Settings", "general_settings"),
-        ("provider_management", "Vendor & Link Providers", "provider_management"),
-        ("backup_restore", "Database Backup & Restore", "backup_restore"),
+        ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
+        ("settings", "Settings", "settings"),
     ]
+
+    PAGE_ALIAS_MAP: Dict[str, str] = {
+        "general_settings": "settings",
+        "reference_data": "settings",
+        "provider_management": "settings",
+        "supplier_directory": "settings",
+        "backup_restore": "settings",
+        "about": "settings",
+    }
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("collapsibleSidebar")
         self._is_collapsed = False
         self._active_page_id = "assembly_view"
-        self._buttons: Dict[str, SidebarNavButton] = {}
+        self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP)
+        self._section_headers = []
 
         self.setFixedWidth(self.EXPANDED_WIDTH)
         self.setStyleSheet("""
@@ -251,13 +303,31 @@ class CollapsibleSidebar(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 10, 6, 10)
         layout.setSpacing(4)
+        self._section_headers.clear()
 
-        # Navigation Buttons
-        for page_id, label, icon_str in self.PAGES:
-            btn = SidebarNavButton(page_id, label, icon_str, self)
-            btn.clicked.connect(lambda checked=False, pid=page_id: self._on_button_clicked(pid))
-            layout.addWidget(btn)
-            self._buttons[page_id] = btn
+        for sec_idx, (sec_title, items) in enumerate(self.SECTIONS):
+            if sec_title:
+                hdr = QLabel(sec_title)
+                hdr.setStyleSheet("""
+                    font-size: 9px;
+                    font-weight: 800;
+                    color: #475569;
+                    letter-spacing: 1px;
+                    padding-left: 10px;
+                    margin-top: 6px;
+                    margin-bottom: 2px;
+                """)
+                layout.addWidget(hdr)
+                self._section_headers.append(hdr)
+
+            for page_id, label, icon_str in items:
+                btn = SidebarNavButton(page_id, label, icon_str, self)
+                btn.clicked.connect(lambda checked=False, pid=page_id: self._on_button_clicked(pid))
+                layout.addWidget(btn)
+                self._buttons[page_id] = btn
+
+            if sec_idx < len(self.SECTIONS) - 1:
+                layout.addSpacing(6)
 
         # Set default active
         if "assembly_view" in self._buttons:
@@ -270,9 +340,10 @@ class CollapsibleSidebar(QFrame):
         self.pageChanged.emit(page_id)
 
     def set_active_page(self, page_id: str):
-        self._active_page_id = page_id
+        canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
+        self._active_page_id = canonical_id
         for pid, btn in self._buttons.items():
-            btn.set_active(pid == page_id)
+            btn.set_active(pid == canonical_id)
 
     def active_page(self) -> str:
         return self._active_page_id
@@ -289,6 +360,9 @@ class CollapsibleSidebar(QFrame):
         self._is_collapsed = collapsed
         new_width = self.COLLAPSED_WIDTH if collapsed else self.EXPANDED_WIDTH
         self.setFixedWidth(new_width)
+
+        for hdr in self._section_headers:
+            hdr.setVisible(not collapsed)
 
         for btn in self._buttons.values():
             btn.set_collapsed(collapsed)

@@ -7,11 +7,14 @@ import os
 
 # Application Branding & Metadata
 APP_NAME = "Omnix"
-APP_SUBTITLE = "Electronic Components Database"
+APP_SUBTITLE = "Electronic Components Database & Altium BOM Auditor"
 APP_VERSION = "1.0.0"
-DEVELOPER_NAME = "AminDenizer"
+DEVELOPER_NAME = "Amin Denizer"
 DEVELOPER_ORG = "DOT"
-DEVELOPER_CREDIT_HTML = "Developed by <font color='#38bdf8'><b>AminDenizer</b></font> from <font color='#34d399'><b>DOT</b></font>"
+DEVELOPER_EMAIL = "a.m.denizer@gmail.com"
+REPOSITORY_URL = "https://github.com/AminDenizer/Omnix"
+LICENSE_TYPE = "MIT License"
+DEVELOPER_CREDIT_HTML = "Developed by <font color='#38bdf8'><b>Amin Denizer</b></font> from <font color='#34d399'><b>DOT</b></font>"
 
 # Path Helpers
 def get_app_dir() -> str:

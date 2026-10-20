@@ -67,7 +67,12 @@ class WindowTitleBar(QFrame):
         self.title_lbl.setFont(QFont("Segoe UI", 9))
         layout.addWidget(self.title_lbl)
 
-        # 2. Transparent borderless hamburger control: [OMNIX wordmark] [Hamburger / Navigation Toggle]
+        # Subtle separator '|'
+        self.sep = QLabel("<span style='color: #475569; font-size: 11px;'>|</span>")
+        self.sep.setObjectName("titleBarSeparator")
+        layout.addWidget(self.sep)
+
+        # 2. Transparent borderless hamburger control: [OMNIX wordmark] | [Hamburger / Navigation Toggle]
         hamburger_style = """
             QPushButton#hamburgerBtn {
                 background-color: transparent;
@@ -102,12 +107,6 @@ class WindowTitleBar(QFrame):
         self.hamburger_btn.setStyleSheet(hamburger_style)
         self.hamburger_btn.clicked.connect(self.sidebarToggleRequested.emit)
         layout.addWidget(self.hamburger_btn)
-
-        # Hidden separator preserved for backward compatibility
-        self.sep = QLabel("", self)
-        self.sep.setObjectName("titleBarSeparator")
-        self.sep.setVisible(False)
-        layout.addWidget(self.sep)
 
         # Retain hidden settings_btn and menu for test/backward compatibility
         self.settings_btn = QPushButton("Settings", self)
@@ -159,7 +158,7 @@ class WindowTitleBar(QFrame):
         self.action_reference_data.triggered.connect(self.referenceDataRequested.emit)
         self.settings_menu.addAction(self.action_reference_data)
 
-        self.action_providers = QAction("Vendor & Link Providers", self)
+        self.action_providers = QAction("Supplier Directory", self)
         self.action_providers.setObjectName("actionProviders")
         self.action_providers.triggered.connect(self.providersRequested.emit)
         self.settings_menu.addAction(self.action_providers)
