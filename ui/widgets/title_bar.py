@@ -56,9 +56,9 @@ class WindowTitleBar(QFrame):
     def _init_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
-        # 1. Branding: OMNIX
+        # 1. Branding: OMNIX Wordmark
         self.title_lbl = QLabel(
             "<span style='font-weight: 800; font-size: 11px; color: #f1f5f9; letter-spacing: 0.8px;'>OMNIX</span>"
         )
@@ -67,20 +67,15 @@ class WindowTitleBar(QFrame):
         self.title_lbl.setFont(QFont("Segoe UI", 9))
         layout.addWidget(self.title_lbl)
 
-        # Subtle vertical separator between brand and Settings
-        self.sep = QLabel("<span style='color: #475569; font-size: 11px;'>|</span>")
-        self.sep.setTextFormat(Qt.TextFormat.RichText)
-        layout.addWidget(self.sep)
-
-        # 2. Transparent borderless hamburger control: OMNIX | ☰
+        # 2. Transparent borderless hamburger control: [OMNIX wordmark] [Hamburger / Navigation Toggle]
         hamburger_style = """
             QPushButton#hamburgerBtn {
                 background-color: transparent;
                 color: #94a3b8;
-                border: none;
-                font-size: 15px;
+                border: 1px solid transparent;
+                font-size: 14px;
                 font-weight: bold;
-                padding: 1px 7px;
+                padding: 1px 6px;
                 border-radius: 4px;
                 min-width: 24px;
                 min-height: 24px;
@@ -88,13 +83,16 @@ class WindowTitleBar(QFrame):
             QPushButton#hamburgerBtn:hover {
                 background-color: rgba(255, 255, 255, 0.08);
                 color: #38bdf8;
+                border: 1px solid transparent;
             }
             QPushButton#hamburgerBtn:pressed {
                 background-color: rgba(255, 255, 255, 0.15);
                 color: #ffffff;
+                border: 1px solid transparent;
             }
             QPushButton#hamburgerBtn:focus {
                 outline: none;
+                border: 1px solid rgba(56, 189, 248, 0.6);
             }
         """
 
@@ -105,6 +103,12 @@ class WindowTitleBar(QFrame):
         self.hamburger_btn.setStyleSheet(hamburger_style)
         self.hamburger_btn.clicked.connect(self.sidebarToggleRequested.emit)
         layout.addWidget(self.hamburger_btn)
+
+        # Hidden separator preserved for backward compatibility
+        self.sep = QLabel("", self)
+        self.sep.setObjectName("titleBarSeparator")
+        self.sep.setVisible(False)
+        layout.addWidget(self.sep)
 
         # Retain hidden settings_btn and menu for test/backward compatibility
         self.settings_btn = QPushButton("Settings", self)
