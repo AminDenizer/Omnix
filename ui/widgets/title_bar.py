@@ -72,10 +72,10 @@ class WindowTitleBar(QFrame):
             QPushButton#hamburgerBtn {
                 background-color: transparent;
                 color: #94a3b8;
-                border: 1px solid transparent;
-                font-size: 14px;
+                border: none;
+                font-size: 15px;
                 font-weight: bold;
-                padding: 1px 6px;
+                padding: 1px 7px;
                 border-radius: 4px;
                 min-width: 24px;
                 min-height: 24px;
@@ -83,16 +83,14 @@ class WindowTitleBar(QFrame):
             QPushButton#hamburgerBtn:hover {
                 background-color: rgba(255, 255, 255, 0.08);
                 color: #38bdf8;
-                border: 1px solid transparent;
             }
             QPushButton#hamburgerBtn:pressed {
                 background-color: rgba(255, 255, 255, 0.15);
                 color: #ffffff;
-                border: 1px solid transparent;
             }
             QPushButton#hamburgerBtn:focus {
                 outline: none;
-                border: 1px solid rgba(56, 189, 248, 0.6);
+                color: #38bdf8;
             }
         """
 
@@ -100,6 +98,7 @@ class WindowTitleBar(QFrame):
         self.hamburger_btn.setObjectName("hamburgerBtn")
         self.hamburger_btn.setToolTip("Toggle Navigation Sidebar (Ctrl+B)")
         self.hamburger_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.hamburger_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.hamburger_btn.setStyleSheet(hamburger_style)
         self.hamburger_btn.clicked.connect(self.sidebarToggleRequested.emit)
         layout.addWidget(self.hamburger_btn)

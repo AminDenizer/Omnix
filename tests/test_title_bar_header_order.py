@@ -50,15 +50,19 @@ class TestTitleBarBrandingOrder:
         assert not hasattr(tb, "icon_lbl")
         assert not hasattr(tb, "logo_lbl")
 
-    def test_hamburger_resting_hover_and_focus_styles(self, main_window):
-        """Hamburger button must have transparent resting border and accessible focus state."""
+    def test_hamburger_resting_hover_and_focus_styles(self, main_window, qapp):
+        """Hamburger button must have clean frameless resting appearance, TabFocus policy, and accessible focus."""
         tb = main_window.title_bar
         btn = tb.hamburger_btn
         style = btn.styleSheet()
 
-        # Resting state: transparent background and transparent/none border
+        # Resting state: transparent background with no visible border/frame
         assert "background-color: transparent" in style
-        assert "border: 1px solid transparent" in style or "border: none" in style
+        assert "border: none" in style
+        assert "border: 1px solid" not in style
+
+        # Focus policy is TabFocus so mouse clicking does not trap keyboard focus
+        assert btn.focusPolicy() == Qt.FocusPolicy.TabFocus
 
         # Subtle hover state
         assert "QPushButton#hamburgerBtn:hover" in style
@@ -67,9 +71,15 @@ class TestTitleBarBrandingOrder:
         # Pressed state
         assert "QPushButton#hamburgerBtn:pressed" in style
 
-        # Accessible keyboard-focus state
+        # Accessible keyboard-focus state: tints icon without rectangular border
         assert "QPushButton#hamburgerBtn:focus" in style
-        assert "border: 1px solid rgba(56, 189, 248" in style or "outline:" in style
+        assert "outline: none" in style
+        assert "color: #38bdf8" in style
+
+        # Mouse click does not leave a persistent focus border
+        btn.click()
+        qapp.processEvents()
+        assert "border: 1px solid" not in btn.styleSheet()
 
     def test_hamburger_toggles_sidebar(self, main_window, qapp):
         """Clicking the hamburger button must toggle the navigation sidebar between expanded and collapsed."""
