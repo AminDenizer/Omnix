@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from core.inventory.repository import SqliteInventoryRepository
 from core.inventory.backup import DatabaseBackupService
+from core.inventory.exporter import InventoryExcelExporter
 
 
 class DatabaseBackupRestoreWidget(QWidget):
@@ -70,13 +71,13 @@ class DatabaseBackupRestoreWidget(QWidget):
         main_layout.setSpacing(14)
 
         # Header Title
-        title_lbl = QLabel("Database Backup & Restore")
+        title_lbl = QLabel("Export & Database Backup")
         title_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: #38bdf8;")
         main_layout.addWidget(title_lbl)
 
         sub_lbl = QLabel(
-            "Manage consistent, atomic backups of the authoritative SQLite inventory store. "
-            "Backups include components, stock policies, supplier links, and reference data."
+            "Export inventory to Excel, or manage consistent, atomic backups of the authoritative SQLite store. "
+            "Data includes components, stock policies, supplier links, and reference data."
         )
         sub_lbl.setWordWrap(True)
         sub_lbl.setStyleSheet("color: #94a3b8; font-size: 11px;")
@@ -110,11 +111,63 @@ class DatabaseBackupRestoreWidget(QWidget):
 
         main_layout.addWidget(self.status_card)
 
-        # 2. Operations Grid (Export Card and Restore Card)
+        # 2. Operations Grid (Excel Export, DB Backup, and DB Restore Cards)
         ops_layout = QHBoxLayout()
         ops_layout.setSpacing(14)
 
-        # Export Card
+        # Card 1: Excel Export Card
+        excel_card = QFrame()
+        excel_card.setStyleSheet("""
+            QFrame {
+                background-color: #0b101b;
+                border: 1px solid #1e293b;
+                border-radius: 6px;
+                padding: 14px;
+            }
+        """)
+        excel_layout = QVBoxLayout(excel_card)
+        excel_layout.setSpacing(10)
+
+        excel_title = QLabel("📊 Export to Excel")
+        excel_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #10b981;")
+        excel_layout.addWidget(excel_title)
+
+        excel_desc = QLabel(
+            "Export the authoritative SQLite inventory and assembly groups to a customer-facing Excel workbook (.xlsx).\n\n"
+            "• Generates exactly two worksheets: 'Inventory' & 'Assembly View'\n"
+            "• Preserves MPN leading zeroes, groupings, and stock policies\n"
+            "• Safe, read-only snapshot without altering database state"
+        )
+        excel_desc.setWordWrap(True)
+        excel_desc.setStyleSheet("color: #94a3b8; font-size: 11px; line-height: 1.4;")
+        excel_layout.addWidget(excel_desc)
+
+        excel_layout.addStretch()
+
+        self.export_excel_btn = QPushButton("Export to Excel...")
+        self.export_excel_btn.setObjectName("exportToExcelBtn")
+        self.export_excel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.export_excel_btn.setFixedHeight(34)
+        self.export_excel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #059669;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 11px;
+                border-radius: 4px;
+                padding: 6px 14px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #047857;
+            }
+        """)
+        self.export_excel_btn.clicked.connect(self._handle_export_excel)
+        excel_layout.addWidget(self.export_excel_btn)
+
+        ops_layout.addWidget(excel_card, 1)
+
+        # Card 2: Export Database Backup Card
         export_card = QFrame()
         export_card.setStyleSheet("""
             QFrame {
@@ -230,6 +283,8 @@ class DatabaseBackupRestoreWidget(QWidget):
             self.db_stats_lbl.setText("Please open or initialize a database.")
             self.export_btn.setEnabled(False)
             self.restore_btn.setEnabled(False)
+            if hasattr(self, "export_excel_btn"):
+                self.export_excel_btn.setEnabled(False)
             return
 
         db_path = self.repository.file_path or "Unknown"
@@ -242,15 +297,53 @@ class DatabaseBackupRestoreWidget(QWidget):
             size_kb = os.path.getsize(db_path) / 1024.0 if os.path.exists(db_path) else 0
 
             self.db_stats_lbl.setText(
-                f"● {prod_cnt} Components &nbsp;|&nbsp; "
-                f"● {grp_cnt} Stock Policy Groups &nbsp;|&nbsp; "
-                f"● {prov_cnt} Providers &nbsp;|&nbsp; "
+                f"● {prod_cnt} Components  |  "
+                f"● {grp_cnt} Stock Policy Groups  |  "
+                f"● {prov_cnt} Providers  |  "
                 f"Size: {size_kb:.1f} KB"
             )
             self.export_btn.setEnabled(True)
             self.restore_btn.setEnabled(True)
+            if hasattr(self, "export_excel_btn"):
+                self.export_excel_btn.setEnabled(True)
         except Exception as e:
             self.db_stats_lbl.setText(f"Status check error: {e}")
+
+    def _handle_export_excel(self):
+        """Export live inventory and assembly groups to a customer-facing Excel workbook (.xlsx)."""
+        if not self.repository or not isinstance(self.repository, SqliteInventoryRepository):
+            QMessageBox.information(
+                self,
+                "SQLite Database Required",
+                "Excel export is only supported when operating with an active SQLite inventory database."
+            )
+            return
+
+        suggested_path = os.path.join(os.getcwd(), "Inventory_Export.xlsx")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Inventory & Assembly View to Excel",
+            suggested_path,
+            "Excel Workbook (*.xlsx);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            exported_path = InventoryExcelExporter.export(self.repository, file_path)
+            comp_count = len(self.repository.get_all_products())
+            grp_count = len(self.repository.get_all_groups())
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Successfully exported {comp_count} individual components and "
+                f"{grp_count} assembly groups with exactly 2 worksheets:\n"
+                f"1. 'Inventory'\n"
+                f"2. 'Assembly View'\n\n"
+                f"Saved to: {exported_path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Failed to export workbook:\n{e}")
 
     def _handle_export_backup(self):
         if not self.repository or not self.repository.is_loaded:

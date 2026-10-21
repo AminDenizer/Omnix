@@ -49,13 +49,23 @@ SIDEBAR_ICON_SVGS: Dict[str, str] = {
   <line x1="16" y1="17" x2="8" y2="17"/>
   <line x1="10" y1="9" x2="8" y2="9"/>
 </svg>""",
+    "assembly_prep": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+</svg>""",
     "reference_data": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
   <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
 </svg>""",
     "general_settings": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-  <circle cx="12" cy="12" r="3"/>
+  <line x1="4" y1="21" x2="4" y2="14"/>
+  <line x1="4" y1="10" x2="4" y2="3"/>
+  <line x1="12" y1="21" x2="12" y2="12"/>
+  <line x1="12" y1="8" x2="12" y2="3"/>
+  <line x1="20" y1="21" x2="20" y2="16"/>
+  <line x1="20" y1="12" x2="20" y2="3"/>
+  <line x1="1" y1="14" x2="7" y2="14"/>
+  <line x1="9" y1="8" x2="15" y2="8"/>
+  <line x1="17" y1="16" x2="23" y2="16"/>
 </svg>""",
     "provider_management": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="12" cy="12" r="10"/>
@@ -80,6 +90,12 @@ SIDEBAR_ICON_SVGS: Dict[str, str] = {
   <circle cx="12" cy="12" r="10"/>
   <line x1="12" y1="16" x2="12" y2="12"/>
   <line x1="12" y1="8" x2="12.01" y2="8"/>
+</svg>""",
+    "chevron_right": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="9 18 15 12 9 6"/>
+</svg>""",
+    "chevron_down": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="6 9 12 15 18 9"/>
 </svg>""",
 }
 
@@ -229,6 +245,26 @@ class SidebarNavButton(QPushButton):
         """)
 
 
+class ChevronLabel(QLabel):
+    """Custom label rendering an outline SVG chevron and preserving .text() compatibility."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background: transparent;")
+        self._direction = "right"
+
+    def set_direction(self, direction: str, is_active: bool = False):
+        self._direction = direction
+        icon_key = "chevron_down" if direction == "down" else "chevron_right"
+        color = "#38bdf8" if is_active else "#64748b"
+        self.setPixmap(render_outline_pixmap(icon_key, color, size=14))
+
+    def text(self) -> str:
+        return "▾" if self._direction == "down" else "▸"
+
+
 class SidebarParentButton(SidebarNavButton):
     """Parent navigation button that toggles child submenu visibility."""
 
@@ -236,18 +272,20 @@ class SidebarParentButton(SidebarNavButton):
         self._is_submenu_open = False
         super().__init__(page_id, label, icon_str, parent)
 
-        self._chevron = QLabel("▸", self)
-        self._chevron.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._chevron.setStyleSheet("color: #64748b; font-size: 11px; background: transparent;")
-        self._chevron.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._chevron = ChevronLabel(self)
+        self._chevron.set_direction("right", is_active=self._is_active)
         self._chevron.setVisible(not self._is_collapsed)
 
     def set_submenu_open(self, open_state: bool):
         self._is_submenu_open = open_state
-        self._chevron.setText("▾" if open_state else "▸")
+        self._chevron.set_direction("down" if open_state else "right", is_active=self._is_active)
 
     def is_submenu_open(self) -> bool:
         return self._is_submenu_open
+
+    def set_active(self, active: bool):
+        super().set_active(active)
+        self._chevron.set_direction("down" if self._is_submenu_open else "right", is_active=active)
 
     def set_collapsed(self, collapsed: bool):
         super().set_collapsed(collapsed)
@@ -257,7 +295,7 @@ class SidebarParentButton(SidebarNavButton):
         super().resizeEvent(event)
         w = self.width()
         h = self.height()
-        self._chevron.setGeometry(w - 24, 0, 16, h)
+        self._chevron.setGeometry(w - 24, (h - 14) // 2, 14, 14)
 
 
 class SidebarSubmenuButton(SidebarNavButton):
@@ -327,20 +365,40 @@ class SidebarSubmenuButton(SidebarNavButton):
 
 
 class _ButtonsDict(dict):
-    """Dictionary supporting transparent alias lookups for legacy page IDs."""
-    def __init__(self, alias_map: Dict[str, str], *args, **kwargs):
+    """Dictionary supporting transparent alias lookups for legacy page IDs and submenu children."""
+    def __init__(self, alias_map: Dict[str, str], sidebar: Optional['CollapsibleSidebar'] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._alias_map = alias_map
+        self._sidebar = sidebar
 
     def __getitem__(self, key: str):
-        if key not in self and key in self._alias_map:
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        if key in self._alias_map and super().__contains__(self._alias_map[key]):
             return super().__getitem__(self._alias_map[key])
+        if self._sidebar is not None and hasattr(self._sidebar, "_submenu_buttons") and key in self._sidebar._submenu_buttons:
+            return self._sidebar._submenu_buttons[key]
+        if key in self._alias_map and self._sidebar is not None and hasattr(self._sidebar, "_submenu_buttons") and self._alias_map[key] in self._sidebar._submenu_buttons:
+            return self._sidebar._submenu_buttons[self._alias_map[key]]
         return super().__getitem__(key)
 
+    def __contains__(self, key: object) -> bool:
+        if super().__contains__(key):
+            return True
+        if isinstance(key, str):
+            if key in self._alias_map and super().__contains__(self._alias_map[key]):
+                return True
+            if self._sidebar is not None and hasattr(self._sidebar, "_submenu_buttons") and key in self._sidebar._submenu_buttons:
+                return True
+            if key in self._alias_map and self._sidebar is not None and hasattr(self._sidebar, "_submenu_buttons") and self._alias_map[key] in self._sidebar._submenu_buttons:
+                return True
+        return False
+
     def get(self, key: str, default=None):
-        if key not in self and key in self._alias_map:
-            return super().get(self._alias_map[key], default)
-        return super().get(key, default)
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 class CollapsibleSidebar(QFrame):
@@ -360,6 +418,7 @@ class CollapsibleSidebar(QFrame):
             ("assembly_view", "Assembly & Stock", "assembly_view"),
             ("component_inventory", "Component Inventory", "component_inventory"),
             ("bom_audit", "BOM Audit", "bom_audit"),
+            ("assembly_prep", "Assembly & BOM Prep", "assembly_prep"),
         ]),
         ("TOOLS", [
             ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
@@ -373,7 +432,7 @@ class CollapsibleSidebar(QFrame):
         ("general_settings", "General", "general_settings"),
         ("reference_data", "Reference Data", "reference_data"),
         ("provider_management", "Supplier Directory", "provider_management"),
-        ("backup_restore", "Backup & Restore", "backup_restore"),
+        ("backup_restore", "Export & Backup", "backup_restore"),
         ("about", "About", "about"),
     ]
 
@@ -381,11 +440,14 @@ class CollapsibleSidebar(QFrame):
         ("assembly_view", "Assembly & Stock", "assembly_view"),
         ("component_inventory", "Component Inventory", "component_inventory"),
         ("bom_audit", "BOM Audit", "bom_audit"),
+        ("assembly_prep", "Assembly & BOM Prep", "assembly_prep"),
         ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
         ("settings", "Settings", "settings"),
     ]
 
     PAGE_ALIAS_MAP: Dict[str, str] = {
+        "assembly_preparation": "assembly_prep",
+        "export_backup": "backup_restore",
         "supplier_directory": "provider_management",
         "settings_general": "general_settings",
         "settings_reference_data": "reference_data",
@@ -400,7 +462,7 @@ class CollapsibleSidebar(QFrame):
         self.setObjectName("collapsibleSidebar")
         self._is_collapsed = False
         self._active_page_id = "assembly_view"
-        self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP)
+        self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP, sidebar=self)
         self._section_headers = []
         self._submenu_buttons: Dict[str, SidebarSubmenuButton] = {}
 
@@ -448,7 +510,6 @@ class CollapsibleSidebar(QFrame):
                         c_btn = SidebarSubmenuButton(child_id, child_label, child_icon, self)
                         c_btn.clicked.connect(lambda checked=False, pid=child_id: self._on_button_clicked(pid))
                         layout.addWidget(c_btn)
-                        self._buttons[child_id] = c_btn
                         self._submenu_buttons[child_id] = c_btn
                         c_btn.setVisible(False)
                 else:
@@ -467,14 +528,20 @@ class CollapsibleSidebar(QFrame):
         layout.addStretch(1)
 
     def _on_button_clicked(self, page_id: str):
+        if page_id == "settings":
+            self.set_submenu_expanded(True)
         self.set_active_page(page_id)
         self.pageChanged.emit(page_id)
 
     def _on_settings_parent_clicked(self):
         new_state = not self.settings_parent_btn.is_submenu_open()
         self.set_submenu_expanded(new_state)
-        self.set_active_page("settings", auto_expand=False)
-        self.pageChanged.emit("settings")
+        if new_state:
+            self.set_active_page("settings")
+            self.pageChanged.emit("settings")
+        else:
+            is_settings = self._active_page_id in self._submenu_buttons or self._active_page_id == "settings"
+            self.settings_parent_btn.set_active(is_settings)
 
     def set_submenu_expanded(self, expanded: bool):
         self.settings_parent_btn.set_submenu_open(expanded)
@@ -484,14 +551,25 @@ class CollapsibleSidebar(QFrame):
     def is_submenu_expanded(self) -> bool:
         return self.settings_parent_btn.is_submenu_open()
 
-    def set_active_page(self, page_id: str, auto_expand: bool = True):
+    def set_active_page(self, page_id: str):
         canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
-        if auto_expand and (canonical_id == "settings" or canonical_id in self._submenu_buttons):
-            self.set_submenu_expanded(True)
-
         self._active_page_id = canonical_id
+        is_settings_section = canonical_id in self._submenu_buttons or canonical_id == "settings"
+
+        # Parent Settings button active state (communicates section)
+        self.settings_parent_btn.set_active(is_settings_section)
+
+        # Submenu children active state (communicates destination)
+        for child_id, btn in self._submenu_buttons.items():
+            if canonical_id == "settings":
+                btn.set_active(child_id == "general_settings")
+            else:
+                btn.set_active(child_id == canonical_id)
+
+        # Primary section buttons (Workspace, Tools)
         for pid, btn in self._buttons.items():
-            btn.set_active(pid == canonical_id)
+            if pid != "settings" and pid not in self._submenu_buttons:
+                btn.set_active(pid == canonical_id)
 
     def active_page(self) -> str:
         return self._active_page_id
@@ -513,6 +591,9 @@ class CollapsibleSidebar(QFrame):
             hdr.setVisible(not collapsed)
 
         for btn in self._buttons.values():
+            btn.set_collapsed(collapsed)
+
+        for btn in self._submenu_buttons.values():
             btn.set_collapsed(collapsed)
 
         self.collapseChanged.emit(collapsed)

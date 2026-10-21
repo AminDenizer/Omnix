@@ -13,6 +13,7 @@ Verifies:
 9. Full navigation routing between Workspace, Tools, and Settings.
 """
 
+import os
 import pytest
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QApplication, QLabel
@@ -93,12 +94,13 @@ class TestSidebarHierarchyAndIcons:
     """Verifies 3-section sidebar hierarchy, primary navigation keys, outline icons, and styling."""
 
     def test_primary_destinations_and_sections(self, main_window):
-        """Sidebar contains Workspace, Tools, and Settings sections and exactly 5 primary buttons."""
+        """Sidebar contains Workspace, Tools, and Settings sections and exactly 6 primary buttons."""
         sb = main_window.sidebar
         expected_keys = [
             "assembly_view",
             "component_inventory",
             "bom_audit",
+            "assembly_prep",
             "vendor_plugins",
             "settings",
         ]
@@ -115,7 +117,7 @@ class TestSidebarHierarchyAndIcons:
 
     def test_all_sidebar_icons_are_clean_outlines(self):
         """All primary outline SVGs must use stroke-width 1.8, fill=none, and viewBox 0 0 24 24."""
-        for key in ["assembly_view", "component_inventory", "bom_audit", "vendor_plugins", "settings"]:
+        for key in ["assembly_view", "component_inventory", "bom_audit", "assembly_prep", "vendor_plugins", "settings", "general_settings"]:
             assert key in SIDEBAR_ICON_SVGS
             svg = SIDEBAR_ICON_SVGS[key]
             assert 'viewBox="0 0 24 24"' in svg
@@ -166,7 +168,7 @@ class TestSettingsSubsectionsAndAbout:
             ("general_settings", "General", "general_settings"),
             ("reference_data", "Reference Data", "reference_data"),
             ("provider_management", "Supplier Directory", "provider_management"),
-            ("backup_restore", "Backup & Restore", "backup_restore"),
+            ("backup_restore", "Export & Backup", "backup_restore"),
             ("about", "About", "about"),
         ]
         assert sb.SETTINGS_CHILDREN == expected_children
@@ -178,11 +180,12 @@ class TestSettingsSubsectionsAndAbout:
             assert label in btn.text()
             assert not btn.icon().isNull()
 
-        # Test expand / collapse behavior and chevron indicator
+        # Test expand / collapse behavior and vector outline chevron indicator
         sb.set_submenu_expanded(False)
         qapp.processEvents()
         assert sb.is_submenu_expanded() is False
         assert sb.settings_parent_btn._chevron.text() == "▸"
+        assert not sb.settings_parent_btn._chevron.pixmap().isNull()
         for btn in sb._submenu_buttons.values():
             assert btn.isVisible() is False
 
@@ -190,6 +193,7 @@ class TestSettingsSubsectionsAndAbout:
         qapp.processEvents()
         assert sb.is_submenu_expanded() is True
         assert sb.settings_parent_btn._chevron.text() == "▾"
+        assert not sb.settings_parent_btn._chevron.pixmap().isNull()
         for btn in sb._submenu_buttons.values():
             assert btn.isVisible() is True
             # Indented styling
@@ -270,6 +274,14 @@ class TestNavigationRouting:
         assert win.content_stack.currentWidget() == win.tabs
         assert win.tabs.currentIndex() == 1
 
+        # 4. Restored Third Workspace Tab: Assembly & BOM Preparation
+        win.sidebar._on_button_clicked("assembly_prep")
+        qapp.processEvents()
+        assert win.content_stack.currentWidget() == win.tabs
+        assert win.tabs.currentIndex() == 2
+        assert "Assembly" in win.tabs.tabText(2)
+        assert win.sidebar.active_page() == "assembly_prep"
+
     def test_tools_vendor_plugins_routing(self, main_window, qapp):
         """Vendor Plugins routes to vendor plugins page in content stack."""
         win = main_window
@@ -287,6 +299,8 @@ class TestNavigationRouting:
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.general_settings_page
         assert win.sidebar.active_page() == "settings"
+        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.sidebar._submenu_buttons["general_settings"]._is_active is True
         assert win.sidebar.is_submenu_expanded() is True
 
         # Child: reference_data
@@ -294,21 +308,60 @@ class TestNavigationRouting:
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.reference_data_page
         assert win.sidebar.active_page() == "reference_data"
+        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.sidebar._submenu_buttons["reference_data"]._is_active is True
+        assert win.sidebar._submenu_buttons["general_settings"]._is_active is False
 
         # Child: provider_management (Supplier Directory)
         win.sidebar._on_button_clicked("provider_management")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.providers_page
         assert win.sidebar.active_page() == "provider_management"
+        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.sidebar._submenu_buttons["provider_management"]._is_active is True
 
-        # Child: backup_restore
+        # Child: backup_restore (Export & Backup)
         win.sidebar._on_button_clicked("backup_restore")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.backup_restore_page
         assert win.sidebar.active_page() == "backup_restore"
+        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.sidebar._submenu_buttons["backup_restore"]._is_active is True
 
         # Child: about
         win.sidebar._on_button_clicked("about")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.about_page
         assert win.sidebar.active_page() == "about"
+        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.sidebar._submenu_buttons["about"]._is_active is True
+
+        # Navigating back to Workspace clears settings parent active state
+        win.sidebar._on_button_clicked("assembly_view")
+        qapp.processEvents()
+        assert win.sidebar.settings_parent_btn._is_active is False
+        assert win.sidebar._submenu_buttons["about"]._is_active is False
+
+
+class TestExcelExport:
+    """Verifies restored Excel export button, wiring, and deterministic output."""
+
+    def test_excel_export_action_and_path(self, main_window, tmp_path):
+        """Excel export action exists, is enabled, and produces the 2-sheet specification."""
+        import openpyxl
+        win = main_window
+
+        assert hasattr(win.backup_restore_widget, "export_excel_btn")
+        assert win.backup_restore_widget.export_excel_btn.text() == "Export to Excel..."
+        assert win.backup_restore_widget.export_excel_btn.isEnabled() is True
+        assert win.export_excel_btn == win.backup_restore_widget.export_excel_btn
+
+        # Test underlying exporter path directly to a temporary file
+        out_file = str(tmp_path / "test_inventory_export.xlsx")
+        from core.inventory.exporter import InventoryExcelExporter
+        result = InventoryExcelExporter.export(win.inventory_repo, out_file)
+
+        assert os.path.exists(result)
+        wb = openpyxl.load_workbook(result)
+        assert wb.sheetnames == ["Inventory", "Assembly View"]
+        wb.close()

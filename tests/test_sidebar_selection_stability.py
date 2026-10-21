@@ -34,6 +34,7 @@ class TestSidebarSelectionStability:
         "assembly_view",
         "component_inventory",
         "bom_audit",
+        "assembly_prep",
         "vendor_plugins",
         "settings",
     ]
@@ -143,3 +144,60 @@ class TestSidebarSelectionStability:
         qapp.processEvents()
         assert win.sidebar.active_page() == "assembly_view"
         assert win.sidebar._buttons["assembly_view"]._is_active is True
+
+    def test_settings_hierarchical_parent_and_child_selection(self, main_window, qapp):
+        """Settings parent remains visibly selected whenever any settings child is active."""
+        win = main_window
+        sb = win.sidebar
+
+        for child_id, label, _ in sb.SETTINGS_CHILDREN:
+            win._on_sidebar_page_changed(child_id)
+            qapp.processEvents()
+
+            # Parent Settings button must communicate active section
+            assert sb.settings_parent_btn._is_active is True, f"Parent Settings not active on {child_id}"
+            # Selected child must communicate active destination
+            assert sb._submenu_buttons[child_id]._is_active is True, f"Child {child_id} not active"
+
+            # All other children must be inactive
+            for other_id, other_btn in sb._submenu_buttons.items():
+                if other_id != child_id:
+                    assert other_btn._is_active is False, f"Child {other_id} must be inactive when {child_id} is active"
+
+            # Primary section buttons (Workspace/Tools) must be inactive
+            for pid, btn in sb._buttons.items():
+                if pid != "settings" and pid not in sb._submenu_buttons:
+                    assert btn._is_active is False, f"Primary button {pid} must be inactive when in Settings section"
+
+        # Transitioning back to Workspace clears Settings parent and child selection
+        win._on_sidebar_page_changed("assembly_view")
+        qapp.processEvents()
+        assert sb.settings_parent_btn._is_active is False
+        for btn in sb._submenu_buttons.values():
+            assert btn._is_active is False
+        assert sb._buttons["assembly_view"]._is_active is True
+
+    def test_settings_submenu_toggle_cycles(self, main_window, qapp):
+        """Clicking Settings repeatedly reliably opens and closes the submenu without desync."""
+        win = main_window
+        sb = win.sidebar
+
+        # Ensure collapsed initially
+        sb.set_submenu_expanded(False)
+        qapp.processEvents()
+        assert sb.is_submenu_expanded() is False
+
+        for cycle in range(3):
+            # Click 1: expands
+            sb.settings_parent_btn.click()
+            qapp.processEvents()
+            assert sb.is_submenu_expanded() is True, f"Failed expand on cycle {cycle}"
+            for btn in sb._submenu_buttons.values():
+                assert btn.isVisible() is True
+
+            # Click 2: collapses
+            sb.settings_parent_btn.click()
+            qapp.processEvents()
+            assert sb.is_submenu_expanded() is False, f"Failed collapse on cycle {cycle}"
+            for btn in sb._submenu_buttons.values():
+                assert btn.isVisible() is False

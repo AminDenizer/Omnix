@@ -604,8 +604,9 @@ class MainWindow(QMainWindow):
         self.about_page = self._build_about_page()
         self.content_stack.addWidget(self.about_page)
 
-        # For backwards compatibility with references expecting settings_page
+        # For backwards compatibility with references expecting settings_page or export_excel_btn
         self.settings_page = self.general_settings_page
+        self.export_excel_btn = self.backup_restore_widget.export_excel_btn
 
         # Body Layout: Collapsible Sidebar on left, Content Stack on right (Section 5)
         body_h_layout = QHBoxLayout()
@@ -909,6 +910,9 @@ class MainWindow(QMainWindow):
             elif page_id == "bom_audit":
                 self.tabs.setCurrentIndex(1)
                 self.content_stack.setCurrentWidget(self.tabs)
+            elif page_id in ("assembly_prep", "assembly_preparation"):
+                self.tabs.setCurrentIndex(2)
+                self.content_stack.setCurrentWidget(self.tabs)
             elif page_id == "vendor_plugins":
                 if hasattr(self, "vendor_plugins_widget"):
                     self.vendor_plugins_widget.refresh_plugins()
@@ -950,6 +954,8 @@ class MainWindow(QMainWindow):
                     self.sidebar.set_active_page("component_inventory")
             elif index == 1:
                 self.sidebar.set_active_page("bom_audit")
+            elif index == 2:
+                self.sidebar.set_active_page("assembly_prep")
 
     def _setup_statusbar(self):
         status_bar = QStatusBar()

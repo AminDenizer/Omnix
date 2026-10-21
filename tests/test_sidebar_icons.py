@@ -31,13 +31,21 @@ class TestSidebarIcons:
     """Verifies minimal outline sidebar icon consistency, layout, and behavior."""
 
     def test_all_pages_have_defined_outline_svgs(self):
-        """All 7 navigation pages must map to a standardized outline SVG with matching stroke."""
+        """All navigation pages must map to a standardized outline SVG with matching stroke."""
         expected_pages = [
             "assembly_view",
             "component_inventory",
             "bom_audit",
+            "assembly_prep",
             "vendor_plugins",
             "settings",
+            "general_settings",
+            "reference_data",
+            "provider_management",
+            "backup_restore",
+            "about",
+            "chevron_right",
+            "chevron_down",
         ]
         for page_id in expected_pages:
             assert page_id in SIDEBAR_ICON_SVGS, f"Missing SVG definition for {page_id}"
@@ -48,7 +56,7 @@ class TestSidebarIcons:
 
     def test_sidebar_buttons_have_valid_non_null_icons(self, sidebar):
         """Every button in the sidebar must have a valid non-null outline QIcon."""
-        assert len(sidebar.PAGES) == 5
+        assert len(sidebar.PAGES) == 6
         for page_id, label, icon_key in sidebar.PAGES:
             btn = sidebar._buttons[page_id]
             assert not btn.icon().isNull(), f"Icon for {page_id} is null"
