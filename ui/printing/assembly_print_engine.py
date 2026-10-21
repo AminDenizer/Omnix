@@ -37,19 +37,34 @@ class AssemblyPrintEngine:
         return stem or "UNTITLED_PROJECT"
 
     @classmethod
-    def get_default_pdf_filename(cls, project_name: str) -> str:
+    def get_default_pdf_filename(cls, project_name: str, page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5) -> str:
         """Returns the canonical default filename for Assembly PDF export."""
         safe_name = "".join(c for c in project_name if c.isalnum() or c in ("-", "_", ".")).strip()
         if not safe_name:
             safe_name = "Assembly_Project"
-        return f"{safe_name}_Assembly_Worksheet_A5.pdf"
+        suffix = "A4" if page_size_id == QPageSize.PageSizeId.A4 else "A5"
+        return f"{safe_name}_Assembly_Worksheet_{suffix}.pdf"
+
+    @classmethod
+    def recommend_paper_size(cls, bom_items: List[BOMItem]) -> QPageSize.PageSizeId:
+        """
+        Recommends A5 Landscape when readable, or falls back to A4 Landscape
+        when long designators or descriptions exceed A5 readability thresholds.
+        """
+        for item in bom_items:
+            desig_len = len(str(item.designator or ""))
+            desc_len = len(str(item.description or ""))
+            if desig_len > 180 or desc_len > 140:
+                return QPageSize.PageSizeId.A4
+        return QPageSize.PageSizeId.A5
 
     @classmethod
     def generate_html(
         cls,
         bom_items: List[BOMItem],
         project_name: str,
-        total_qty: Optional[int] = None
+        total_qty: Optional[int] = None,
+        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5
     ) -> str:
         """
         Generates canonical HTML representation of the Assembly Worksheet conforming to the 9-column contract:
@@ -59,6 +74,11 @@ class AssemblyPrintEngine:
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         total_items_count = len(bom_items)
         computed_total_qty = total_qty if total_qty is not None else sum(max(1, getattr(it, "total_needed_qty", getattr(it, "unit_qty", 1))) for it in bom_items)
+
+        is_a4 = (page_size_id == QPageSize.PageSizeId.A4)
+        css_page_size = "A4 landscape" if is_a4 else "A5 landscape"
+        css_page_margin = "8mm" if is_a4 else "6mm"
+        css_body_font_size = "8pt" if is_a4 else "7.5pt"
 
         # Build table rows with N1...Nn numbering
         table_rows_html = []
@@ -97,12 +117,12 @@ class AssemblyPrintEngine:
     <title>{esc_project_name} - Assembly Worksheet</title>
     <style>
         @page {{
-            size: A5 landscape;
-            margin: 6mm;
+            size: {css_page_size};
+            margin: {css_page_margin};
         }}
         body {{
             font-family: "Segoe UI", "Tahoma", "Vazirmatn", "Arial", sans-serif;
-            font-size: 7.5pt;
+            font-size: {css_body_font_size};
             color: #1e293b;
             margin: 0;
             padding: 0;
@@ -162,6 +182,7 @@ class AssemblyPrintEngine:
             padding: 4px 3px;
             border: 1px solid #0f172a;
             text-align: left;
+            white-space: nowrap;
         }}
         table.assembly-table th.col-project-header {{
             background-color: #0369a1;
@@ -169,6 +190,7 @@ class AssemblyPrintEngine:
             text-align: center;
             font-family: monospace;
             font-size: 7.5pt;
+            white-space: nowrap;
         }}
         table.assembly-table td {{
             padding: 3px 3px;
@@ -184,15 +206,15 @@ class AssemblyPrintEngine:
         .even-row {{
             background-color: #f8fafc;
         }}
-        .col-n {{ width: 6.5%; }}
-        .col-comment {{ width: 10%; }}
-        .col-desc {{ width: 23%; }}
-        .col-desig {{ width: 18%; }}
-        .col-footprint {{ width: 10.5%; }}
+        .col-n {{ width: 8%; }}
+        .col-comment {{ width: 9.5%; }}
+        .col-desc {{ width: 21%; }}
+        .col-desig {{ width: 17%; }}
+        .col-footprint {{ width: 10%; }}
         .col-libref {{ width: 9%; }}
-        .col-qty {{ width: 5%; }}
-        .col-mpn {{ width: 12%; }}
-        .col-pkg {{ width: 6%; }}
+        .col-qty {{ width: 6.5%; }}
+        .col-mpn {{ width: 12.5%; }}
+        .col-pkg {{ width: 6.5%; }}
         .footer {{
             margin-top: 6px;
             padding-top: 3px;
@@ -247,14 +269,25 @@ class AssemblyPrintEngine:
         return html_template
 
     @classmethod
-    def setup_a5_printer(cls, printer: QPrinter, output_filepath: Optional[str] = None) -> None:
-        """Configures a QPrinter instance strictly for A5 Landscape with 6mm margins."""
-        printer.setPageSize(QPageSize(cls.PAGE_SIZE_ID))
+    def setup_printer(
+        cls,
+        printer: QPrinter,
+        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5,
+        output_filepath: Optional[str] = None
+    ) -> None:
+        """Configures a QPrinter instance for Landscape orientation (A5 or A4) with appropriate margins."""
+        margin_mm = 8.0 if page_size_id == QPageSize.PageSizeId.A4 else cls.MARGIN_MM
+        printer.setPageSize(QPageSize(page_size_id))
         printer.setPageOrientation(cls.PAGE_ORIENTATION)
-        printer.setPageMargins(QMarginsF(cls.MARGIN_MM, cls.MARGIN_MM, cls.MARGIN_MM, cls.MARGIN_MM), QPageLayout.Unit.Millimeter)
+        printer.setPageMargins(QMarginsF(margin_mm, margin_mm, margin_mm, margin_mm), QPageLayout.Unit.Millimeter)
         if output_filepath:
             printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
             printer.setOutputFileName(output_filepath)
+
+    @classmethod
+    def setup_a5_printer(cls, printer: QPrinter, output_filepath: Optional[str] = None) -> None:
+        """Configures a QPrinter instance strictly for A5 Landscape with 6mm margins."""
+        cls.setup_printer(printer, QPageSize.PageSizeId.A5, output_filepath=output_filepath)
 
     @classmethod
     def render_to_printer(
@@ -262,16 +295,23 @@ class AssemblyPrintEngine:
         printer: QPrinter,
         bom_items: List[BOMItem],
         project_name: str,
-        total_qty: Optional[int] = None
+        total_qty: Optional[int] = None,
+        page_size_id: Optional[QPageSize.PageSizeId] = None
     ) -> None:
-        """Renders the canonical HTML to any pre-configured QPrinter (Physical or Preview)."""
-        html_doc = cls.generate_html(bom_items, project_name, total_qty)
+        """Renders the canonical HTML to any pre-configured QPrinter (Physical, Preview, or PDF)."""
+        if page_size_id is None:
+            page_size_id = printer.pageLayout().pageSize().id()
+        html_doc = cls.generate_html(bom_items, project_name, total_qty, page_size_id=page_size_id)
         doc = QTextDocument()
         doc.setDefaultFont(QFont("Segoe UI", 8))
-        page_size = printer.pageLayout().paintRectPixels(printer.resolution()).size()
-        doc.setPageSize(QSizeF(page_size))
+
+        # Core Geometry Fix: Set document layout size in device-independent points
+        # to ensure perfect physical scaling across preview, PDF export, and physical printers.
+        rect_points = printer.pageLayout().paintRectPoints()
+        doc.setPageSize(QSizeF(rect_points.width(), rect_points.height()))
         doc.setHtml(html_doc)
         doc.print(printer)
+        return doc
 
     @classmethod
     def export_pdf(
@@ -279,20 +319,24 @@ class AssemblyPrintEngine:
         bom_items: List[BOMItem],
         project_name: str,
         total_qty: Optional[int] = None,
-        output_filepath: Optional[str] = None
+        output_filepath: Optional[str] = None,
+        page_size_id: Optional[QPageSize.PageSizeId] = None
     ) -> str:
         """
-        Exports the canonical Assembly Worksheet to an A5 Landscape vector PDF.
+        Exports the canonical Assembly Worksheet to a vector PDF in Landscape (A5 or A4).
         Returns the absolute filepath of the generated PDF.
         """
+        if page_size_id is None:
+            page_size_id = cls.PAGE_SIZE_ID
+
         if not output_filepath:
-            output_filepath = cls.get_default_pdf_filename(project_name)
+            output_filepath = cls.get_default_pdf_filename(project_name, page_size_id=page_size_id)
 
         output_filepath = os.path.abspath(output_filepath)
         os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
 
-        printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
-        cls.setup_a5_printer(printer, output_filepath=output_filepath)
-        cls.render_to_printer(printer, bom_items, project_name, total_qty)
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        cls.setup_printer(printer, page_size_id=page_size_id, output_filepath=output_filepath)
+        cls.render_to_printer(printer, bom_items, project_name, total_qty, page_size_id=page_size_id)
 
         return output_filepath

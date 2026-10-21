@@ -1,7 +1,11 @@
 import os
 from typing import List, Optional
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
+    QMessageBox, QWidget, QComboBox, QLabel
+)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPageSize
 from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewWidget, QPrintDialog
 
 from bom_auditor import BOMItem
@@ -11,7 +15,7 @@ from ui.printing.assembly_print_engine import AssemblyPrintEngine
 class AssemblyPreviewDialog(QDialog):
     """
     Interactive Print Preview and Export modal dialog for Altium BOM Assembly Worksheets.
-    Configured specifically for A5 Landscape orientation.
+    Supports A5 Landscape (default) and A4 Landscape (fallback/selection).
     """
 
     def __init__(
@@ -26,15 +30,24 @@ class AssemblyPreviewDialog(QDialog):
         self.project_name = project_name
         self.total_qty = total_qty
 
-        self.setWindowTitle(f"Assembly Print Preview — {self.project_name} [A5 Landscape]")
-        self.resize(980, 680)
-        self.setMinimumSize(800, 500)
+        # Detect recommended paper size (A5 default, A4 fallback for large tables)
+        self._initial_page_size = AssemblyPrintEngine.recommend_paper_size(self.bom_items)
 
-        # Setup A5 Landscape Printer for Preview
+        size_label = "A4" if self._initial_page_size == QPageSize.PageSizeId.A4 else "A5"
+        self.setWindowTitle(f"Assembly Print Preview — {self.project_name} [{size_label} Landscape]")
+        self.resize(1020, 720)
+        self.setMinimumSize(850, 520)
+
+        # Setup Landscape Printer for Preview
         self.printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-        AssemblyPrintEngine.setup_a5_printer(self.printer)
+        AssemblyPrintEngine.setup_printer(self.printer, page_size_id=self._initial_page_size)
 
         self._init_ui()
+
+    def get_current_page_size_id(self) -> QPageSize.PageSizeId:
+        if hasattr(self, "paper_combo") and self.paper_combo.currentData() is not None:
+            return self.paper_combo.currentData()
+        return self._initial_page_size
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -44,6 +57,45 @@ class AssemblyPreviewDialog(QDialog):
         # 1. Top Controls Bar
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
+
+        # Paper Size Selection
+        paper_lbl = QLabel("Paper:")
+        paper_lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        top_bar.addWidget(paper_lbl)
+
+        self.paper_combo = QComboBox()
+        self.paper_combo.addItem("A5 Landscape (210 × 148 mm)", QPageSize.PageSizeId.A5)
+        self.paper_combo.addItem("A4 Landscape (297 × 210 mm)", QPageSize.PageSizeId.A4)
+        if self._initial_page_size == QPageSize.PageSizeId.A4:
+            self.paper_combo.setCurrentIndex(1)
+        else:
+            self.paper_combo.setCurrentIndex(0)
+
+        self.paper_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                color: #38bdf8;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 4px 8px;
+                min-width: 175px;
+            }
+            QComboBox:hover {
+                border-color: #38bdf8;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+            }
+        """)
+        self.paper_combo.currentIndexChanged.connect(self._on_paper_size_changed)
+        top_bar.addWidget(self.paper_combo)
+
+        top_bar.addSpacing(6)
 
         # Navigation & Zoom Controls
         self.fit_width_btn = QPushButton("↔ Fit Width")
@@ -116,30 +168,55 @@ class AssemblyPreviewDialog(QDialog):
         self.preview_widget.setStyleSheet("background-color: #1e293b; border: 1px solid #334155; border-radius: 6px;")
         main_layout.addWidget(self.preview_widget, 1)
 
+    def _on_paper_size_changed(self):
+        page_size_id = self.get_current_page_size_id()
+        size_label = "A4" if page_size_id == QPageSize.PageSizeId.A4 else "A5"
+        self.setWindowTitle(f"Assembly Print Preview — {self.project_name} [{size_label} Landscape]")
+        AssemblyPrintEngine.setup_printer(self.printer, page_size_id=page_size_id)
+        self.preview_widget.updatePreview()
+        self.preview_widget.fitInView()
+
     def _on_paint_requested(self, printer: QPrinter):
+        page_size_id = self.get_current_page_size_id()
         AssemblyPrintEngine.render_to_printer(
             printer=printer,
             bom_items=self.bom_items,
             project_name=self.project_name,
-            total_qty=self.total_qty
+            total_qty=self.total_qty,
+            page_size_id=page_size_id
         )
 
     def _handle_print(self):
-        """Opens standard physical print dialog."""
-        print_dialog = QPrintDialog(self.printer, self)
-        print_dialog.setWindowTitle("Print Assembly Worksheet (A5 Landscape)")
-        if print_dialog.exec() == QDialog.DialogCode.Accepted:
-            AssemblyPrintEngine.render_to_printer(
-                printer=self.printer,
-                bom_items=self.bom_items,
-                project_name=self.project_name,
-                total_qty=self.total_qty
-            )
-            QMessageBox.information(self, "Printed", "Assembly worksheet sent to printer.")
+        """Opens standard physical print dialog with safe cancellation and execution."""
+        try:
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            page_size_id = self.get_current_page_size_id()
+            AssemblyPrintEngine.setup_printer(printer, page_size_id=page_size_id)
+
+            print_dialog = QPrintDialog(printer, self)
+            size_name = "A4" if page_size_id == QPageSize.PageSizeId.A4 else "A5"
+            print_dialog.setWindowTitle(f"Print Assembly Worksheet ({size_name} Landscape)")
+            print_dialog.setOption(QPrintDialog.PrintDialogOption.PrintCollateCopies, False)
+
+            if print_dialog.exec() == QDialog.DialogCode.Accepted:
+                if not printer.isValid():
+                    QMessageBox.warning(self, "Printer Warning", "Selected printer is invalid or unavailable.")
+                    return
+                AssemblyPrintEngine.render_to_printer(
+                    printer=printer,
+                    bom_items=self.bom_items,
+                    project_name=self.project_name,
+                    total_qty=self.total_qty,
+                    page_size_id=page_size_id
+                )
+                QMessageBox.information(self, "Printed", "Assembly worksheet sent to printer.")
+        except Exception as e:
+            QMessageBox.critical(self, "Print Error", f"An error occurred while printing: {e}")
 
     def _handle_save_pdf(self):
-        """Prompts user for PDF destination and saves A5 vector PDF."""
-        default_name = AssemblyPrintEngine.get_default_pdf_filename(self.project_name)
+        """Prompts user for PDF destination and saves vector PDF with selected paper size."""
+        page_size_id = self.get_current_page_size_id()
+        default_name = AssemblyPrintEngine.get_default_pdf_filename(self.project_name, page_size_id=page_size_id)
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Assembly Worksheet as Vector PDF",
@@ -152,7 +229,8 @@ class AssemblyPreviewDialog(QDialog):
                     bom_items=self.bom_items,
                     project_name=self.project_name,
                     total_qty=self.total_qty,
-                    output_filepath=file_path
+                    output_filepath=file_path,
+                    page_size_id=page_size_id
                 )
                 QMessageBox.information(
                     self,

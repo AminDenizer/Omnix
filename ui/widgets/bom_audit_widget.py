@@ -244,6 +244,8 @@ class BOMAuditWidget(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setWordWrap(True)
+        self.table.setShowGrid(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
@@ -560,14 +562,23 @@ class BOMAuditWidget(QWidget):
                         item10.setForeground(QColor("#64748b"))
                 self.table.setItem(row_idx, 10, item10)
 
-        # Auto-fit columns
+        # Align column headers
         for c in range(self.table.columnCount()):
-            self.table.resizeColumnToContents(c)
-            if self.table.columnWidth(c) < 95:
-                self.table.setColumnWidth(c, 95)
-            elif self.table.columnWidth(c) > 300:
-                self.table.setColumnWidth(c, 300)
+            hdr_item = self.table.horizontalHeaderItem(c)
+            if hdr_item:
+                if is_mode_b:
+                    if c in (0, 5, 6, 7):
+                        hdr_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    else:
+                        hdr_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    if c in (0, 4, 5, 6, 7, 8, 9):
+                        hdr_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    else:
+                        hdr_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
+        # Distribute column widths and calculate row heights for text wrapping
+        self._distribute_table_columns(is_mode_b)
         self.table.setSortingEnabled(True)
 
         # Update order button count and label
@@ -591,6 +602,67 @@ class BOMAuditWidget(QWidget):
             else:
                 self.order_btn.setText("✅ All Components in Stock")
                 self.order_btn.setEnabled(False)
+
+    def _distribute_table_columns(self, is_mode_b: bool = False):
+        """Distributes column widths appropriately based on role and available space."""
+        total_w = self.table.viewport().width()
+        if total_w <= 0:
+            return
+
+        if is_mode_b:
+            base_widths = {
+                0: 115,  # Status
+                1: 180,  # Designator
+                2: 150,  # Part Number
+                3: 130,  # Manufacturer
+                4: 120,  # Package / Footprint
+                5: 75,   # Qty / Board
+                6: 85,   # Total Needed
+                7: 110,  # Brand Rule
+                8: 140,  # Specs
+                9: 180,  # Procurement Target
+            }
+            stretch_col1 = 1
+            stretch_col2 = 9
+        else:
+            base_widths = {
+                0: 115,  # Status
+                1: 180,  # Designator
+                2: 150,  # Part Number
+                3: 110,  # Comment
+                4: 105,  # Footprint
+                5: 110,  # Brand Rule
+                6: 70,   # Qty / Board
+                7: 80,   # Total Needed
+                8: 70,   # In Stock
+                9: 70,   # Shortage
+                10: 180, # Store Link
+            }
+            stretch_col1 = 1
+            stretch_col2 = 10
+
+        base_sum = sum(base_widths.values())
+        if total_w > base_sum:
+            extra = total_w - base_sum
+            extra1 = int(extra * 0.5)
+            extra2 = extra - extra1
+            for c, w in base_widths.items():
+                if c == stretch_col1:
+                    self.table.setColumnWidth(c, w + extra1)
+                elif c == stretch_col2:
+                    self.table.setColumnWidth(c, w + extra2)
+                else:
+                    self.table.setColumnWidth(c, w)
+        else:
+            for c, w in base_widths.items():
+                self.table.setColumnWidth(c, w)
+        self.table.resizeRowsToContents()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.audit_result and hasattr(self, "table") and self.table.isVisible():
+            is_mode_b = (self.current_mode == ProcurementMode.DIRECT_BOM)
+            self._distribute_table_columns(is_mode_b)
 
     def _open_order_dialog(self):
         if not self.audit_result:

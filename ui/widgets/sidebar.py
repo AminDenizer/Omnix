@@ -128,7 +128,9 @@ def render_outline_pixmap(icon_key: str, color_hex: str, size: int = 36) -> QPix
     )
     renderer = QSvgRenderer(QByteArray(svg_colored.encode("utf-8")))
 
-    pm = QPixmap(size, size)
+    dpr = 2.0
+    pm = QPixmap(int(size * dpr), int(size * dpr))
+    pm.setDevicePixelRatio(dpr)
     pm.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pm)
     renderer.render(painter)
@@ -255,10 +257,19 @@ class ChevronLabel(QLabel):
         self.setStyleSheet("background: transparent;")
         self._direction = "right"
 
-    def set_direction(self, direction: str, is_active: bool = False):
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    def set_direction(self, direction: str, is_active: bool = False, is_hover: bool = False):
         self._direction = direction
         icon_key = "chevron_down" if direction == "down" else "chevron_right"
-        color = "#38bdf8" if is_active else "#64748b"
+        if is_active:
+            color = "#38bdf8"
+        elif is_hover:
+            color = "#e2e8f0"
+        else:
+            color = "#64748b"
         self.setPixmap(render_outline_pixmap(icon_key, color, size=14))
 
     def text(self) -> str:
@@ -273,6 +284,7 @@ class SidebarParentButton(SidebarNavButton):
         super().__init__(page_id, label, icon_str, parent)
 
         self._chevron = ChevronLabel(self)
+        self._chevron.setGeometry(180, (38 - 14) // 2, 14, 14)
         self._chevron.set_direction("right", is_active=self._is_active)
         self._chevron.setVisible(not self._is_collapsed)
 
@@ -286,6 +298,16 @@ class SidebarParentButton(SidebarNavButton):
     def set_active(self, active: bool):
         super().set_active(active)
         self._chevron.set_direction("down" if self._is_submenu_open else "right", is_active=active)
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if not self._is_active:
+            self._chevron.set_direction("down" if self._is_submenu_open else "right", is_active=False, is_hover=True)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if not self._is_active:
+            self._chevron.set_direction("down" if self._is_submenu_open else "right", is_active=False, is_hover=False)
 
     def set_collapsed(self, collapsed: bool):
         super().set_collapsed(collapsed)
@@ -555,6 +577,10 @@ class CollapsibleSidebar(QFrame):
         canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
         self._active_page_id = canonical_id
         is_settings_section = canonical_id in self._submenu_buttons or canonical_id == "settings"
+
+        # If navigating directly to a child destination, ensure submenu is visually expanded
+        if canonical_id in self._submenu_buttons:
+            self.set_submenu_expanded(True)
 
         # Parent Settings button active state (communicates section)
         self.settings_parent_btn.set_active(is_settings_section)

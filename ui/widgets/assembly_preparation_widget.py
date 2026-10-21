@@ -4,10 +4,10 @@ from typing import Optional, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QFrame, QFileDialog,
-    QHeaderView, QApplication, QMenu, QMessageBox
+    QHeaderView, QApplication, QMenu, QMessageBox, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QPageSize
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 
 from bom_auditor import BOMAuditResult, BOMItem
@@ -40,14 +40,24 @@ class AssemblyTableWidget(QTableWidget):
         self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.setShowGrid(True)
         self.setAlternatingRowColors(True)
+        self.setWordWrap(True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Header resize modes
+        # Header resize modes and alignments
         header = self.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         header.setHighlightSections(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+        # Specific column header alignments
+        for c in range(self.COLUMN_COUNT):
+            item = self.horizontalHeaderItem(c)
+            if item:
+                if c in (0, 4, 6, 8):
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                else:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self.setStyleSheet("""
             QTableWidget {
@@ -172,18 +182,47 @@ class AssemblyTableWidget(QTableWidget):
             it_pkg.setForeground(QColor("#cbd5e1"))
             self.setItem(row_idx, 8, it_pkg)
 
-        # Set default column width proportions
-        self.setColumnWidth(0, 80)    # N Marker
-        self.setColumnWidth(1, 110)   # Comment
-        self.setColumnWidth(2, 220)   # Description
-        self.setColumnWidth(3, 160)   # Designator
-        self.setColumnWidth(4, 110)   # Footprint
-        self.setColumnWidth(5, 110)   # LibRef
-        self.setColumnWidth(6, 60)    # Quantity
-        self.setColumnWidth(7, 160)   # Part Number
-        self.setColumnWidth(8, 90)    # Package
-
         self.setUpdatesEnabled(True)
+        self.resizeRowsToContents()
+        self._distribute_column_widths()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._distribute_column_widths()
+
+    def _distribute_column_widths(self):
+        """Distributes extra viewport width to Description and Designator while keeping others compact."""
+        total_w = self.viewport().width()
+        if total_w <= 0:
+            return
+
+        base_widths = {
+            0: 85,   # N Marker / Project Name
+            1: 110,  # Comment
+            2: 240,  # Description
+            3: 180,  # Designator
+            4: 110,  # Footprint
+            5: 110,  # LibRef
+            6: 60,   # Quantity
+            7: 160,  # Part Number
+            8: 95,   # Package
+        }
+        base_sum = sum(base_widths.values())  # 1150
+        if total_w > base_sum:
+            extra = total_w - base_sum
+            desc_extra = int(extra * 0.6)
+            desig_extra = extra - desc_extra
+            for c, w in base_widths.items():
+                if c == 2:
+                    self.setColumnWidth(c, w + desc_extra)
+                elif c == 3:
+                    self.setColumnWidth(c, w + desig_extra)
+                else:
+                    self.setColumnWidth(c, w)
+        else:
+            for c, w in base_widths.items():
+                self.setColumnWidth(c, w)
+        self.resizeRowsToContents()
 
     def _show_context_menu(self, pos):
         item = self.itemAt(pos)
@@ -260,7 +299,7 @@ class AssemblyPreparationWidget(QWidget):
         self.preview_btn.clicked.connect(self.open_print_preview)
         top_layout.addWidget(self.preview_btn)
 
-        self.print_btn = QPushButton("🖨️ Print A5 Sheet")
+        self.print_btn = QPushButton("🖨️ Print Worksheet")
         self.print_btn.setStyleSheet("""
             QPushButton {
                 background-color: #0284c7;
@@ -363,33 +402,46 @@ class AssemblyPreparationWidget(QWidget):
         dialog.exec()
 
     def print_a5_sheet(self):
-        """Directly sends A5 Landscape assembly worksheet to a physical printer."""
+        """Directly sends Landscape assembly worksheet (A5 or A4) to a physical printer."""
         if not self.bom_items:
             QMessageBox.warning(self, "No BOM Loaded", "Please load an Altium BOM project first.")
             return
 
-        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-        AssemblyPrintEngine.setup_a5_printer(printer)
+        try:
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            rec_size = AssemblyPrintEngine.recommend_paper_size(self.bom_items)
+            AssemblyPrintEngine.setup_printer(printer, page_size_id=rec_size)
 
-        print_dialog = QPrintDialog(printer, self)
-        print_dialog.setWindowTitle("Print Assembly Worksheet (A5 Landscape)")
-        if print_dialog.exec() == QDialog.DialogCode.Accepted:
-            total_pcs = sum(max(1, getattr(it, "total_needed_qty", getattr(it, "unit_qty", 1))) for it in self.bom_items)
-            AssemblyPrintEngine.render_to_printer(
-                printer=printer,
-                bom_items=self.bom_items,
-                project_name=self.project_name,
-                total_qty=total_pcs
-            )
-            QMessageBox.information(self, "Printed", "Assembly worksheet sent to printer successfully.")
+            print_dialog = QPrintDialog(printer, self)
+            size_name = "A4" if rec_size == QPageSize.PageSizeId.A4 else "A5"
+            print_dialog.setWindowTitle(f"Print Assembly Worksheet ({size_name} Landscape)")
+            print_dialog.setOption(QPrintDialog.PrintDialogOption.PrintCollateCopies, False)
+
+            res = print_dialog.exec()
+            if res == QDialog.DialogCode.Accepted:
+                if not printer.isValid():
+                    QMessageBox.warning(self, "Printer Warning", "Selected printer is invalid or not available.")
+                    return
+                total_pcs = sum(max(1, getattr(it, "total_needed_qty", getattr(it, "unit_qty", 1))) for it in self.bom_items)
+                AssemblyPrintEngine.render_to_printer(
+                    printer=printer,
+                    bom_items=self.bom_items,
+                    project_name=self.project_name,
+                    total_qty=total_pcs,
+                    page_size_id=rec_size
+                )
+                QMessageBox.information(self, "Printed", "Assembly worksheet sent to printer successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Print Error", f"An error occurred while printing: {e}")
 
     def export_pdf(self):
-        """Exports the Assembly worksheet to an A5 Landscape vector PDF."""
+        """Exports the Assembly worksheet to a Landscape vector PDF (A5 or A4)."""
         if not self.bom_items:
             QMessageBox.warning(self, "No BOM Loaded", "Please load an Altium BOM project first.")
             return
 
-        default_name = AssemblyPrintEngine.get_default_pdf_filename(self.project_name)
+        rec_size = AssemblyPrintEngine.recommend_paper_size(self.bom_items)
+        default_name = AssemblyPrintEngine.get_default_pdf_filename(self.project_name, page_size_id=rec_size)
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Assembly Worksheet as Vector PDF",
@@ -403,7 +455,8 @@ class AssemblyPreparationWidget(QWidget):
                     bom_items=self.bom_items,
                     project_name=self.project_name,
                     total_qty=total_pcs,
-                    output_filepath=file_path
+                    output_filepath=file_path,
+                    page_size_id=rec_size
                 )
                 QMessageBox.information(
                     self,
