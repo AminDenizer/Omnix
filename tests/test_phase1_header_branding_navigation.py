@@ -154,21 +154,72 @@ class TestSidebarHierarchyAndIcons:
 
 
 class TestSettingsSubsectionsAndAbout:
-    """Verifies settings tab container, the 5 subsections, and factual metadata in About."""
+    """Verifies settings collapsible sidebar submenu, the 5 subsections, and factual metadata in About."""
 
-    def test_settings_subsections_structure(self, main_window):
-        """Settings page contains 5 subtabs: General, Reference Data, Supplier Directory, Backup & Restore, About."""
-        assert hasattr(main_window, "settings_subtabs")
-        tabs = main_window.settings_subtabs
-        assert tabs.count() == 5
-        tab_titles = [tabs.tabText(i) for i in range(tabs.count())]
-        assert tab_titles == [
-            "General",
-            "Reference Data",
-            "Supplier Directory",
-            "Backup & Restore",
-            "About",
+    def test_settings_subsections_structure_and_submenu(self, main_window, qapp):
+        """Settings page has a collapsible sidebar submenu with 5 children and NO top tabs."""
+        sb = main_window.sidebar
+        assert hasattr(sb, "settings_parent_btn")
+        assert hasattr(sb, "SETTINGS_CHILDREN")
+
+        expected_children = [
+            ("general_settings", "General", "general_settings"),
+            ("reference_data", "Reference Data", "reference_data"),
+            ("provider_management", "Supplier Directory", "provider_management"),
+            ("backup_restore", "Backup & Restore", "backup_restore"),
+            ("about", "About", "about"),
         ]
+        assert sb.SETTINGS_CHILDREN == expected_children
+
+        # Verify all children are present in _submenu_buttons
+        for child_id, label, _ in expected_children:
+            assert child_id in sb._submenu_buttons
+            btn = sb._submenu_buttons[child_id]
+            assert label in btn.text()
+            assert not btn.icon().isNull()
+
+        # Test expand / collapse behavior and chevron indicator
+        sb.set_submenu_expanded(False)
+        qapp.processEvents()
+        assert sb.is_submenu_expanded() is False
+        assert sb.settings_parent_btn._chevron.text() == "▸"
+        for btn in sb._submenu_buttons.values():
+            assert btn.isVisible() is False
+
+        sb.set_submenu_expanded(True)
+        qapp.processEvents()
+        assert sb.is_submenu_expanded() is True
+        assert sb.settings_parent_btn._chevron.text() == "▾"
+        for btn in sb._submenu_buttons.values():
+            assert btn.isVisible() is True
+            # Indented styling
+            assert "padding-left: 24px;" in btn.styleSheet()
+
+        # Collapsing the sidebar rail centers submenu icons without breaking layout
+        sb.set_collapsed(True)
+        qapp.processEvents()
+        assert sb.settings_parent_btn._chevron.isVisible() is False
+        for btn in sb._submenu_buttons.values():
+            assert "padding-left: 0px;" in btn.styleSheet()
+            assert "text-align: center;" in btn.styleSheet()
+
+        sb.set_collapsed(False)
+        qapp.processEvents()
+
+    def test_no_tabs_across_content_area(self, main_window):
+        """Settings views must render directly in main content area without a top QTabWidget."""
+        from PyQt6.QtWidgets import QTabWidget
+        assert not hasattr(main_window, "settings_subtabs")
+        assert main_window.content_stack.currentWidget() != None
+        # Verify content_stack pages for settings do not wrap themselves in a QTabWidget
+        for page in (
+            main_window.general_settings_page,
+            main_window.reference_data_page,
+            main_window.providers_page,
+            main_window.backup_restore_page,
+            main_window.about_page,
+        ):
+            assert page.findChild(QTabWidget) is None
 
     def test_about_page_metadata_and_factual_integrity(self, main_window):
         """About page displays app logo, verified metadata, and uninvented project details."""
@@ -191,8 +242,13 @@ class TestNavigationRouting:
     """Verifies page routing across Workspace, Tools, and Settings."""
 
     def test_workspace_navigation_routing(self, main_window, qapp):
-        """Workspace buttons route to corresponding views in main tabs."""
+        """Workspace buttons route to corresponding views in main tabs and render literal ampersand."""
         win = main_window
+
+        # Literal ampersand check on Assembly & Stock button
+        btn_assembly = win.sidebar._buttons["assembly_view"]
+        assert "Assembly & Stock" in btn_assembly.text()
+        assert "&" in btn_assembly.text()
 
         # 1. Assembly & Stock
         win.sidebar._on_button_clicked("assembly_view")
@@ -223,33 +279,36 @@ class TestNavigationRouting:
         assert win.sidebar.active_page() == "vendor_plugins"
 
     def test_settings_routing_and_legacy_aliases(self, main_window, qapp):
-        """Settings button and legacy aliases activate settings page and appropriate subsection."""
+        """Settings button and child navigation activate individual content pages without tabs."""
         win = main_window
 
-        # Settings top-level
+        # Settings top-level (activates General settings page and expands submenu)
         win.sidebar._on_button_clicked("settings")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_subtabs.currentIndex() == 0
+        assert win.content_stack.currentWidget() == win.general_settings_page
         assert win.sidebar.active_page() == "settings"
+        assert win.sidebar.is_submenu_expanded() is True
 
-        # Legacy alias: reference_data
-        win._on_sidebar_page_changed("reference_data")
+        # Child: reference_data
+        win.sidebar._on_button_clicked("reference_data")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_subtabs.currentIndex() == 1
-        assert win.sidebar.active_page() == "settings"
+        assert win.content_stack.currentWidget() == win.reference_data_page
+        assert win.sidebar.active_page() == "reference_data"
 
-        # Legacy alias: provider_management
-        win._on_sidebar_page_changed("provider_management")
+        # Child: provider_management (Supplier Directory)
+        win.sidebar._on_button_clicked("provider_management")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_subtabs.currentIndex() == 2
-        assert win.sidebar.active_page() == "settings"
+        assert win.content_stack.currentWidget() == win.providers_page
+        assert win.sidebar.active_page() == "provider_management"
 
-        # Legacy alias: backup_restore
-        win._on_sidebar_page_changed("backup_restore")
+        # Child: backup_restore
+        win.sidebar._on_button_clicked("backup_restore")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_subtabs.currentIndex() == 3
-        assert win.sidebar.active_page() == "settings"
+        assert win.content_stack.currentWidget() == win.backup_restore_page
+        assert win.sidebar.active_page() == "backup_restore"
+
+        # Child: about
+        win.sidebar._on_button_clicked("about")
+        qapp.processEvents()
+        assert win.content_stack.currentWidget() == win.about_page
+        assert win.sidebar.active_page() == "about"

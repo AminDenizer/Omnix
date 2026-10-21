@@ -76,6 +76,11 @@ SIDEBAR_ICON_SVGS: Dict[str, str] = {
   <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
   <circle cx="12" cy="12" r="3"/>
 </svg>""",
+    "about": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"/>
+  <line x1="12" y1="16" x2="12" y2="12"/>
+  <line x1="12" y1="8" x2="12.01" y2="8"/>
+</svg>""",
 }
 
 # Compatibility mapping for legacy emoji strings
@@ -172,7 +177,10 @@ class SidebarNavButton(QPushButton):
         if self._is_collapsed:
             self.setText("")
         else:
-            self.setText(f"  {self.full_label}")
+            self.setText(f"  {self.full_label.replace('&', '&&')}")
+
+    def text(self) -> str:
+        return super().text().replace("&&", "&")
 
     def _apply_style(self):
         if self._is_active:
@@ -192,6 +200,103 @@ class SidebarNavButton(QPushButton):
 
         align = "center" if self._is_collapsed else "left"
         padding_left = "0px" if self._is_collapsed else "10px"
+
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg_color};
+                color: {text_color};
+                border: none;
+                border-left: {border_left};
+                border-radius: 4px;
+                padding-left: {padding_left};
+                padding-right: 6px;
+                text-align: {align};
+                font-size: 11px;
+                font-weight: {font_weight};
+                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                color: {hover_text};
+            }}
+            QPushButton:pressed {{
+                background-color: #334155;
+                color: #ffffff;
+            }}
+            QPushButton:focus {{
+                outline: none;
+            }}
+        """)
+
+
+class SidebarParentButton(SidebarNavButton):
+    """Parent navigation button that toggles child submenu visibility."""
+
+    def __init__(self, page_id: str, label: str, icon_str: str = "", parent: Optional[QWidget] = None):
+        self._is_submenu_open = False
+        super().__init__(page_id, label, icon_str, parent)
+
+        self._chevron = QLabel("▸", self)
+        self._chevron.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._chevron.setStyleSheet("color: #64748b; font-size: 11px; background: transparent;")
+        self._chevron.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._chevron.setVisible(not self._is_collapsed)
+
+    def set_submenu_open(self, open_state: bool):
+        self._is_submenu_open = open_state
+        self._chevron.setText("▾" if open_state else "▸")
+
+    def is_submenu_open(self) -> bool:
+        return self._is_submenu_open
+
+    def set_collapsed(self, collapsed: bool):
+        super().set_collapsed(collapsed)
+        self._chevron.setVisible(not collapsed)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        w = self.width()
+        h = self.height()
+        self._chevron.setGeometry(w - 24, 0, 16, h)
+
+
+class SidebarSubmenuButton(SidebarNavButton):
+    """Indented submenu child navigation button."""
+
+    def __init__(self, page_id: str, label: str, icon_str: str = "", parent: Optional[QWidget] = None):
+        super().__init__(page_id, label, icon_str, parent)
+        self.setFixedHeight(34)
+        self.setFont(QFont("Segoe UI", 9))
+
+    def _update_display(self):
+        self.setIcon(self._icon_active if self._is_active else self._icon_normal)
+        self.setIconSize(QSize(16, 16))
+        if self._is_collapsed:
+            self.setText("")
+        else:
+            self.setText(f"  {self.full_label.replace('&', '&&')}")
+
+    def text(self) -> str:
+        return super().text().replace("&&", "&")
+
+    def _apply_style(self):
+        if self._is_active:
+            bg_color = "#1e293b"
+            text_color = "#f8fafc"
+            border_left = "2px solid #38bdf8"
+            hover_bg = "#273549"
+            hover_text = "#ffffff"
+            font_weight = "600"
+        else:
+            bg_color = "transparent"
+            text_color = "#94a3b8"
+            border_left = "2px solid transparent"
+            hover_bg = "rgba(255, 255, 255, 0.05)"
+            hover_text = "#e2e8f0"
+            font_weight = "500"
+
+        align = "center" if self._is_collapsed else "left"
+        padding_left = "0px" if self._is_collapsed else "24px"
 
         self.setStyleSheet(f"""
             QPushButton {{
@@ -264,6 +369,14 @@ class CollapsibleSidebar(QFrame):
         ]),
     ]
 
+    SETTINGS_CHILDREN = [
+        ("general_settings", "General", "general_settings"),
+        ("reference_data", "Reference Data", "reference_data"),
+        ("provider_management", "Supplier Directory", "provider_management"),
+        ("backup_restore", "Backup & Restore", "backup_restore"),
+        ("about", "About", "about"),
+    ]
+
     PAGES = [
         ("assembly_view", "Assembly & Stock", "assembly_view"),
         ("component_inventory", "Component Inventory", "component_inventory"),
@@ -273,12 +386,13 @@ class CollapsibleSidebar(QFrame):
     ]
 
     PAGE_ALIAS_MAP: Dict[str, str] = {
-        "general_settings": "settings",
-        "reference_data": "settings",
-        "provider_management": "settings",
-        "supplier_directory": "settings",
-        "backup_restore": "settings",
-        "about": "settings",
+        "supplier_directory": "provider_management",
+        "settings_general": "general_settings",
+        "settings_reference_data": "reference_data",
+        "settings_supplier_directory": "provider_management",
+        "settings_backup_restore": "backup_restore",
+        "settings_about": "about",
+        "backup": "backup_restore",
     }
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -288,6 +402,7 @@ class CollapsibleSidebar(QFrame):
         self._active_page_id = "assembly_view"
         self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP)
         self._section_headers = []
+        self._submenu_buttons: Dict[str, SidebarSubmenuButton] = {}
 
         self.setFixedWidth(self.EXPANDED_WIDTH)
         self.setStyleSheet("""
@@ -304,6 +419,7 @@ class CollapsibleSidebar(QFrame):
         layout.setContentsMargins(6, 10, 6, 10)
         layout.setSpacing(4)
         self._section_headers.clear()
+        self._submenu_buttons.clear()
 
         for sec_idx, (sec_title, items) in enumerate(self.SECTIONS):
             if sec_title:
@@ -321,10 +437,25 @@ class CollapsibleSidebar(QFrame):
                 self._section_headers.append(hdr)
 
             for page_id, label, icon_str in items:
-                btn = SidebarNavButton(page_id, label, icon_str, self)
-                btn.clicked.connect(lambda checked=False, pid=page_id: self._on_button_clicked(pid))
-                layout.addWidget(btn)
-                self._buttons[page_id] = btn
+                if page_id == "settings":
+                    self.settings_parent_btn = SidebarParentButton(page_id, label, icon_str, self)
+                    self.settings_parent_btn.clicked.connect(self._on_settings_parent_clicked)
+                    layout.addWidget(self.settings_parent_btn)
+                    self._buttons[page_id] = self.settings_parent_btn
+
+                    # Add submenu children immediately under Settings
+                    for child_id, child_label, child_icon in self.SETTINGS_CHILDREN:
+                        c_btn = SidebarSubmenuButton(child_id, child_label, child_icon, self)
+                        c_btn.clicked.connect(lambda checked=False, pid=child_id: self._on_button_clicked(pid))
+                        layout.addWidget(c_btn)
+                        self._buttons[child_id] = c_btn
+                        self._submenu_buttons[child_id] = c_btn
+                        c_btn.setVisible(False)
+                else:
+                    btn = SidebarNavButton(page_id, label, icon_str, self)
+                    btn.clicked.connect(lambda checked=False, pid=page_id: self._on_button_clicked(pid))
+                    layout.addWidget(btn)
+                    self._buttons[page_id] = btn
 
             if sec_idx < len(self.SECTIONS) - 1:
                 layout.addSpacing(6)
@@ -339,8 +470,25 @@ class CollapsibleSidebar(QFrame):
         self.set_active_page(page_id)
         self.pageChanged.emit(page_id)
 
-    def set_active_page(self, page_id: str):
+    def _on_settings_parent_clicked(self):
+        new_state = not self.settings_parent_btn.is_submenu_open()
+        self.set_submenu_expanded(new_state)
+        self.set_active_page("settings", auto_expand=False)
+        self.pageChanged.emit("settings")
+
+    def set_submenu_expanded(self, expanded: bool):
+        self.settings_parent_btn.set_submenu_open(expanded)
+        for btn in self._submenu_buttons.values():
+            btn.setVisible(expanded)
+
+    def is_submenu_expanded(self) -> bool:
+        return self.settings_parent_btn.is_submenu_open()
+
+    def set_active_page(self, page_id: str, auto_expand: bool = True):
         canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
+        if auto_expand and (canonical_id == "settings" or canonical_id in self._submenu_buttons):
+            self.set_submenu_expanded(True)
+
         self._active_page_id = canonical_id
         for pid, btn in self._buttons.items():
             btn.set_active(pid == canonical_id)

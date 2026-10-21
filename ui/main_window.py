@@ -568,81 +568,44 @@ class MainWindow(QMainWindow):
         plugins_page_layout.addWidget(self.vendor_plugins_widget)
         self.content_stack.addWidget(self.vendor_plugins_page)
 
-        # Settings Container (Index 2): Subsections in tabs
-        self.settings_page = QWidget()
-        settings_page_layout = QVBoxLayout(self.settings_page)
-        settings_page_layout.setContentsMargins(12, 12, 12, 12)
-        settings_page_layout.setSpacing(0)
-
-        self.settings_subtabs = QTabWidget()
-        self.settings_subtabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #1e293b;
-                background-color: #0b101b;
-                border-radius: 6px;
-            }
-            QTabBar::tab {
-                background-color: #0f172a;
-                color: #94a3b8;
-                padding: 8px 18px;
-                border: 1px solid #1e293b;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-weight: 600;
-                font-size: 12px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #1e293b;
-                color: #38bdf8;
-                border-color: #38bdf8;
-                border-bottom: 2px solid #38bdf8;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #1a2234;
-                color: #e2e8f0;
-            }
-        """)
-
-        # Settings Subsection 1: General (General settings & stock policy)
+        # Settings Views added directly to content_stack (No top tab bar, Section 5 & Phase 1.1)
+        # Settings Destination 1: General (General settings & stock policy)
         self.general_settings_page = self._build_general_settings_page()
-        self.settings_subtabs.addTab(self.general_settings_page, "General")
+        self.content_stack.addWidget(self.general_settings_page)
 
-        # Settings Subsection 2: Reference Data
+        # Settings Destination 2: Reference Data
         self.reference_data_page = QWidget()
         ref_page_layout = QVBoxLayout(self.reference_data_page)
-        ref_page_layout.setContentsMargins(0, 0, 0, 0)
+        ref_page_layout.setContentsMargins(12, 12, 12, 12)
         self.reference_data_widget = ReferenceDataWidget(repository=self.inventory_repo, parent=self)
         self.reference_data_widget.referenceDataChanged.connect(self.reload_database)
         ref_page_layout.addWidget(self.reference_data_widget)
-        self.settings_subtabs.addTab(self.reference_data_page, "Reference Data")
+        self.content_stack.addWidget(self.reference_data_page)
 
-        # Settings Subsection 3: Supplier Directory
+        # Settings Destination 3: Supplier Directory
         self.providers_page = QWidget()
         prov_page_layout = QVBoxLayout(self.providers_page)
-        prov_page_layout.setContentsMargins(0, 0, 0, 0)
+        prov_page_layout.setContentsMargins(12, 12, 12, 12)
         self.providers_widget = ProviderManagementDialog(repository=self.inventory_repo, parent=self, is_embedded=True)
         prov_page_layout.addWidget(self.providers_widget)
-        self.settings_subtabs.addTab(self.providers_page, "Supplier Directory")
+        self.content_stack.addWidget(self.providers_page)
 
-        # Settings Subsection 4: Backup & Restore
+        # Settings Destination 4: Backup & Restore
         self.backup_restore_page = QWidget()
         backup_page_layout = QVBoxLayout(self.backup_restore_page)
-        backup_page_layout.setContentsMargins(0, 0, 0, 0)
+        backup_page_layout.setContentsMargins(12, 12, 12, 12)
         db_file = getattr(self, "inventory_database_path", None) or resolve_database_path()
         self.backup_restore_widget = DatabaseBackupRestoreWidget(repository=self.inventory_repo, db_path=db_file, parent=self)
         self.backup_restore_widget.restored_signal.connect(self.reload_database)
         backup_page_layout.addWidget(self.backup_restore_widget)
-        self.settings_subtabs.addTab(self.backup_restore_page, "Backup & Restore")
+        self.content_stack.addWidget(self.backup_restore_page)
 
-        # Settings Subsection 5: About
+        # Settings Destination 5: About
         self.about_page = self._build_about_page()
-        self.settings_subtabs.addTab(self.about_page, "About")
+        self.content_stack.addWidget(self.about_page)
 
-        self.settings_subtabs.currentChanged.connect(self._on_settings_subtab_changed)
-        settings_page_layout.addWidget(self.settings_subtabs)
-        self.content_stack.addWidget(self.settings_page)
+        # For backwards compatibility with references expecting settings_page
+        self.settings_page = self.general_settings_page
 
         # Body Layout: Collapsible Sidebar on left, Content Stack on right (Section 5)
         body_h_layout = QHBoxLayout()
@@ -950,30 +913,25 @@ class MainWindow(QMainWindow):
                 if hasattr(self, "vendor_plugins_widget"):
                     self.vendor_plugins_widget.refresh_plugins()
                 self.content_stack.setCurrentWidget(self.vendor_plugins_page)
-            elif page_id in ("settings", "general_settings"):
+            elif page_id in ("settings", "general_settings", "settings_general"):
                 self._sync_general_settings_page()
-                self.content_stack.setCurrentWidget(self.settings_page)
-                self.settings_subtabs.setCurrentIndex(0)
-            elif page_id == "reference_data":
+                self.content_stack.setCurrentWidget(self.general_settings_page)
+            elif page_id in ("reference_data", "settings_reference_data"):
                 if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
                     self.reference_data_widget.set_repository(self.inventory_repo)
                     self.reference_data_widget.refresh()
-                self.content_stack.setCurrentWidget(self.settings_page)
-                self.settings_subtabs.setCurrentIndex(1)
-            elif page_id == "provider_management":
+                self.content_stack.setCurrentWidget(self.reference_data_page)
+            elif page_id in ("provider_management", "supplier_directory", "settings_supplier_directory"):
                 if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
                     self.providers_widget.set_repository(self.inventory_repo)
                     self.providers_widget.refresh()
-                self.content_stack.setCurrentWidget(self.settings_page)
-                self.settings_subtabs.setCurrentIndex(2)
-            elif page_id in ("backup_restore", "backup"):
+                self.content_stack.setCurrentWidget(self.providers_page)
+            elif page_id in ("backup_restore", "backup", "settings_backup_restore"):
                 if hasattr(self, "backup_restore_widget"):
                     self.backup_restore_widget.refresh_status()
-                self.content_stack.setCurrentWidget(self.settings_page)
-                self.settings_subtabs.setCurrentIndex(3)
-            elif page_id == "about":
-                self.content_stack.setCurrentWidget(self.settings_page)
-                self.settings_subtabs.setCurrentIndex(4)
+                self.content_stack.setCurrentWidget(self.backup_restore_page)
+            elif page_id in ("about", "settings_about"):
+                self.content_stack.setCurrentWidget(self.about_page)
 
             # Authoritatively guarantee sidebar active page reflects requested destination
             self.sidebar.set_active_page(page_id)
