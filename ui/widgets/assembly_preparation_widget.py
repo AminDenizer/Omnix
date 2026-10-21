@@ -19,14 +19,14 @@ from ui.widgets.bom_audit_widget import DropZoneFrame
 class AssemblyTableWidget(QTableWidget):
     """
     High-contrast engineering table widget for Altium BOM Assembly Preparation.
-    Conforms to the 9-column contract:
-    | <PROJECT_NAME> | Comment | Description | Designator | Footprint | LibRef | Quantity | Part Number | Package |
+    Conforms to the 8-column worksheet schema:
+    | NO | Comment | Description | Designator | Footprint | Qty | Part Number | Package |
     """
 
-    COLUMN_COUNT = 9
+    COLUMN_COUNT = 8
     DEFAULT_HEADERS = [
-        "Project Name", "Comment", "Description", "Designator",
-        "Footprint", "LibRef", "Quantity", "Part Number", "Package"
+        "NO", "Comment", "Description", "Designator",
+        "Footprint", "Qty", "Part Number", "Package"
     ]
 
     def __init__(self, parent=None):
@@ -54,7 +54,7 @@ class AssemblyTableWidget(QTableWidget):
         for c in range(self.COLUMN_COUNT):
             item = self.horizontalHeaderItem(c)
             if item:
-                if c in (0, 4, 6, 8):
+                if c in (0, 4, 5, 7):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 else:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -63,8 +63,8 @@ class AssemblyTableWidget(QTableWidget):
             QTableWidget {
                 background-color: #0b101b;
                 alternate-background-color: #0f172a;
-                gridline-color: #1e293b;
-                border: 1px solid #1e293b;
+                gridline-color: #24354d;
+                border: 1px solid #24354d;
                 border-radius: 6px;
                 color: #e2e8f0;
                 font-size: 12px;
@@ -83,13 +83,13 @@ class AssemblyTableWidget(QTableWidget):
                 font-weight: bold;
                 font-size: 12px;
                 padding: 6px 8px;
-                border: 1px solid #1e293b;
+                border: 1px solid #24354d;
             }
         """)
 
-    def set_project_name_header(self, project_name: str):
-        """Sets the first column header to the authoritative project name."""
-        header_item = QTableWidgetItem(project_name)
+    def set_project_name_header(self, project_name: str = ""):
+        """Sets the first column header label to NO."""
+        header_item = QTableWidgetItem("NO")
         header_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         header_font = QFont("Segoe UI", 9, QFont.Weight.Bold)
         header_item.setFont(header_font)
@@ -97,7 +97,7 @@ class AssemblyTableWidget(QTableWidget):
         self.setHorizontalHeaderItem(0, header_item)
 
     def populate_items(self, items: List[BOMItem], project_name: str):
-        """Populates the 9-column assembly table with exact BOM data and sequential N-markers."""
+        """Populates the 8-column assembly table with exact BOM data and sequential N-markers."""
         self.setUpdatesEnabled(False)
         self.setRowCount(0)
         self.set_project_name_header(project_name)
@@ -114,12 +114,11 @@ class AssemblyTableWidget(QTableWidget):
             description = str(item.description or "").strip()
             designator = str(item.designator or "").strip()
             footprint = str(item.footprint or "").strip()
-            lib_ref = str(item.lib_ref or "").strip()
             qty = str(getattr(item, "total_needed_qty", getattr(item, "unit_qty", 1)))
             part_number = str(item.part_number or "").strip()
             package = str(item.package or item.footprint or "").strip()
 
-            # Col 0: N Marker
+            # Col 0: NO (N Marker)
             it_n = QTableWidgetItem(n_marker)
             it_n.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             it_n.setFont(bold_mono_font)
@@ -154,33 +153,28 @@ class AssemblyTableWidget(QTableWidget):
             it_fp.setForeground(QColor("#94a3b8"))
             self.setItem(row_idx, 4, it_fp)
 
-            # Col 5: LibRef
-            it_lib = QTableWidgetItem(lib_ref)
-            it_lib.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self.setItem(row_idx, 5, it_lib)
-
-            # Col 6: Quantity
+            # Col 5: Qty
             it_qty = QTableWidgetItem(qty)
             it_qty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             it_qty.setFont(bold_font)
             it_qty.setForeground(QColor("#f8fafc"))
-            self.setItem(row_idx, 6, it_qty)
+            self.setItem(row_idx, 5, it_qty)
 
-            # Col 7: Part Number (MPN)
+            # Col 6: Part Number (MPN)
             it_pn = QTableWidgetItem(part_number)
             it_pn.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             it_pn.setFont(bold_mono_font)
             it_pn.setForeground(QColor("#38bdf8"))
             if part_number:
                 it_pn.setToolTip(part_number)
-            self.setItem(row_idx, 7, it_pn)
+            self.setItem(row_idx, 6, it_pn)
 
-            # Col 8: Package
+            # Col 7: Package
             it_pkg = QTableWidgetItem(package)
             it_pkg.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             it_pkg.setFont(mono_font)
             it_pkg.setForeground(QColor("#cbd5e1"))
-            self.setItem(row_idx, 8, it_pkg)
+            self.setItem(row_idx, 7, it_pkg)
 
         self.setUpdatesEnabled(True)
         self.resizeRowsToContents()
@@ -197,20 +191,19 @@ class AssemblyTableWidget(QTableWidget):
             return
 
         base_widths = {
-            0: 85,   # N Marker / Project Name
+            0: 60,   # NO
             1: 110,  # Comment
-            2: 240,  # Description
-            3: 180,  # Designator
+            2: 250,  # Description
+            3: 220,  # Designator
             4: 110,  # Footprint
-            5: 110,  # LibRef
-            6: 60,   # Quantity
-            7: 160,  # Part Number
-            8: 95,   # Package
+            5: 60,   # Qty
+            6: 160,  # Part Number
+            7: 95,   # Package
         }
-        base_sum = sum(base_widths.values())  # 1150
+        base_sum = sum(base_widths.values())  # 1065
         if total_w > base_sum:
             extra = total_w - base_sum
-            desc_extra = int(extra * 0.6)
+            desc_extra = int(extra * 0.5)
             desig_extra = extra - desc_extra
             for c, w in base_widths.items():
                 if c == 2:
@@ -341,7 +334,7 @@ class AssemblyPreparationWidget(QWidget):
         self.drop_zone.fileDropped.connect(self._on_file_dropped)
         main_layout.addWidget(self.drop_zone)
 
-        # 3. Canonical 9-Column Assembly Table
+        # 3. Canonical 8-Column Assembly Table
         self.table = AssemblyTableWidget(self)
         main_layout.addWidget(self.table)
         self.table.hide()
@@ -415,7 +408,6 @@ class AssemblyPreparationWidget(QWidget):
             print_dialog = QPrintDialog(printer, self)
             size_name = "A4" if rec_size == QPageSize.PageSizeId.A4 else "A5"
             print_dialog.setWindowTitle(f"Print Assembly Worksheet ({size_name} Landscape)")
-            print_dialog.setOption(QPrintDialog.PrintDialogOption.PrintCollateCopies, False)
 
             res = print_dialog.exec()
             if res == QDialog.DialogCode.Accepted:

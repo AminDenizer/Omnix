@@ -1,7 +1,8 @@
 import os
 import html
+import math
 import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from PyQt6.QtCore import QMarginsF, QSizeF
 from PyQt6.QtGui import QFont, QTextDocument, QPageSize, QPageLayout
 from PyQt6.QtPrintSupport import QPrinter
@@ -59,6 +60,54 @@ class AssemblyPrintEngine:
         return QPageSize.PageSizeId.A5
 
     @classmethod
+    def calculate_row_height(cls, item: BOMItem, is_a4: bool) -> float:
+        """Calculates expected rendered row height in points for accurate pagination."""
+        desig = str(item.designator or "").strip()
+        desc = str(item.description or "").strip()
+        comment = str(item.comment or "").strip()
+
+        chars_desc = 38 if is_a4 else 25
+        chars_desig = 34 if is_a4 else 23
+        chars_comment = 16 if is_a4 else 11
+
+        lines_desc = max(1, math.ceil(len(desc) / chars_desc))
+        lines_desig = max(1, math.ceil(len(desig) / chars_desig))
+        lines_comment = max(1, math.ceil(len(comment) / chars_comment))
+
+        max_lines = max(lines_desc, lines_desig, lines_comment)
+        line_h = 12.0 if is_a4 else 11.0
+        return 10.0 + (max_lines * line_h)
+
+    @classmethod
+    def chunk_items_for_pages(cls, bom_items: List[BOMItem], is_a4: bool) -> List[List[Tuple[int, BOMItem]]]:
+        """
+        Segments BOM items into distinct pages so rows are never split across page boundaries.
+        Page 1 accounts for the large top header card; continuation pages use a compact subheader.
+        """
+        p1_limit = 360.0 if is_a4 else 180.0
+        other_limit = 420.0 if is_a4 else 190.0
+
+        pages = []
+        curr_page = []
+        curr_h = 0.0
+        limit = p1_limit
+
+        for idx, it in enumerate(bom_items, start=1):
+            h = cls.calculate_row_height(it, is_a4)
+            if curr_h + h > limit and curr_page:
+                pages.append(curr_page)
+                curr_page = [(idx, it)]
+                curr_h = h
+                limit = other_limit
+            else:
+                curr_page.append((idx, it))
+                curr_h += h
+
+        if curr_page:
+            pages.append(curr_page)
+        return pages
+
+    @classmethod
     def generate_html(
         cls,
         bom_items: List[BOMItem],
@@ -67,8 +116,10 @@ class AssemblyPrintEngine:
         page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5
     ) -> str:
         """
-        Generates canonical HTML representation of the Assembly Worksheet conforming to the 9-column contract:
-        | <PROJECT_NAME> | Comment | Description | Designator | Footprint | LibRef | Quantity | Part Number | Package |
+        Generates canonical multi-page paginated HTML representation of the Assembly Worksheet
+        conforming to the 8-column contract:
+        | NO | Comment | Description | Designator | Footprint | Qty | Part Number | Package |
+        Rows are segmented into page blocks with repeated column headers and no rows split across pages.
         """
         esc_project_name = html.escape(project_name)
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -80,37 +131,21 @@ class AssemblyPrintEngine:
         css_page_margin = "8mm" if is_a4 else "6mm"
         css_body_font_size = "8pt" if is_a4 else "7.5pt"
 
-        # Build table rows with N1...Nn numbering
-        table_rows_html = []
-        for idx, item in enumerate(bom_items, start=1):
-            n_marker = f"N{idx}"
-            comment = html.escape(str(item.comment or "").strip())
-            description = html.escape(str(item.description or "").strip())
-            designator = html.escape(str(item.designator or "").strip())
-            footprint = html.escape(str(item.footprint or "").strip())
-            lib_ref = html.escape(str(item.lib_ref or "").strip())
-            qty = str(getattr(item, "total_needed_qty", getattr(item, "unit_qty", 1)))
-            part_number = html.escape(str(item.part_number or "").strip())
-            package = html.escape(str(item.package or item.footprint or "").strip())
+        if is_a4:
+            col_widths = {
+                "no": "4.5%", "comment": "10%", "desc": "24%", "desig": "24%",
+                "footprint": "11%", "qty": "5%", "mpn": "13%", "pkg": "8.5%"
+            }
+        else:
+            col_widths = {
+                "no": "5%", "comment": "10%", "desc": "23%", "desig": "23%",
+                "footprint": "11%", "qty": "5.5%", "mpn": "13.5%", "pkg": "9%"
+            }
 
-            row_class = "even-row" if idx % 2 == 0 else "odd-row"
-            table_rows_html.append(f"""
-            <tr class="{row_class}">
-                <td class="col-n" style="text-align: center; font-weight: bold; font-family: monospace; color: #0284c7;">{n_marker}</td>
-                <td class="col-comment" dir="auto">{comment}</td>
-                <td class="col-desc" dir="auto">{description}</td>
-                <td class="col-desig" dir="ltr" style="font-family: monospace;">{designator}</td>
-                <td class="col-footprint" dir="ltr" style="text-align: center; font-family: monospace;">{footprint}</td>
-                <td class="col-libref" dir="auto">{lib_ref}</td>
-                <td class="col-qty" style="text-align: center; font-weight: bold;">{qty}</td>
-                <td class="col-mpn" dir="ltr" style="font-weight: bold; font-family: monospace; color: #0f172a;">{part_number}</td>
-                <td class="col-pkg" dir="ltr" style="text-align: center; font-family: monospace;">{package}</td>
-            </tr>
-            """)
+        pages = cls.chunk_items_for_pages(bom_items, is_a4)
+        total_pages = len(pages) if pages else 1
 
-        rows_content = "\n".join(table_rows_html)
-
-        html_template = f"""<!DOCTYPE html>
+        html_parts = [f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -128,6 +163,9 @@ class AssemblyPrintEngine:
             padding: 0;
             background-color: #ffffff;
             -webkit-print-color-adjust: exact;
+        }}
+        .page-break {{
+            page-break-before: always;
         }}
         .header-card {{
             border-bottom: 2px solid #0284c7;
@@ -163,28 +201,27 @@ class AssemblyPrintEngine:
             border-radius: 4px;
             border: 1px solid #bae6fd;
         }}
+        .continuation-card {{
+            border-bottom: 1.5px solid #0284c7;
+            padding-bottom: 3px;
+            margin-bottom: 5px;
+        }}
         table.assembly-table {{
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
         }}
-        table.assembly-table thead {{
-            display: table-header-group;
-        }}
-        table.assembly-table tr {{
-            page-break-inside: avoid;
-        }}
         table.assembly-table th {{
             background-color: #0f172a;
             color: #ffffff;
-            font-size: 7pt;
+            font-size: 7.5pt;
             font-weight: bold;
-            padding: 4px 3px;
+            padding: 4px 5px;
             border: 1px solid #0f172a;
             text-align: left;
             white-space: nowrap;
         }}
-        table.assembly-table th.col-project-header {{
+        table.assembly-table th.col-no-header {{
             background-color: #0369a1;
             color: #ffffff;
             text-align: center;
@@ -193,80 +230,131 @@ class AssemblyPrintEngine:
             white-space: nowrap;
         }}
         table.assembly-table td {{
-            padding: 3px 3px;
+            padding: 3px 5px;
             border: 1px solid #cbd5e1;
-            font-size: 7pt;
+            font-size: {css_body_font_size};
             vertical-align: middle;
             word-wrap: break-word;
             overflow-wrap: break-word;
         }}
-        .odd-row {{
+        tr.even-row td {{
             background-color: #ffffff;
         }}
-        .even-row {{
+        tr.odd-row td {{
             background-color: #f8fafc;
         }}
-        .col-n {{ width: 8%; }}
-        .col-comment {{ width: 9.5%; }}
-        .col-desc {{ width: 21%; }}
-        .col-desig {{ width: 17%; }}
-        .col-footprint {{ width: 10%; }}
-        .col-libref {{ width: 9%; }}
-        .col-qty {{ width: 6.5%; }}
-        .col-mpn {{ width: 12.5%; }}
-        .col-pkg {{ width: 6.5%; }}
         .footer {{
-            margin-top: 6px;
-            padding-top: 3px;
-            border-top: 1px solid #e2e8f0;
             font-size: 6.5pt;
             color: #94a3b8;
-            text-align: center;
+            text-align: right;
+            margin-top: 4px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 2px;
         }}
     </style>
 </head>
 <body>
-    <div class="header-card">
-        <table class="header-table">
-            <tr>
-                <td style="width: 60%; vertical-align: top;">
-                    <div class="header-title">🔧 ALTIUM BOM ASSEMBLY WORKSHEET</div>
-                    <div class="header-sub">Project: <span class="badge">{esc_project_name}</span> &nbsp;|&nbsp; Physical Component Preparation Sheet</div>
-                </td>
-                <td style="width: 40%; vertical-align: top; text-align: right;" class="header-meta">
-                    <div><b>Date:</b> {now_str}</div>
-                    <div><b>Line Items:</b> {total_items_count} &nbsp;|&nbsp; <b>Total Components:</b> {computed_total_qty} pcs</div>
-                </td>
-            </tr>
-        </table>
-    </div>
+"""]
 
-    <table class="assembly-table">
-        <thead>
-            <tr>
-                <th class="col-n col-project-header">{esc_project_name}</th>
-                <th class="col-comment">Comment</th>
-                <th class="col-desc">Description</th>
-                <th class="col-desig">Designator</th>
-                <th class="col-footprint" style="text-align: center;">Footprint</th>
-                <th class="col-libref">LibRef</th>
-                <th class="col-qty" style="text-align: center;">Qty</th>
-                <th class="col-mpn">Part Number</th>
-                <th class="col-pkg" style="text-align: center;">Package</th>
-            </tr>
-        </thead>
-        <tbody>
-            {rows_content}
-        </tbody>
-    </table>
+        if not pages:
+            pages = [[]]
 
-    <div class="footer">
-        Omnix Electronic Components & Altium BOM Assembly System &bull; Physical Worksheet
-    </div>
-</body>
-</html>
-"""
-        return html_template
+        for page_idx, page_rows in enumerate(pages, start=1):
+            is_first = (page_idx == 1)
+            break_class = "" if is_first else ' class="page-break"'
+            html_parts.append(f'<div{break_class}>')
+
+            if is_first:
+                html_parts.append(f"""
+                <div class="header-card">
+                    <table class="header-table">
+                        <tr>
+                            <td style="width: 60%; vertical-align: top;">
+                                <div class="header-title">🔧 ALTIUM BOM ASSEMBLY WORKSHEET</div>
+                                <div class="header-sub">Project: <span class="badge">{esc_project_name}</span> &nbsp;|&nbsp; Physical Component Preparation Sheet</div>
+                            </td>
+                            <td style="width: 40%; vertical-align: top; text-align: right;" class="header-meta">
+                                <div><b>Date:</b> {now_str}</div>
+                                <div><b>Line Items:</b> {total_items_count} &nbsp;|&nbsp; <b>Total Components:</b> {computed_total_qty} pcs</div>
+                                <div><b>Page:</b> {page_idx} of {total_pages}</div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                """)
+            else:
+                html_parts.append(f"""
+                <div class="continuation-card">
+                    <table class="header-table">
+                        <tr>
+                            <td style="width: 70%; vertical-align: middle;">
+                                <div style="font-size: 8.5pt; font-weight: bold; color: #0f172a;">
+                                    🔧 ALTIUM BOM ASSEMBLY WORKSHEET &nbsp;&bull;&nbsp; Project: <span class="badge">{esc_project_name}</span> (Continuation)
+                                </div>
+                            </td>
+                            <td style="width: 30%; vertical-align: middle; text-align: right;" class="header-meta">
+                                <div><b>Page:</b> {page_idx} of {total_pages}</div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                """)
+
+            html_parts.append("""
+            <table class="assembly-table">
+                <thead>
+                    <tr>
+                        <th class="col-no-header" style="width: {no}; text-align: center;">NO</th>
+                        <th style="width: {comment};">Comment</th>
+                        <th style="width: {desc};">Description</th>
+                        <th style="width: {desig};">Designator</th>
+                        <th style="width: {footprint}; text-align: center;">Footprint</th>
+                        <th style="width: {qty}; text-align: center;">Qty</th>
+                        <th style="width: {mpn};">Part Number</th>
+                        <th style="width: {pkg}; text-align: center;">Package</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """.format(**col_widths))
+
+            for row_num, item in page_rows:
+                n_marker = f"N{row_num}"
+                comment = html.escape(str(item.comment or "").strip())
+                description = html.escape(str(item.description or "").strip())
+                designator = html.escape(str(item.designator or "").strip())
+                footprint = html.escape(str(item.footprint or "").strip())
+                qty = str(getattr(item, "total_needed_qty", getattr(item, "unit_qty", 1)))
+                part_number = html.escape(str(item.part_number or "").strip())
+                package = html.escape(str(item.package or item.footprint or "").strip())
+
+                row_class = "even-row" if row_num % 2 == 0 else "odd-row"
+                html_parts.append(f"""
+                    <tr class="{row_class}">
+                        <td style="text-align: center; font-weight: bold; font-family: monospace; color: #0284c7;">{n_marker}</td>
+                        <td dir="auto">{comment}</td>
+                        <td dir="auto">{description}</td>
+                        <td dir="ltr" style="font-family: monospace; font-size: 7pt;">{designator}</td>
+                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7pt;">{footprint}</td>
+                        <td style="text-align: center; font-weight: bold;">{qty}</td>
+                        <td dir="ltr" style="font-weight: bold; font-family: monospace; color: #0f172a; font-size: 7pt;">{part_number}</td>
+                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7pt;">{package}</td>
+                    </tr>
+                """)
+
+            html_parts.append("""
+                </tbody>
+            </table>
+            """)
+
+            html_parts.append(f"""
+            <div class="footer">
+                Omnix Electronic Components & Altium BOM Assembly System &bull; Physical Worksheet &bull; Page {page_idx} of {total_pages}
+            </div>
+            </div>
+            """)
+
+        html_parts.append("</body></html>")
+        return "\n".join(html_parts)
 
     @classmethod
     def setup_printer(

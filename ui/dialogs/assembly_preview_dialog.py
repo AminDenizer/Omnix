@@ -35,8 +35,8 @@ class AssemblyPreviewDialog(QDialog):
 
         size_label = "A4" if self._initial_page_size == QPageSize.PageSizeId.A4 else "A5"
         self.setWindowTitle(f"Assembly Print Preview — {self.project_name} [{size_label} Landscape]")
-        self.resize(1020, 720)
-        self.setMinimumSize(850, 520)
+        self.resize(1120, 780)
+        self.setMinimumSize(920, 560)
 
         # Setup Landscape Printer for Preview
         self.printer = QPrinter(QPrinter.PrinterMode.HighResolution)
@@ -64,14 +64,15 @@ class AssemblyPreviewDialog(QDialog):
         top_bar.addWidget(paper_lbl)
 
         self.paper_combo = QComboBox()
-        self.paper_combo.addItem("A5 Landscape (210 × 148 mm)", QPageSize.PageSizeId.A5)
-        self.paper_combo.addItem("A4 Landscape (297 × 210 mm)", QPageSize.PageSizeId.A4)
+        self.paper_combo.addItem("A5 Landscape", QPageSize.PageSizeId.A5)
+        self.paper_combo.addItem("A4 Landscape", QPageSize.PageSizeId.A4)
         if self._initial_page_size == QPageSize.PageSizeId.A4:
             self.paper_combo.setCurrentIndex(1)
         else:
             self.paper_combo.setCurrentIndex(0)
+        self.paper_combo.setToolTip("Paper Size: A5 (210×148mm) or A4 (297×210mm)")
 
-        self.paper_combo.setStyleSheet("""
+        combo_style = """
             QComboBox {
                 background-color: #0f172a;
                 border: 1px solid #334155;
@@ -79,8 +80,8 @@ class AssemblyPreviewDialog(QDialog):
                 color: #38bdf8;
                 font-size: 11px;
                 font-weight: bold;
-                padding: 4px 8px;
-                min-width: 175px;
+                padding: 4px 6px;
+                min-width: 105px;
             }
             QComboBox:hover {
                 border-color: #38bdf8;
@@ -91,9 +92,46 @@ class AssemblyPreviewDialog(QDialog):
                 color: #f8fafc;
                 selection-background-color: #0284c7;
             }
-        """)
+        """
+        self.paper_combo.setStyleSheet(combo_style)
         self.paper_combo.currentIndexChanged.connect(self._on_paper_size_changed)
         top_bar.addWidget(self.paper_combo)
+
+        top_bar.addSpacing(4)
+
+        # View Mode Selection (All Pages / Single Page)
+        view_lbl = QLabel("View:")
+        view_lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        top_bar.addWidget(view_lbl)
+
+        self.view_mode_combo = QComboBox()
+        self.view_mode_combo.addItem("All Pages", "all")
+        self.view_mode_combo.addItem("Single Page", "single")
+        view_combo_style = combo_style.replace("min-width: 105px;", "min-width: 85px;")
+        self.view_mode_combo.setStyleSheet(view_combo_style)
+        self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
+        top_bar.addWidget(self.view_mode_combo)
+
+        top_bar.addSpacing(4)
+
+        # Multi-page Navigation
+        self.prev_btn = QPushButton("◀")
+        self.prev_btn.setObjectName("secondaryBtn")
+        self.prev_btn.setFixedWidth(28)
+        self.prev_btn.setToolTip("Previous Page")
+        self.prev_btn.clicked.connect(self._prev_page)
+        top_bar.addWidget(self.prev_btn)
+
+        self.page_lbl = QLabel("Page 1 of 1")
+        self.page_lbl.setStyleSheet("color: #f8fafc; font-size: 11px; font-weight: bold; padding: 0 4px;")
+        top_bar.addWidget(self.page_lbl)
+
+        self.next_btn = QPushButton("▶")
+        self.next_btn.setObjectName("secondaryBtn")
+        self.next_btn.setFixedWidth(28)
+        self.next_btn.setToolTip("Next Page")
+        self.next_btn.clicked.connect(self._next_page)
+        top_bar.addWidget(self.next_btn)
 
         top_bar.addSpacing(6)
 
@@ -108,12 +146,12 @@ class AssemblyPreviewDialog(QDialog):
         self.fit_page_btn.clicked.connect(lambda: self.preview_widget.fitInView())
         top_bar.addWidget(self.fit_page_btn)
 
-        self.zoom_in_btn = QPushButton("🔍 Zoom +")
+        self.zoom_in_btn = QPushButton("Zoom +")
         self.zoom_in_btn.setObjectName("secondaryBtn")
         self.zoom_in_btn.clicked.connect(lambda: self.preview_widget.zoomIn())
         top_bar.addWidget(self.zoom_in_btn)
 
-        self.zoom_out_btn = QPushButton("🔍 Zoom -")
+        self.zoom_out_btn = QPushButton("Zoom -")
         self.zoom_out_btn.setObjectName("secondaryBtn")
         self.zoom_out_btn.clicked.connect(lambda: self.preview_widget.zoomOut())
         top_bar.addWidget(self.zoom_out_btn)
@@ -165,8 +203,37 @@ class AssemblyPreviewDialog(QDialog):
         # 2. Preview Widget
         self.preview_widget = QPrintPreviewWidget(self.printer, self)
         self.preview_widget.paintRequested.connect(self._on_paint_requested)
+        self.preview_widget.previewChanged.connect(self._update_page_nav)
         self.preview_widget.setStyleSheet("background-color: #1e293b; border: 1px solid #334155; border-radius: 6px;")
         main_layout.addWidget(self.preview_widget, 1)
+
+    def _update_page_nav(self):
+        total = max(1, self.preview_widget.pageCount())
+        curr = max(1, self.preview_widget.currentPage())
+        self.page_lbl.setText(f"Page {curr} of {total}")
+        self.prev_btn.setEnabled(curr > 1)
+        self.next_btn.setEnabled(curr < total)
+
+    def _prev_page(self):
+        curr = self.preview_widget.currentPage()
+        if curr > 1:
+            self.preview_widget.setCurrentPage(curr - 1)
+            self._update_page_nav()
+
+    def _next_page(self):
+        curr = self.preview_widget.currentPage()
+        if curr < self.preview_widget.pageCount():
+            self.preview_widget.setCurrentPage(curr + 1)
+            self._update_page_nav()
+
+    def _on_view_mode_changed(self):
+        mode = self.view_mode_combo.currentData()
+        if mode == "single":
+            self.preview_widget.setSinglePageViewMode()
+        else:
+            self.preview_widget.setAllPagesViewMode()
+        self.preview_widget.fitInView()
+        self._update_page_nav()
 
     def _on_paper_size_changed(self):
         page_size_id = self.get_current_page_size_id()
@@ -175,6 +242,7 @@ class AssemblyPreviewDialog(QDialog):
         AssemblyPrintEngine.setup_printer(self.printer, page_size_id=page_size_id)
         self.preview_widget.updatePreview()
         self.preview_widget.fitInView()
+        self._update_page_nav()
 
     def _on_paint_requested(self, printer: QPrinter):
         page_size_id = self.get_current_page_size_id()
@@ -196,7 +264,6 @@ class AssemblyPreviewDialog(QDialog):
             print_dialog = QPrintDialog(printer, self)
             size_name = "A4" if page_size_id == QPageSize.PageSizeId.A4 else "A5"
             print_dialog.setWindowTitle(f"Print Assembly Worksheet ({size_name} Landscape)")
-            print_dialog.setOption(QPrintDialog.PrintDialogOption.PrintCollateCopies, False)
 
             if print_dialog.exec() == QDialog.DialogCode.Accepted:
                 if not printer.isValid():

@@ -100,8 +100,8 @@ class TestAssemblyNNumberingContract:
         table = AssemblyTableWidget()
         table.populate_items(items, "FC_IO_V1.3")
 
-        # Header 0 must be project name
-        assert table.horizontalHeaderItem(0).text() == "FC_IO_V1.3"
+        # Header 0 must be NO (project name is in heading card above table)
+        assert table.horizontalHeaderItem(0).text() == "NO"
 
         # Data cells in column 0 must be N1...Nn ONLY (not prepended with project name)
         for r in range(table.rowCount()):
@@ -138,23 +138,27 @@ class TestAssemblyNNumberingContract:
 
 
 class TestAssemblyTableContract:
-    """Tests for exact 9-column assembly table structure and data preservation."""
+    """Tests for exact 8-column assembly table structure and data preservation."""
 
     def test_assembly_table_columns_and_data_preservation(self, qapp):
         items = create_sample_bom_items()
         table = AssemblyTableWidget()
         table.populate_items(items, "FC_IO_V1.3")
 
-        assert table.columnCount() == 9
+        assert table.columnCount() == 8
+        assert [table.horizontalHeaderItem(c).text() for c in range(8)] == [
+            "NO", "Comment", "Description", "Designator", "Footprint", "Qty", "Part Number", "Package"
+        ]
 
         # Row 1: C2,C23 multi-designator
-        row1_desig = table.item(1, 3).text()
-        assert row1_desig == "C2,C23"
+        assert table.item(1, 0).text() == "N2"
         assert table.item(1, 1).text() == "4.7uF"
+        assert table.item(1, 2).text() == "Capacitor 0805 4.7uF 50VDC 10%"
+        assert table.item(1, 3).text() == "C2,C23"
         assert table.item(1, 4).text() == "SMDCAP0805"
-        assert table.item(1, 6).text() == "2"
-        assert table.item(1, 7).text() == "C2012X5R1H475K125AB"
-        assert table.item(1, 8).text() == "0805"
+        assert table.item(1, 5).text() == "2"
+        assert table.item(1, 6).text() == "C2012X5R1H475K125AB"
+        assert table.item(1, 7).text() == "0805"
 
     def test_package_fallback_when_package_empty(self, qapp):
         item_no_pkg = BOMItem(
@@ -170,8 +174,8 @@ class TestAssemblyTableContract:
         )
         table = AssemblyTableWidget()
         table.populate_items([item_no_pkg], "TestProj")
-        # Should fallback to footprint
-        assert table.item(0, 8).text() == "RES0603"
+        # Should fallback to footprint in column 7 (Package)
+        assert table.item(0, 7).text() == "RES0603"
 
     def test_copy_tsv_row(self, qapp):
         items = create_sample_bom_items()
@@ -202,7 +206,7 @@ class TestAssemblyPrintEngine:
         assert "FC_IO_V1.3" in html_output
         assert "A5 landscape" in html_output
         assert "6mm" in html_output
-        assert "table-header-group" in html_output
+        assert "col-no-header" in html_output
         assert "N1" in html_output
         assert "N2" in html_output
         assert "N3" in html_output

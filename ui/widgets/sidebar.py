@@ -17,7 +17,7 @@ Supports two visual modes:
 """
 
 from typing import Optional, Dict, Tuple
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QByteArray
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QByteArray, QRectF
 from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (
@@ -128,12 +128,11 @@ def render_outline_pixmap(icon_key: str, color_hex: str, size: int = 36) -> QPix
     )
     renderer = QSvgRenderer(QByteArray(svg_colored.encode("utf-8")))
 
-    dpr = 2.0
-    pm = QPixmap(int(size * dpr), int(size * dpr))
-    pm.setDevicePixelRatio(dpr)
+    pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pm)
-    renderer.render(painter)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderer.render(painter, QRectF(0, 0, float(size), float(size)))
     painter.end()
 
     _PIXMAP_CACHE[cache_key] = pm
@@ -471,11 +470,13 @@ class CollapsibleSidebar(QFrame):
         "assembly_preparation": "assembly_prep",
         "export_backup": "backup_restore",
         "supplier_directory": "provider_management",
+        "supplier_settings": "provider_management",
         "settings_general": "general_settings",
         "settings_reference_data": "reference_data",
         "settings_supplier_directory": "provider_management",
         "settings_backup_restore": "backup_restore",
         "settings_about": "about",
+        "about_settings": "about",
         "backup": "backup_restore",
     }
 
@@ -484,6 +485,8 @@ class CollapsibleSidebar(QFrame):
         self.setObjectName("collapsibleSidebar")
         self._is_collapsed = False
         self._active_page_id = "assembly_view"
+        self._submenu_expanded = False
+        self._last_settings_child = "general_settings"
         self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP, sidebar=self)
         self._section_headers = []
         self._submenu_buttons: Dict[str, SidebarSubmenuButton] = {}
@@ -556,31 +559,40 @@ class CollapsibleSidebar(QFrame):
         self.pageChanged.emit(page_id)
 
     def _on_settings_parent_clicked(self):
-        new_state = not self.settings_parent_btn.is_submenu_open()
+        new_state = not self._submenu_expanded
         self.set_submenu_expanded(new_state)
         if new_state:
-            self.set_active_page("settings")
-            self.pageChanged.emit("settings")
+            # If current active page is already one of the settings children, keep it
+            if self._active_page_id in self._submenu_buttons:
+                target_page = self._active_page_id
+            else:
+                target_page = getattr(self, "_last_settings_child", "general_settings")
+            self.set_active_page(target_page)
+            self.pageChanged.emit(target_page)
         else:
             is_settings = self._active_page_id in self._submenu_buttons or self._active_page_id == "settings"
             self.settings_parent_btn.set_active(is_settings)
 
     def set_submenu_expanded(self, expanded: bool):
+        self._submenu_expanded = expanded
         self.settings_parent_btn.set_submenu_open(expanded)
-        for btn in self._submenu_buttons.values():
-            btn.setVisible(expanded)
+        if not self._is_collapsed:
+            for btn in self._submenu_buttons.values():
+                btn.setVisible(expanded)
 
     def is_submenu_expanded(self) -> bool:
-        return self.settings_parent_btn.is_submenu_open()
+        return self._submenu_expanded
 
     def set_active_page(self, page_id: str):
         canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
         self._active_page_id = canonical_id
         is_settings_section = canonical_id in self._submenu_buttons or canonical_id == "settings"
 
-        # If navigating directly to a child destination, ensure submenu is visually expanded
+        # Record last settings child if in settings
         if canonical_id in self._submenu_buttons:
-            self.set_submenu_expanded(True)
+            self._last_settings_child = canonical_id
+            if not self._is_collapsed:
+                self.set_submenu_expanded(True)
 
         # Parent Settings button active state (communicates section)
         self.settings_parent_btn.set_active(is_settings_section)
@@ -588,7 +600,8 @@ class CollapsibleSidebar(QFrame):
         # Submenu children active state (communicates destination)
         for child_id, btn in self._submenu_buttons.items():
             if canonical_id == "settings":
-                btn.set_active(child_id == "general_settings")
+                target = getattr(self, "_last_settings_child", "general_settings")
+                btn.set_active(child_id == target)
             else:
                 btn.set_active(child_id == canonical_id)
 
@@ -621,5 +634,6 @@ class CollapsibleSidebar(QFrame):
 
         for btn in self._submenu_buttons.values():
             btn.set_collapsed(collapsed)
+            btn.setVisible(not collapsed and self._submenu_expanded)
 
         self.collapseChanged.emit(collapsed)

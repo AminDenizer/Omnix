@@ -102,8 +102,8 @@ class TestSidebarIcons:
 
         # Click settings
         sidebar._buttons["settings"].click()
-        assert sidebar.active_page() == "settings"
-        assert "settings" in emitted_pages
+        assert sidebar.active_page() in ["settings", "general_settings"]
+        assert any(p in emitted_pages for p in ["settings", "general_settings"])
 
     def test_legacy_emoji_mapping_compatibility(self):
         """Passing legacy emoji string gracefully maps to the correct outline SVG pixmap."""

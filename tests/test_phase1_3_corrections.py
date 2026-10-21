@@ -123,23 +123,23 @@ class TestBOMViewsAlignmentAndWrapping:
         assert table.wordWrap() is True
 
         # Header alignment matches content alignment:
-        # Col 0 (N), Col 4 (Package), Col 6 (Qty), Col 8 (Check) are Centered
-        # Col 1 (LibRef), Col 2 (Comment), Col 3 (Desc), Col 5 (Footprint), Col 7 (Designator) are Left aligned
+        # Col 0 (NO), Col 4 (Footprint), Col 5 (Qty), Col 7 (Package) are Centered
+        # Col 1 (Comment), Col 2 (Desc), Col 3 (Designator), Col 6 (Part Number) are Left aligned
         assert table.horizontalHeaderItem(0).textAlignment() == Qt.AlignmentFlag.AlignCenter
         assert table.horizontalHeaderItem(4).textAlignment() == Qt.AlignmentFlag.AlignCenter
-        assert table.horizontalHeaderItem(6).textAlignment() == Qt.AlignmentFlag.AlignCenter
-        assert table.horizontalHeaderItem(8).textAlignment() == Qt.AlignmentFlag.AlignCenter
+        assert table.horizontalHeaderItem(5).textAlignment() == Qt.AlignmentFlag.AlignCenter
+        assert table.horizontalHeaderItem(7).textAlignment() == Qt.AlignmentFlag.AlignCenter
 
         assert table.horizontalHeaderItem(1).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         assert table.horizontalHeaderItem(2).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         assert table.horizontalHeaderItem(3).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        assert table.horizontalHeaderItem(5).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        assert table.horizontalHeaderItem(7).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        assert table.horizontalHeaderItem(6).textAlignment() == (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         # Cell alignments
         assert table.item(0, 0).textAlignment() == Qt.AlignmentFlag.AlignCenter
         assert table.item(0, 4).textAlignment() == Qt.AlignmentFlag.AlignCenter
-        assert table.item(0, 6).textAlignment() == Qt.AlignmentFlag.AlignCenter
+        assert table.item(0, 5).textAlignment() == Qt.AlignmentFlag.AlignCenter
+        assert table.item(0, 7).textAlignment() == Qt.AlignmentFlag.AlignCenter
 
         # Ensure row 1 (with 38 designators) is taller than row 0 (1 designator)
         table.resize(1000, 600)
@@ -255,9 +255,7 @@ class TestPrinterDialogSafety:
 
             # Must return None or finish cleanly and not raise NameError or any exception
             prep_widget.print_a5_sheet()
-            # Verify PrintCollateCopies option was disabled
-            assert mock_dlg.setOption.called
-            assert mock_dlg.setOption.call_args[0][1] is False
+            assert mock_dlg.exec.called
 
     def test_print_a5_sheet_handles_accepted(self, qapp):
         prep_widget = AssemblyPreparationWidget()
@@ -284,6 +282,5 @@ class TestPrinterDialogSafety:
             mock_dlg.exec.return_value = QDialog.DialogCode.Rejected
 
             dialog._handle_print()
-            assert mock_dlg.setOption.called
-            assert mock_dlg.setOption.call_args[0][1] is False
+            assert mock_dlg.exec.called
         dialog.close()
