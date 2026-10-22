@@ -120,7 +120,7 @@ class TestAutocompleteKeyboard:
         qapp.processEvents()
 
     def test_category_dependent_tech_autocomplete(self, qapp, repo):
-        """When Category is 'Resistor', typing 'thi' + Tab commits 'Thick Film'."""
+        """When Category is 'Resistor', typing unique match 'thick' + Tab commits 'Thick Film'."""
         dlg = ComponentEditDialog(repository=repo)
         dlg.show()
         qapp.processEvents()
@@ -134,7 +134,7 @@ class TestAutocompleteKeyboard:
         le.setFocus()
         qapp.processEvents()
 
-        le.setText("thi")
+        le.setText("thick")
         qapp.processEvents()
 
         tab_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)

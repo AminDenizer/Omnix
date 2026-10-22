@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, Any
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject, QEvent
 from PyQt6.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QKeyEvent, QWheelEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QWidget,
     QVBoxLayout,
@@ -125,79 +126,137 @@ class CompleterKeyFilter(QObject):
     """
     Event filter installed on editable QComboBox line edits and their QCompleter popups.
     Intercepts:
-    - Tab / Backtab: commits current or highlighted suggestion, closes popup, and advances focus.
-    - Enter / Return: commits current or highlighted suggestion and closes popup.
-    - Escape: closes popup without committing.
-    Guarantees no duplicate text appending and preserves canonical values.
+    - Arrow Down / Up: navigates available suggestions in the popup list.
+    - Tab / Backtab: commits highlighted suggestion or validated exact match, closes popup, advances focus.
+    - Enter / Return: commits highlighted suggestion or validated exact match and closes popup.
+    - Escape: closes popup without committing or discarding entered text.
+    - FocusOut: commits exact match if valid, preserves entered text without coercion or accidental erasure.
     """
 
     def __init__(self, combo: QComboBox, parent: Optional[QObject] = None):
         super().__init__(parent or combo)
         self.combo = combo
 
-    def _resolve_candidate(self) -> Optional[str]:
-        comp = self.combo.completer()
-        popup = comp.popup() if comp else None
-        popup_visible = popup is not None and popup.isVisible()
-
-        if popup_visible:
-            curr_idx = popup.currentIndex()
-            if curr_idx.isValid():
-                val = curr_idx.data(Qt.ItemDataRole.DisplayRole)
-                if val:
-                    return str(val)
-            if comp and comp.currentCompletion():
-                return comp.currentCompletion()
-            if popup.model() and popup.model().rowCount() > 0:
-                val = popup.model().index(0, 0).data(Qt.ItemDataRole.DisplayRole)
-                if val:
-                    return str(val)
-
-        if comp and comp.currentCompletion():
-            return comp.currentCompletion()
-
+    def _resolve_candidate(self, is_tab_or_enter: bool = False) -> Optional[str]:
+        """
+        Determines the candidate reference value to commit based on deterministic selection rules:
+        Rule 1: If exactly one valid suggestion matches (unique match), commit that suggestion immediately.
+        Rule 2: If multiple suggestions match and a suggestion is explicitly active/highlighted, commit it.
+        Rule 3: If multiple suggestions match and none is explicitly selected, do NOT arbitrarily commit.
+                Ambiguous matches must not cause unintended selection. Preserve user draft text.
+        Rule 4: If no valid matches exist (arbitrary text), return None without coercion.
+        FocusOut (blur): Exact case-insensitive matches or unambiguous unique prefix matches normalize;
+                         otherwise preserve draft text without coercion.
+        """
         le = self.combo.lineEdit()
         cur_txt = (le.text() if le else self.combo.currentText()).strip()
         if not cur_txt:
             return None
 
         cur_lower = cur_txt.lower()
-        items = [self.combo.itemText(i) for i in range(self.combo.count())]
+        items = [self.combo.itemText(i).strip() for i in range(self.combo.count()) if self.combo.itemText(i).strip()]
 
-        # 1. Exact case-insensitive match
+        # 1. Exact case-insensitive match against reference list items
         for it in items:
             if it.lower() == cur_lower:
                 return it
 
-        # 2. Prefix match (e.g. 'ftd' -> 'FTDI')
+        comp = self.combo.completer()
+        popup = comp.popup() if comp else None
+        popup_visible = popup is not None and popup.isVisible()
+
+        # 2. Rule 2: Explicitly highlighted suggestion in the popup
+        if popup_visible and popup is not None:
+            curr_idx = popup.currentIndex()
+            if curr_idx.isValid():
+                val = curr_idx.data(Qt.ItemDataRole.DisplayRole)
+                if val:
+                    return str(val)
+
+        # 3. Visible popup narrowed to exactly one suggestion
+        if popup_visible and popup is not None and popup.model() and popup.model().rowCount() == 1:
+            val = popup.model().index(0, 0).data(Qt.ItemDataRole.DisplayRole)
+            if val:
+                return str(val)
+
+        # 4. Matching database-backed suggestions with prefix priority
         prefix_matches = [it for it in items if it.lower().startswith(cur_lower)]
-        if prefix_matches:
-            return prefix_matches[0]
-
-        # 3. Substring match
         contains_matches = [it for it in items if cur_lower in it.lower()]
-        if contains_matches:
-            return contains_matches[0]
 
+        # On FocusOut (blur):
+        if not is_tab_or_enter:
+            # If there is an unambiguous unique prefix match (e.g. 'ftd' -> 'FTDI'), normalize to canonical value
+            if len(prefix_matches) == 1:
+                return prefix_matches[0]
+            # Otherwise, preserve user draft text without arbitrary coercion
+            return None
+
+        # On Tab or Enter:
+        if is_tab_or_enter:
+            # Unique prefix match takes priority (e.g. 'tex' -> 'Texas Instruments', 'd' -> 'Diode', 'np' -> 'NPN')
+            if len(prefix_matches) == 1:
+                return prefix_matches[0]
+
+            # If multiple prefix matches exist, it is ambiguous -> do NOT commit arbitrarily
+            if len(prefix_matches) > 1:
+                return None
+
+            # If no prefix matches exist, fall back to unique substring match (e.g. 'transceiver' -> 'RF Transceiver')
+            if len(contains_matches) == 1:
+                return contains_matches[0]
+
+            # Ambiguous (multiple contains matches) or no matches -> preserve user draft text
+            return None
+
+        # Rule 4: Do NOT silently coerce arbitrary text
         return None
 
+    def _commit(self, text_to_commit: str):
+        c_idx = self.combo.findText(text_to_commit, Qt.MatchFlag.MatchFixedString)
+        if c_idx != -1:
+            self.combo.setCurrentIndex(c_idx)
+        self.combo.setEditText(text_to_commit)
+        if self.combo.lineEdit():
+            self.combo.lineEdit().setText(text_to_commit)
+        dlg = self.combo.window()
+        if hasattr(dlg, "_clear_field_error"):
+            dlg._clear_field_error(self.combo)
+
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        comp = self.combo.completer()
+        popup = comp.popup() if comp else None
+        popup_visible = popup is not None and popup.isVisible()
+
+        if event.type() == QEvent.Type.ShortcutOverride:
+            key_event = event
+            key = key_event.key()
+            if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                event.accept()
+                return True
+
         if event.type() == QEvent.Type.KeyPress:
             key_event = event
             key = key_event.key()
-            comp = self.combo.completer()
-            popup = comp.popup() if comp else None
-            popup_visible = popup is not None and popup.isVisible()
 
-            if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
-                text_to_commit = self._resolve_candidate()
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                if popup_visible and popup is not None and popup.model():
+                    total_rows = popup.model().rowCount()
+                    if total_rows > 0:
+                        curr = popup.currentIndex()
+                        if not curr.isValid():
+                            target_row = 0 if key == Qt.Key.Key_Down else total_rows - 1
+                        else:
+                            if key == Qt.Key.Key_Down:
+                                target_row = min(curr.row() + 1, total_rows - 1)
+                            else:
+                                target_row = max(curr.row() - 1, 0)
+                        popup.setCurrentIndex(popup.model().index(target_row, 0))
+                        return True
+
+            elif key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
                 if text_to_commit:
-                    c_idx = self.combo.findText(text_to_commit, Qt.MatchFlag.MatchFixedString)
-                    if c_idx != -1:
-                        self.combo.setCurrentIndex(c_idx)
-                    self.combo.setEditText(text_to_commit)
-                    if self.combo.lineEdit():
-                        self.combo.lineEdit().setText(text_to_commit)
+                    self._commit(text_to_commit)
 
                 if popup_visible:
                     popup.hide()
@@ -209,14 +268,9 @@ class CompleterKeyFilter(QObject):
                 return True
 
             elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                text_to_commit = self._resolve_candidate()
+                text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
                 if text_to_commit:
-                    c_idx = self.combo.findText(text_to_commit, Qt.MatchFlag.MatchFixedString)
-                    if c_idx != -1:
-                        self.combo.setCurrentIndex(c_idx)
-                    self.combo.setEditText(text_to_commit)
-                    if self.combo.lineEdit():
-                        self.combo.lineEdit().setText(text_to_commit)
+                    self._commit(text_to_commit)
 
                 if popup_visible:
                     popup.hide()
@@ -228,25 +282,15 @@ class CompleterKeyFilter(QObject):
                     return True
 
         elif event.type() == QEvent.Type.FocusOut:
-            comp = self.combo.completer()
-            popup = comp.popup() if comp else None
             if popup and popup.isVisible():
                 popup.hide()
-            text_to_commit = self._resolve_candidate()
+            text_to_commit = self._resolve_candidate(is_tab_or_enter=False)
             if text_to_commit:
-                c_idx = self.combo.findText(text_to_commit, Qt.MatchFlag.MatchFixedString)
-                if c_idx != -1:
-                    self.combo.setCurrentIndex(c_idx)
-                self.combo.setEditText(text_to_commit)
-                if self.combo.lineEdit():
-                    self.combo.lineEdit().setText(text_to_commit)
-            else:
-                cur_text = self.combo.currentText().strip()
-                if cur_text and self.combo.count() > 0:
-                    c_idx = self.combo.findText(cur_text, Qt.MatchFlag.MatchFixedString)
-                    if c_idx == -1:
-                        self.combo.setCurrentIndex(-1)
-                        self.combo.setEditText("")
+                self._commit(text_to_commit)
+            # Notify dialog to validate field on focus out without erasing entered text
+            dlg = self.combo.window()
+            if hasattr(dlg, "_on_combo_focus_out"):
+                dlg._on_combo_focus_out(self.combo)
 
         return super().eventFilter(watched, event)
 
@@ -589,6 +633,7 @@ class ComponentEditDialog(QDialog):
         lbl_mfr.setStyleSheet(lbl_field_style)
         self.mfr_input = QComboBox()
         self.mfr_input.setEditable(True)
+        self.mfr_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.mfr_input.setFont(QFont("Segoe UI", 10))
         self.mfr_input.setFixedHeight(32)
         self.mfr_input.setStyleSheet(input_style)
@@ -631,12 +676,14 @@ class ComponentEditDialog(QDialog):
         lbl_cat.setStyleSheet(lbl_field_style)
         self.category_combo = QComboBox()
         self.category_combo.setEditable(True)
+        self.category_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.category_combo.setFont(QFont("Segoe UI", 10))
         self.category_combo.setFixedHeight(32)
         self.category_combo.setStyleSheet(input_style)
         self.category_combo.wheelEvent = lambda event: event.ignore()
         self.category_combo.installEventFilter(self._wheel_filter)
         self.category_combo.currentTextChanged.connect(self._on_category_changed)
+        self.category_input = self.category_combo
         grp_grid.addWidget(lbl_cat, 0, 0)
         grp_grid.addWidget(self.category_combo, 0, 1)
 
@@ -648,11 +695,13 @@ class ComponentEditDialog(QDialog):
         lbl_tech.setStyleSheet(lbl_field_style)
         self.tech_combo = QComboBox()
         self.tech_combo.setEditable(True)
+        self.tech_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.tech_combo.setFont(QFont("Segoe UI", 10))
         self.tech_combo.setFixedHeight(32)
         self.tech_combo.setStyleSheet(input_style)
         self.tech_combo.wheelEvent = lambda event: event.ignore()
         self.tech_combo.installEventFilter(self._wheel_filter)
+        self.type_input = self.tech_combo
         grp_grid.addWidget(lbl_tech, 1, 0)
         grp_grid.addWidget(self.tech_combo, 1, 1)
 
@@ -955,9 +1004,156 @@ class ComponentEditDialog(QDialog):
             self.dup_details_lbl.setText("")
         if hasattr(self, "validation_lbl"):
             self.validation_lbl.setText("")
+        if hasattr(self, "_set_field_error"):
+            if hasattr(self, "mfr_input"):
+                self._set_field_error(self.mfr_input, False)
+            if hasattr(self, "category_combo"):
+                self._set_field_error(self.category_combo, False)
+            if hasattr(self, "tech_combo"):
+                self._set_field_error(self.tech_combo, False)
+
+    def _set_field_error(self, widget: QWidget, is_error: bool):
+        """Toggle red error border and subtle error background styling on input fields."""
+        chev_url, chev_hover_url = _get_combo_chevron_urls()
+        border_color = "#ef4444" if is_error else "#1e293b"
+        bg_color = "#180e14" if is_error else "#0b101b"
+        focus_border = "#f87171" if is_error else "#38bdf8"
+
+        style = f"""
+            QComboBox {{
+                background-color: {bg_color};
+                color: #f8fafc;
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 4px 8px;
+                padding-right: 28px;
+                font-size: 11px;
+            }}
+            QComboBox:hover {{
+                border-color: {focus_border};
+            }}
+            QComboBox:focus {{
+                border-color: {focus_border};
+                background-color: #090e18;
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px;
+                border-left: 1px solid {border_color};
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 5px;
+                background-color: #131d31;
+            }}
+            QComboBox::drop-down:hover {{
+                background-color: #1e293b;
+            }}
+            QComboBox::down-arrow {{
+                image: url('{chev_url}');
+                width: 12px;
+                height: 12px;
+            }}
+            QComboBox::down-arrow:hover {{
+                image: url('{chev_hover_url}');
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #0f172a;
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                padding: 4px;
+            }}
+        """
+        widget.setStyleSheet(style)
+        widget.setProperty("_has_validation_error", is_error)
+
+    def _clear_field_error(self, widget: QWidget):
+        """Clear error border styling from an input field."""
+        if widget.property("_has_validation_error"):
+            self._set_field_error(widget, False)
+            if hasattr(self, "validation_lbl"):
+                self.validation_lbl.setText("")
+
+    def _on_combo_focus_out(self, combo: QComboBox):
+        """Validate reference fields when user finishes typing and leaves the field."""
+        if not self.repository:
+            return
+
+        txt = clean_display_string(combo.currentText())
+        if not txt:
+            self._clear_field_error(combo)
+            return
+
+        if combo is getattr(self, "mfr_input", None):
+            has_ref = False
+            try:
+                mfrs = self.repository.get_all_manufacturers()
+                has_ref = len(mfrs) > 0
+            except Exception:
+                has_ref = False
+
+            if has_ref:
+                mfr_rec = self.repository.get_manufacturer_by_name(txt)
+                if not mfr_rec:
+                    self._set_field_error(combo, True)
+                    self.validation_lbl.setText(
+                        f"Manufacturer '{txt}' is not in canonical reference data. Please select an existing manufacturer from Reference Data."
+                    )
+                else:
+                    self._set_field_error(combo, False)
+                    if self.validation_lbl.text().startswith("Manufacturer '"):
+                        self.validation_lbl.setText("")
+
+        elif combo is getattr(self, "category_combo", None):
+            has_ref = False
+            try:
+                cats = self.repository.get_all_categories()
+                has_ref = len(cats) > 0
+            except Exception:
+                has_ref = False
+
+            if has_ref:
+                cat_rec = self.repository.get_category_by_name(txt)
+                if not cat_rec:
+                    self._set_field_error(combo, True)
+                    self.validation_lbl.setText(
+                        f"Category '{txt}' is not in canonical reference data. Please select an existing category from Reference Data."
+                    )
+                else:
+                    self._set_field_error(combo, False)
+                    if self.validation_lbl.text().startswith("Category '"):
+                        self.validation_lbl.setText("")
+
+        elif combo is getattr(self, "tech_combo", None):
+            cat = clean_display_string(self.category_combo.currentText()) if hasattr(self, "category_combo") else ""
+            if not cat:
+                self._set_field_error(combo, True)
+                self.validation_lbl.setText("Please select a Category before choosing Type/Technology.")
+                return
+
+            cat_rec = self.repository.get_category_by_name(cat)
+            if not cat_rec:
+                self._set_field_error(combo, True)
+                self.validation_lbl.setText(
+                    f"Category '{cat}' is not in canonical reference data."
+                )
+                return
+
+            if not self.repository.validate_category_type(cat, txt):
+                self._set_field_error(combo, True)
+                self.validation_lbl.setText(
+                    f"Type/Technology '{txt}' is not valid for category '{cat}'. Please select an existing type from Reference Data."
+                )
+            else:
+                self._set_field_error(combo, False)
+                if self.validation_lbl.text().startswith("Type/Technology '"):
+                    self.validation_lbl.setText("")
 
     def _configure_combo_autocomplete(self, combo: QComboBox):
         """Configure clean popup autocomplete on an editable combo box with Tab / Enter commit and Esc dismiss."""
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         comp = combo.completer()
         if comp:
             comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -982,6 +1178,23 @@ class ComponentEditDialog(QDialog):
                     popup.installEventFilter(tab_filter)
                     popup._tab_filter_installed = True
 
+            if not getattr(comp, "_activated_connected", False):
+                def _on_activated(text: str, cb=combo):
+                    c_idx = cb.findText(text, Qt.MatchFlag.MatchFixedString)
+                    if c_idx != -1:
+                        cb.setCurrentIndex(c_idx)
+                    cb.setEditText(text)
+                    if cb.lineEdit():
+                        cb.lineEdit().setText(text)
+                    self._clear_field_error(cb)
+                comp.activated.connect(_on_activated)
+                comp._activated_connected = True
+
+        if not getattr(combo, "_tab_filter_installed", False):
+            tab_filter = CompleterKeyFilter(combo, parent=combo)
+            combo.installEventFilter(tab_filter)
+            combo._tab_filter_installed = True
+
         le = combo.lineEdit()
         if le:
             le.wheelEvent = lambda event: event.ignore()
@@ -996,6 +1209,48 @@ class ComponentEditDialog(QDialog):
                 QLineEdit.focusInEvent(target, event),
                 QTimer.singleShot(0, target.deselect)
             )
+            if not getattr(le, "_text_changed_connected", False):
+                def _on_le_text_changed(txt, cb=combo):
+                    self._clear_field_error(cb)
+                le.textChanged.connect(_on_le_text_changed)
+                le._text_changed_connected = True
+
+    def refresh_reference_data(self):
+        """Dynamically reload Manufacturer, Category, and Type data from repository without hardcoding."""
+        curr_mfr = self.mfr_input.currentText()
+        curr_cat = self.category_combo.currentText()
+        curr_tech = self.tech_combo.currentText()
+
+        self.mfr_input.blockSignals(True)
+        self.category_combo.blockSignals(True)
+        self.mfr_input.clear()
+        self.category_combo.clear()
+
+        if self.repository:
+            try:
+                for m in self.repository.get_all_manufacturers():
+                    self.mfr_input.addItem(m.name)
+            except Exception:
+                pass
+
+            try:
+                for c in self.repository.get_all_categories():
+                    self.category_combo.addItem(c.name)
+            except Exception:
+                pass
+
+        self.mfr_input.setEditText(curr_mfr)
+        self.category_combo.setEditText(curr_cat)
+        self.mfr_input.blockSignals(False)
+        self.category_combo.blockSignals(False)
+
+        self._configure_combo_autocomplete(self.mfr_input)
+        self._configure_combo_autocomplete(self.category_combo)
+
+        # Refresh dependent types
+        self._on_category_changed(curr_cat)
+        if curr_tech:
+            self.tech_combo.setEditText(curr_tech)
 
     def _load_reference_data(self):
         """Populate Manufacturer and Category combo boxes from repository if available."""
@@ -1006,25 +1261,7 @@ class ComponentEditDialog(QDialog):
         if not self.repository:
             return
 
-        # Manufacturers
-        try:
-            mfrs = self.repository.get_all_manufacturers()
-            for m in mfrs:
-                if self.mfr_input.findText(m.name) == -1:
-                    self.mfr_input.addItem(m.name)
-            self._configure_combo_autocomplete(self.mfr_input)
-        except Exception:
-            pass
-
-        # Categories
-        try:
-            cats = self.repository.get_all_categories()
-            for c in cats:
-                if self.category_combo.findText(c.name) == -1:
-                    self.category_combo.addItem(c.name)
-            self._configure_combo_autocomplete(self.category_combo)
-        except Exception:
-            pass
+        self.refresh_reference_data()
 
     def _on_category_changed(self, cat_name: str):
         """Refresh Type/Technology combo box dynamically filtered by the selected Category."""
@@ -1035,8 +1272,11 @@ class ComponentEditDialog(QDialog):
         self.tech_combo.clear()
 
         if not self.repository or not clean_cat:
-            self.tech_combo.setCurrentIndex(-1)
-            self.tech_combo.setEditText("")
+            if current_tech:
+                self.tech_combo.setEditText(current_tech)
+            else:
+                self.tech_combo.setCurrentIndex(-1)
+                self.tech_combo.setEditText("")
             self.tech_combo.blockSignals(False)
             self._configure_combo_autocomplete(self.tech_combo)
             return
@@ -1055,6 +1295,9 @@ class ComponentEditDialog(QDialog):
         # Clear or revalidate an incompatible Type selection
         if current_tech and current_tech in valid_tech_names:
             self.tech_combo.setCurrentText(current_tech)
+        elif not cat_rec:
+            # User might be typing category name; do not erase their entered tech text prematurely
+            self.tech_combo.setEditText(current_tech)
         else:
             self.tech_combo.setCurrentIndex(-1)
             self.tech_combo.setEditText("")
@@ -1177,6 +1420,12 @@ class ComponentEditDialog(QDialog):
         self.title_lbl.setText("Edit Component")
         self.sub_lbl.setText(f"Update component parameters, physical stock, and supplier links for {comp.manufacturer} {comp.mpn}.")
         self.save_btn.setText("Save Changes")
+        if hasattr(self, "_set_field_error"):
+            self._set_field_error(self.mfr_input, False)
+            self._set_field_error(self.category_combo, False)
+            self._set_field_error(self.tech_combo, False)
+        if hasattr(self, "validation_lbl"):
+            self.validation_lbl.setText("")
 
         self.mfr_input.setCurrentText(comp.manufacturer)
         self.mpn_input.setText(comp.mpn)
@@ -1244,6 +1493,9 @@ class ComponentEditDialog(QDialog):
         """Validates all inputs, enforces identity uniqueness, and persists via repository."""
         self.validation_lbl.setText("")
         self.duplicate_frame.setVisible(False)
+        self._set_field_error(self.mfr_input, False)
+        self._set_field_error(self.category_combo, False)
+        self._set_field_error(self.tech_combo, False)
 
         mfr = clean_display_string(self.mfr_input.currentText())
         mpn = clean_display_string(self.mpn_input.text())
@@ -1259,10 +1511,16 @@ class ComponentEditDialog(QDialog):
         # 1. Field validation
         if not mfr or not mpn:
             self.validation_lbl.setText("Manufacturer and Part Number (MPN) are required fields.")
+            if not mfr:
+                self._set_field_error(self.mfr_input, True)
             return
 
         if not cat or not tech:
             self.validation_lbl.setText("Category and Type/Technology are required fields.")
+            if not cat:
+                self._set_field_error(self.category_combo, True)
+            if not tech:
+                self._set_field_error(self.tech_combo, True)
             return
 
         if not val or not pkg or not fp:
@@ -1275,6 +1533,25 @@ class ComponentEditDialog(QDialog):
 
         # Canonical reference validation if repository has populated reference data
         if self.repository:
+            # Validate Manufacturer against reference data
+            has_mfr_ref = False
+            try:
+                mfrs = self.repository.get_all_manufacturers()
+                has_mfr_ref = len(mfrs) > 0
+            except Exception:
+                has_mfr_ref = False
+
+            if has_mfr_ref:
+                mfr_rec = self.repository.get_manufacturer_by_name(mfr)
+                if not mfr_rec:
+                    self.validation_lbl.setText(
+                        f"Manufacturer '{mfr}' is not in canonical reference data. Please select an existing manufacturer from Reference Data."
+                    )
+                    self._set_field_error(self.mfr_input, True)
+                    return
+                mfr = mfr_rec.name
+
+            # Validate Category and Type
             has_ref = False
             try:
                 cats = self.repository.get_all_categories()
@@ -1288,12 +1565,19 @@ class ComponentEditDialog(QDialog):
                     self.validation_lbl.setText(
                         f"Category '{cat}' is not in canonical reference data. Please select an existing category from Reference Data."
                     )
+                    self._set_field_error(self.category_combo, True)
                     return
+                cat = cat_rec.name
+
                 if not self.repository.validate_category_type(cat, tech):
                     self.validation_lbl.setText(
                         f"Type/Technology '{tech}' is not valid for category '{cat}'. Please select an existing type from Reference Data."
                     )
+                    self._set_field_error(self.tech_combo, True)
                     return
+                type_rec = self.repository.get_type_by_name(cat_rec.id, tech)
+                if type_rec:
+                    tech = type_rec.name
 
         supplier_links = self._collect_supplier_links()
 
