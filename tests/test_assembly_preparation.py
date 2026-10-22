@@ -79,7 +79,7 @@ class TestAssemblyProjectNameContract:
 
     def test_default_pdf_filename(self):
         fn = AssemblyPrintEngine.get_default_pdf_filename("FC_IO_V1.3")
-        assert fn == "FC_IO_V1.3_Assembly_Worksheet_A5.pdf"
+        assert fn == "FC_IO_V1.3_Assembly_Worksheet_A4.pdf"
 
 
 class TestAssemblyNNumberingContract:
@@ -204,8 +204,8 @@ class TestAssemblyPrintEngine:
         html_output = AssemblyPrintEngine.generate_html(items, "FC_IO_V1.3", total_qty=7)
 
         assert "FC_IO_V1.3" in html_output
-        assert "A5 landscape" in html_output
-        assert "6mm" in html_output
+        assert "A4 landscape" in html_output
+        assert "8mm" in html_output
         assert "col-no-header" in html_output
         assert "N1" in html_output
         assert "N2" in html_output
@@ -248,12 +248,12 @@ class TestAssemblyDialogsAndUX:
         items = create_sample_bom_items()
         dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=7)
         assert dialog.project_name == "FC_IO_V1.3"
-        assert dialog.printer.pageLayout().pageSize().id() == QPageSize.PageSizeId.A5
+        assert dialog.printer.pageLayout().pageSize().id() == QPageSize.PageSizeId.A4
         assert dialog.printer.pageLayout().orientation() == QPageLayout.Orientation.Landscape
 
         # Trigger paint event on printer
         mock_printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
-        AssemblyPrintEngine.setup_a5_printer(mock_printer)
+        AssemblyPrintEngine.setup_printer(mock_printer, QPageSize.PageSizeId.A4)
         dialog._on_paint_requested(mock_printer)
 
 

@@ -4,11 +4,10 @@ from typing import Optional, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QFrame, QFileDialog,
-    QHeaderView, QApplication, QMenu, QMessageBox, QDialog
+    QHeaderView, QApplication, QMenu, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPageSize
-from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 
 from bom_auditor import BOMAuditResult, BOMItem
 from ui.printing.assembly_print_engine import AssemblyPrintEngine
@@ -71,7 +70,7 @@ class AssemblyTableWidget(QTableWidget):
             }
             QTableWidget::item {
                 padding: 4px 8px;
-                border-bottom: 1px solid #1e293b;
+                border: 1px solid #1e293b;
             }
             QTableWidget::item:selected {
                 background-color: #1e3a8a;
@@ -286,28 +285,11 @@ class AssemblyPreparationWidget(QWidget):
 
         top_layout.addStretch()
 
-        # Action Buttons
-        self.preview_btn = QPushButton("👁️ Print Preview")
+        # Action Buttons: Assembly Preview & Export Assembly PDF
+        self.preview_btn = QPushButton("👁️ Assembly Preview")
         self.preview_btn.setObjectName("secondaryBtn")
-        self.preview_btn.clicked.connect(self.open_print_preview)
+        self.preview_btn.clicked.connect(self.open_preview)
         top_layout.addWidget(self.preview_btn)
-
-        self.print_btn = QPushButton("🖨️ Print Worksheet")
-        self.print_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #0284c7;
-                color: #ffffff;
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 5px 12px;
-            }
-            QPushButton:hover {
-                background-color: #38bdf8;
-                color: #0f172a;
-            }
-        """)
-        self.print_btn.clicked.connect(self.print_a5_sheet)
-        top_layout.addWidget(self.print_btn)
 
         self.pdf_btn = QPushButton("📥 Export Assembly PDF")
         self.pdf_btn.setStyleSheet("""
@@ -379,8 +361,8 @@ class AssemblyPreparationWidget(QWidget):
         self.table.hide()
         self.drop_zone.show()
 
-    def open_print_preview(self):
-        """Opens interactive A5 Landscape print preview modal dialog."""
+    def open_preview(self):
+        """Opens interactive A4 Landscape Assembly Preview modal dialog."""
         if not self.bom_items:
             QMessageBox.warning(self, "No BOM Loaded", "Please load an Altium BOM project first.")
             return
@@ -394,37 +376,9 @@ class AssemblyPreparationWidget(QWidget):
         )
         dialog.exec()
 
-    def print_a5_sheet(self):
-        """Directly sends Landscape assembly worksheet (A5 or A4) to a physical printer."""
-        if not self.bom_items:
-            QMessageBox.warning(self, "No BOM Loaded", "Please load an Altium BOM project first.")
-            return
-
-        try:
-            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-            rec_size = AssemblyPrintEngine.recommend_paper_size(self.bom_items)
-            AssemblyPrintEngine.setup_printer(printer, page_size_id=rec_size)
-
-            print_dialog = QPrintDialog(printer, self)
-            size_name = "A4" if rec_size == QPageSize.PageSizeId.A4 else "A5"
-            print_dialog.setWindowTitle(f"Print Assembly Worksheet ({size_name} Landscape)")
-
-            res = print_dialog.exec()
-            if res == QDialog.DialogCode.Accepted:
-                if not printer.isValid():
-                    QMessageBox.warning(self, "Printer Warning", "Selected printer is invalid or not available.")
-                    return
-                total_pcs = sum(max(1, getattr(it, "total_needed_qty", getattr(it, "unit_qty", 1))) for it in self.bom_items)
-                AssemblyPrintEngine.render_to_printer(
-                    printer=printer,
-                    bom_items=self.bom_items,
-                    project_name=self.project_name,
-                    total_qty=total_pcs,
-                    page_size_id=rec_size
-                )
-                QMessageBox.information(self, "Printed", "Assembly worksheet sent to printer successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Print Error", f"An error occurred while printing: {e}")
+    def open_print_preview(self):
+        """Backward compatibility alias for open_preview."""
+        self.open_preview()
 
     def export_pdf(self):
         """Exports the Assembly worksheet to a Landscape vector PDF (A5 or A4)."""

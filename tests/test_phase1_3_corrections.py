@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 from PyQt6.QtWidgets import QApplication, QDialog, QTableWidgetItem
 from PyQt6.QtCore import Qt, QSize, QSizeF, QRectF
 from PyQt6.QtGui import QPageSize, QPageLayout
-from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+from PyQt6.QtPrintSupport import QPrinter
 
 from bom_auditor import BOMItem, BOMAuditResult
 from ui.printing.assembly_print_engine import AssemblyPrintEngine
@@ -161,23 +161,16 @@ class TestPrintPreviewScalingAndPaperFallback:
     """Tests A5/A4 recommendations, logical-point scaling, and preview rendering."""
 
     def test_recommend_paper_size(self):
-        # Normal items -> A5
-        items_a5 = [
+        # Phase 1.4 standardizes on A4 Landscape
+        items = [
             BOMItem(row_idx=1, comment="100uF", description="Capacitor 100uF", designator="C1, C2", unit_qty=2)
         ]
-        assert AssemblyPrintEngine.recommend_paper_size(items_a5) == QPageSize.PageSizeId.A5
+        assert AssemblyPrintEngine.recommend_paper_size(items) == QPageSize.PageSizeId.A4
 
-        # Items with designator exceeding 180 chars -> A4 fallback
-        items_a4_desig = [
+        items_long = [
             BOMItem(row_idx=1, comment="100nF", description="Capacitor", designator=",".join([f"C{i}" for i in range(1, 60)]), unit_qty=59)
         ]
-        assert AssemblyPrintEngine.recommend_paper_size(items_a4_desig) == QPageSize.PageSizeId.A4
-
-        # Items with description exceeding 140 chars -> A4 fallback
-        items_a4_desc = [
-            BOMItem(row_idx=1, comment="IC", description="A" * 150, designator="U1", unit_qty=1)
-        ]
-        assert AssemblyPrintEngine.recommend_paper_size(items_a4_desc) == QPageSize.PageSizeId.A4
+        assert AssemblyPrintEngine.recommend_paper_size(items_long) == QPageSize.PageSizeId.A4
 
     def test_generate_html_a5_and_a4(self):
         items = create_sample_bom_items()
@@ -217,70 +210,35 @@ class TestPrintPreviewScalingAndPaperFallback:
         dialog.show()
         qapp.processEvents()
 
-        # Paper combo should exist
+        # Paper combo is retained for backwards compatibility but standardized to A4
         assert hasattr(dialog, "paper_combo")
-        assert dialog.paper_combo.count() == 2
-
-        # Initially recommended for 2 items is A5
-        assert dialog.paper_combo.currentIndex() == 0
-        assert dialog.printer.pageLayout().pageSize().id() == QPageSize.PageSizeId.A5
-
-        # Switch to A4 Landscape
-        dialog.paper_combo.setCurrentIndex(1)
-        qapp.processEvents()
+        assert dialog.paper_combo.count() == 1
         assert dialog.printer.pageLayout().pageSize().id() == QPageSize.PageSizeId.A4
-
-        # Switch back to A5 Landscape
-        dialog.paper_combo.setCurrentIndex(0)
-        qapp.processEvents()
-        assert dialog.printer.pageLayout().pageSize().id() == QPageSize.PageSizeId.A5
         dialog.close()
 
 
-class TestPrinterDialogSafety:
-    """Tests printer dialog rejection handling and prevention of 'Not supported' / crash."""
+class TestPreviewAndPdfSafety:
+    """Tests that printing UI is completely removed while Assembly Preview and PDF export remain functional."""
 
-    def test_print_a5_sheet_handles_cancellation_cleanly(self, qapp):
+    def test_assembly_preparation_widget_has_no_print_button(self, qapp):
         prep_widget = AssemblyPreparationWidget()
         items = create_sample_bom_items()
         prep_widget.bom_items = items
         prep_widget.table.populate_items(items, "FC_IO_V1.3")
         prep_widget.project_name = "FC_IO_V1.3"
 
-        # Mock QPrintDialog class to avoid opening native dialog and return Rejected
-        with patch("ui.widgets.assembly_preparation_widget.QPrintDialog") as mock_dlg_cls, \
-             patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warn:
-            mock_dlg = mock_dlg_cls.return_value
-            mock_dlg.exec.return_value = QDialog.DialogCode.Rejected
+        # Action bar must contain preview_btn and pdf_btn, but NO print_btn
+        assert hasattr(prep_widget, "preview_btn")
+        assert hasattr(prep_widget, "pdf_btn")
+        assert not hasattr(prep_widget, "print_btn")
+        assert not hasattr(prep_widget, "print_worksheet")
 
-            # Must return None or finish cleanly and not raise NameError or any exception
-            prep_widget.print_a5_sheet()
-            assert mock_dlg.exec.called
-
-    def test_print_a5_sheet_handles_accepted(self, qapp):
-        prep_widget = AssemblyPreparationWidget()
-        items = create_sample_bom_items()
-        prep_widget.bom_items = items
-        prep_widget.table.populate_items(items, "FC_IO_V1.3")
-        prep_widget.project_name = "FC_IO_V1.3"
-
-        with patch("ui.widgets.assembly_preparation_widget.QPrintDialog") as mock_dlg_cls, \
-             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info, \
-             patch("ui.printing.assembly_print_engine.AssemblyPrintEngine.render_to_printer") as mock_render:
-            mock_dlg = mock_dlg_cls.return_value
-            mock_dlg.exec.return_value = QDialog.DialogCode.Accepted
-
-            prep_widget.print_a5_sheet()
-            assert mock_render.called
-
-    def test_preview_dialog_handle_print_handles_cancellation_cleanly(self, qapp):
+    def test_preview_dialog_has_no_print_button_and_retains_pdf(self, qapp):
         items = create_sample_bom_items()
         dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=39)
 
-        with patch("ui.dialogs.assembly_preview_dialog.QPrintDialog") as mock_dlg_cls:
-            mock_dlg = mock_dlg_cls.return_value
-            mock_dlg.exec.return_value = QDialog.DialogCode.Rejected
-
-            dialog._handle_print()
-            assert mock_dlg.exec.called
+        # Dialog top bar must contain PDF export button, but NO physical print button or handler
+        assert hasattr(dialog, "pdf_btn")
+        assert not hasattr(dialog, "print_btn")
+        assert not hasattr(dialog, "_handle_print")
         dialog.close()

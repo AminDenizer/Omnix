@@ -12,17 +12,16 @@ from bom_auditor import BOMItem
 
 class AssemblyPrintEngine:
     """
-    Unified canonical rendering and print engine for Altium BOM Assembly Worksheets.
-    Target: A5 Landscape (210 x 148 mm), 6 mm margins.
+    Unified canonical rendering and document engine for Altium BOM Assembly Worksheets.
+    Target: A4 Landscape (297 x 210 mm), 8 mm margins.
     Drives:
-    - Print Preview (QPrintPreviewDialog)
-    - Physical Print (QPrintDialog / QPrinter)
+    - Assembly Preview (QPrintPreviewWidget / AssemblyPreviewDialog)
     - Vector PDF Export (QPrinter in PDF format)
     """
 
-    PAGE_SIZE_ID = QPageSize.PageSizeId.A5
+    PAGE_SIZE_ID = QPageSize.PageSizeId.A4
     PAGE_ORIENTATION = QPageLayout.Orientation.Landscape
-    MARGIN_MM = 6.0
+    MARGIN_MM = 8.0
 
     @staticmethod
     def extract_project_name(filename_or_path: str) -> str:
@@ -38,54 +37,48 @@ class AssemblyPrintEngine:
         return stem or "UNTITLED_PROJECT"
 
     @classmethod
-    def get_default_pdf_filename(cls, project_name: str, page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5) -> str:
-        """Returns the canonical default filename for Assembly PDF export."""
+    def get_default_pdf_filename(cls, project_name: str, page_size_id: Optional[QPageSize.PageSizeId] = None) -> str:
+        """Returns the canonical default filename for Assembly PDF export in A4 Landscape (or A5)."""
         safe_name = "".join(c for c in project_name if c.isalnum() or c in ("-", "_", ".")).strip()
         if not safe_name:
             safe_name = "Assembly_Project"
-        suffix = "A4" if page_size_id == QPageSize.PageSizeId.A4 else "A5"
-        return f"{safe_name}_Assembly_Worksheet_{suffix}.pdf"
+        size_suffix = "A5" if page_size_id == QPageSize.PageSizeId.A5 else "A4"
+        return f"{safe_name}_Assembly_Worksheet_{size_suffix}.pdf"
 
     @classmethod
     def recommend_paper_size(cls, bom_items: List[BOMItem]) -> QPageSize.PageSizeId:
         """
-        Recommends A5 Landscape when readable, or falls back to A4 Landscape
-        when long designators or descriptions exceed A5 readability thresholds.
+        Returns A4 Landscape as the sole authoritative paper size for Assembly Worksheets.
         """
-        for item in bom_items:
-            desig_len = len(str(item.designator or ""))
-            desc_len = len(str(item.description or ""))
-            if desig_len > 180 or desc_len > 140:
-                return QPageSize.PageSizeId.A4
-        return QPageSize.PageSizeId.A5
+        return QPageSize.PageSizeId.A4
 
     @classmethod
-    def calculate_row_height(cls, item: BOMItem, is_a4: bool) -> float:
+    def calculate_row_height(cls, item: BOMItem, is_a4: bool = True) -> float:
         """Calculates expected rendered row height in points for accurate pagination."""
         desig = str(item.designator or "").strip()
         desc = str(item.description or "").strip()
         comment = str(item.comment or "").strip()
 
-        chars_desc = 38 if is_a4 else 25
-        chars_desig = 34 if is_a4 else 23
-        chars_comment = 16 if is_a4 else 11
+        chars_desc = 38 if is_a4 else 26
+        chars_desig = 34 if is_a4 else 22
+        chars_comment = 16 if is_a4 else 12
 
         lines_desc = max(1, math.ceil(len(desc) / chars_desc))
         lines_desig = max(1, math.ceil(len(desig) / chars_desig))
         lines_comment = max(1, math.ceil(len(comment) / chars_comment))
 
         max_lines = max(lines_desc, lines_desig, lines_comment)
-        line_h = 12.0 if is_a4 else 11.0
+        line_h = 12.0
         return 10.0 + (max_lines * line_h)
 
     @classmethod
-    def chunk_items_for_pages(cls, bom_items: List[BOMItem], is_a4: bool) -> List[List[Tuple[int, BOMItem]]]:
+    def chunk_items_for_pages(cls, bom_items: List[BOMItem], is_a4: bool = True) -> List[List[Tuple[int, BOMItem]]]:
         """
         Segments BOM items into distinct pages so rows are never split across page boundaries.
         Page 1 accounts for the large top header card; continuation pages use a compact subheader.
         """
-        p1_limit = 360.0 if is_a4 else 180.0
-        other_limit = 420.0 if is_a4 else 190.0
+        p1_limit = 360.0 if is_a4 else 240.0
+        other_limit = 360.0 if is_a4 else 240.0
 
         pages = []
         curr_page = []
@@ -93,7 +86,7 @@ class AssemblyPrintEngine:
         limit = p1_limit
 
         for idx, it in enumerate(bom_items, start=1):
-            h = cls.calculate_row_height(it, is_a4)
+            h = cls.calculate_row_height(it, is_a4=is_a4)
             if curr_h + h > limit and curr_page:
                 pages.append(curr_page)
                 curr_page = [(idx, it)]
@@ -113,36 +106,30 @@ class AssemblyPrintEngine:
         bom_items: List[BOMItem],
         project_name: str,
         total_qty: Optional[int] = None,
-        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5
+        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A4
     ) -> str:
         """
         Generates canonical multi-page paginated HTML representation of the Assembly Worksheet
         conforming to the 8-column contract:
         | NO | Comment | Description | Designator | Footprint | Qty | Part Number | Package |
-        Rows are segmented into page blocks with repeated column headers and no rows split across pages.
+        Rows are segmented into page blocks with repeated column headers and complete borders on all cells.
         """
         esc_project_name = html.escape(project_name)
         now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         total_items_count = len(bom_items)
         computed_total_qty = total_qty if total_qty is not None else sum(max(1, getattr(it, "total_needed_qty", getattr(it, "unit_qty", 1))) for it in bom_items)
 
-        is_a4 = (page_size_id == QPageSize.PageSizeId.A4)
+        is_a4 = (page_size_id != QPageSize.PageSizeId.A5)
         css_page_size = "A4 landscape" if is_a4 else "A5 landscape"
         css_page_margin = "8mm" if is_a4 else "6mm"
         css_body_font_size = "8pt" if is_a4 else "7.5pt"
 
-        if is_a4:
-            col_widths = {
-                "no": "4.5%", "comment": "10%", "desc": "24%", "desig": "24%",
-                "footprint": "11%", "qty": "5%", "mpn": "13%", "pkg": "8.5%"
-            }
-        else:
-            col_widths = {
-                "no": "5%", "comment": "10%", "desc": "23%", "desig": "23%",
-                "footprint": "11%", "qty": "5.5%", "mpn": "13.5%", "pkg": "9%"
-            }
+        col_widths = {
+            "no": "4.5%", "comment": "10%", "desc": "24%", "desig": "24%",
+            "footprint": "11%", "qty": "5%", "mpn": "13%", "pkg": "8.5%"
+        }
 
-        pages = cls.chunk_items_for_pages(bom_items, is_a4)
+        pages = cls.chunk_items_for_pages(bom_items, is_a4=is_a4)
         total_pages = len(pages) if pages else 1
 
         html_parts = [f"""<!DOCTYPE html>
@@ -169,8 +156,8 @@ class AssemblyPrintEngine:
         }}
         .header-card {{
             border-bottom: 2px solid #0284c7;
-            padding-bottom: 4px;
-            margin-bottom: 6px;
+            padding-bottom: 6px;
+            margin-bottom: 14px;
         }}
         .header-table {{
             width: 100%;
@@ -203,21 +190,22 @@ class AssemblyPrintEngine:
         }}
         .continuation-card {{
             border-bottom: 1.5px solid #0284c7;
-            padding-bottom: 3px;
-            margin-bottom: 5px;
+            padding-bottom: 5px;
+            margin-bottom: 12px;
         }}
         table.assembly-table {{
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
+            border: 1px solid #475569;
         }}
         table.assembly-table th {{
             background-color: #0f172a;
             color: #ffffff;
             font-size: 7.5pt;
             font-weight: bold;
-            padding: 4px 5px;
-            border: 1px solid #0f172a;
+            padding: 5px 4px;
+            border: 1px solid #475569;
             text-align: left;
             white-space: nowrap;
         }}
@@ -228,10 +216,11 @@ class AssemblyPrintEngine:
             font-family: monospace;
             font-size: 7.5pt;
             white-space: nowrap;
+            border: 1px solid #0284c7;
         }}
         table.assembly-table td {{
-            padding: 3px 5px;
-            border: 1px solid #cbd5e1;
+            padding: 4px 5px;
+            border: 1px solid #94a3b8;
             font-size: {css_body_font_size};
             vertical-align: middle;
             word-wrap: break-word;
@@ -239,17 +228,19 @@ class AssemblyPrintEngine:
         }}
         tr.even-row td {{
             background-color: #ffffff;
+            border: 1px solid #94a3b8;
         }}
         tr.odd-row td {{
             background-color: #f8fafc;
+            border: 1px solid #94a3b8;
         }}
         .footer {{
             font-size: 6.5pt;
             color: #94a3b8;
             text-align: right;
-            margin-top: 4px;
+            margin-top: 6px;
             border-top: 1px solid #e2e8f0;
-            padding-top: 2px;
+            padding-top: 3px;
         }}
     </style>
 </head>
@@ -333,11 +324,11 @@ class AssemblyPrintEngine:
                         <td style="text-align: center; font-weight: bold; font-family: monospace; color: #0284c7;">{n_marker}</td>
                         <td dir="auto">{comment}</td>
                         <td dir="auto">{description}</td>
-                        <td dir="ltr" style="font-family: monospace; font-size: 7pt;">{designator}</td>
-                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7pt;">{footprint}</td>
+                        <td dir="ltr" style="font-family: monospace; font-size: 7.5pt;">{designator}</td>
+                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7.5pt;">{footprint}</td>
                         <td style="text-align: center; font-weight: bold;">{qty}</td>
-                        <td dir="ltr" style="font-weight: bold; font-family: monospace; color: #0f172a; font-size: 7pt;">{part_number}</td>
-                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7pt;">{package}</td>
+                        <td dir="ltr" style="font-weight: bold; font-family: monospace; color: #0f172a; font-size: 7.5pt;">{part_number}</td>
+                        <td dir="ltr" style="text-align: center; font-family: monospace; font-size: 7.5pt;">{package}</td>
                     </tr>
                 """)
 
@@ -360,21 +351,21 @@ class AssemblyPrintEngine:
     def setup_printer(
         cls,
         printer: QPrinter,
-        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A5,
+        page_size_id: QPageSize.PageSizeId = QPageSize.PageSizeId.A4,
         output_filepath: Optional[str] = None
     ) -> None:
-        """Configures a QPrinter instance for Landscape orientation (A5 or A4) with appropriate margins."""
-        margin_mm = 8.0 if page_size_id == QPageSize.PageSizeId.A4 else cls.MARGIN_MM
+        """Configures a QPrinter instance for Landscape (standard A4 with 8mm margins, or A5 with 6mm margins)."""
+        margins = cls.MARGIN_MM if page_size_id != QPageSize.PageSizeId.A5 else 6.0
         printer.setPageSize(QPageSize(page_size_id))
         printer.setPageOrientation(cls.PAGE_ORIENTATION)
-        printer.setPageMargins(QMarginsF(margin_mm, margin_mm, margin_mm, margin_mm), QPageLayout.Unit.Millimeter)
+        printer.setPageMargins(QMarginsF(margins, margins, margins, margins), QPageLayout.Unit.Millimeter)
         if output_filepath:
             printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
             printer.setOutputFileName(output_filepath)
 
     @classmethod
     def setup_a5_printer(cls, printer: QPrinter, output_filepath: Optional[str] = None) -> None:
-        """Configures a QPrinter instance strictly for A5 Landscape with 6mm margins."""
+        """Legacy helper for backward compatibility; configures A5 Landscape."""
         cls.setup_printer(printer, QPageSize.PageSizeId.A5, output_filepath=output_filepath)
 
     @classmethod
@@ -385,11 +376,12 @@ class AssemblyPrintEngine:
         project_name: str,
         total_qty: Optional[int] = None,
         page_size_id: Optional[QPageSize.PageSizeId] = None
-    ) -> None:
+    ) -> QTextDocument:
         """Renders the canonical HTML to any pre-configured QPrinter (Physical, Preview, or PDF)."""
-        if page_size_id is None:
-            page_size_id = printer.pageLayout().pageSize().id()
-        html_doc = cls.generate_html(bom_items, project_name, total_qty, page_size_id=page_size_id)
+        if printer.pageLayout().orientation() != cls.PAGE_ORIENTATION:
+            printer.setPageOrientation(cls.PAGE_ORIENTATION)
+
+        html_doc = cls.generate_html(bom_items, project_name, total_qty, page_size_id=QPageSize.PageSizeId.A4)
         doc = QTextDocument()
         doc.setDefaultFont(QFont("Segoe UI", 8))
 
@@ -411,11 +403,10 @@ class AssemblyPrintEngine:
         page_size_id: Optional[QPageSize.PageSizeId] = None
     ) -> str:
         """
-        Exports the canonical Assembly Worksheet to a vector PDF in Landscape (A5 or A4).
+        Exports the canonical Assembly Worksheet to a vector PDF strictly in A4 Landscape.
         Returns the absolute filepath of the generated PDF.
         """
-        if page_size_id is None:
-            page_size_id = cls.PAGE_SIZE_ID
+        page_size_id = QPageSize.PageSizeId.A4
 
         if not output_filepath:
             output_filepath = cls.get_default_pdf_filename(project_name, page_size_id=page_size_id)
