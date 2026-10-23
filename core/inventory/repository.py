@@ -37,6 +37,7 @@ from core.inventory.loader import (
 )
 from core.inventory.database import DatabaseManager, resolve_database_path
 from core.procurement.vendor_links import parse_vendor_links
+from core.logger import log_event, track_operation
 
 
 class IInventoryRepository(ABC):
@@ -1126,131 +1127,134 @@ class SqliteInventoryRepository(IInventoryRepository):
         clean_mfr = clean_display_string(product.manufacturer)
         clean_mpn = clean_display_string(product.mpn)
 
-        if not clean_mfr:
-            raise ValidationError("Manufacturer cannot be empty.")
-        if not clean_mpn:
-            raise ValidationError("MPN cannot be empty.")
+        with track_operation("Inventory", f"Register component '{clean_mfr}' '{clean_mpn}'") as tracker:
+            if not clean_mfr:
+                raise ValidationError("Manufacturer cannot be empty.")
+            if not clean_mpn:
+                raise ValidationError("MPN cannot be empty.")
 
-        if product.quantity_in_stock < 0:
-            raise ValidationError(
-                f"Quantity in stock must be non-negative (received {product.quantity_in_stock})."
-            )
-
-        norm_mfr = normalize_identity_part(clean_mfr)
-        norm_mpn = normalize_identity_part(clean_mpn)
-
-        cat = clean_display_string(product.category)
-        tech = clean_display_string(product.type_technology)
-        val = clean_display_string(product.value)
-        raw_pkg = clean_display_string(product.raw_package or product.package)
-        pkg = normalize_package(product.package)
-        fp = clean_display_string(product.footprint)
-        desc = clean_display_string(product.description)
-        qty = int(product.quantity_in_stock)
-
-        group_key = build_group_key(cat, tech, val, pkg, fp)
-
-        conn = self._db.get_connection()
-        with self._db.transaction():
-            # Validate category and type if canonical reference data is populated in database
-            has_ref_data = conn.execute("SELECT COUNT(*) FROM ref_categories;").fetchone()[0] > 0
-            if has_ref_data and cat:
-                cat_rec = self.get_category_by_name(cat)
-                if not cat_rec:
-                    raise ReferenceDataNotFoundError(f"Category '{cat}' does not exist in canonical reference data.")
-                cat = cat_rec.name
-                if tech:
-                    if not self.validate_category_type(cat, tech):
-                        raise ValidationError(
-                            f"Type/Technology '{tech}' is not an active technology for category '{cat}'."
-                        )
-                    type_rec = self.get_type_by_name(cat_rec.id, tech)
-                    if type_rec:
-                        tech = type_rec.name
-
-            if clean_mfr:
-                mfr_rec = self.get_manufacturer_by_name(clean_mfr)
-                if mfr_rec:
-                    clean_mfr = mfr_rec.name
-
-            # Recalculate group key with canonical names
-            group_key = build_group_key(cat, tech, val, pkg, fp)
-
-            # Identity collision check (Manufacturer + MPN)
-            conflict = conn.execute(
-                "SELECT id, manufacturer, mpn FROM components WHERE norm_manufacturer = ? AND norm_mpn = ?;",
-                (norm_mfr, norm_mpn),
-            ).fetchone()
-            if conflict:
-                existing = self.get_component_by_id(conflict["id"])
-                raise ComponentConflictError(
-                    f"Component with identity '{clean_mfr}' + '{clean_mpn}' already exists in database (ID {conflict['id']}).",
-                    existing_component=existing,
-                    conflicting_data=product.to_dict(),
+            if product.quantity_in_stock < 0:
+                raise ValidationError(
+                    f"Quantity in stock must be non-negative (received {product.quantity_in_stock})."
                 )
 
-            cursor = conn.execute(
-                """
-                INSERT INTO components (
-                    manufacturer, mpn, norm_manufacturer, norm_mpn,
-                    category, type_technology, package, raw_package,
-                    footprint, value, description, quantity_in_stock, group_key
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (clean_mfr, clean_mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key),
-            )
-            comp_id = cursor.lastrowid
-
-            # Determine links to insert
-            links_to_insert: List[SupplierLink] = []
-            if supplier_links is not None:
-                links_to_insert = list(supplier_links)
-            elif product.supplier_links:
-                links_to_insert = list(product.supplier_links)
-            elif product.purchase_link and str(product.purchase_link).strip():
-                parsed = parse_vendor_links(product.purchase_link)
-                if parsed.links:
-                    for entry in parsed.links.values():
+            norm_mfr = normalize_identity_part(clean_mfr)
+            norm_mpn = normalize_identity_part(clean_mpn)
+    
+            cat = clean_display_string(product.category)
+            tech = clean_display_string(product.type_technology)
+            val = clean_display_string(product.value)
+            raw_pkg = clean_display_string(product.raw_package or product.package)
+            pkg = normalize_package(product.package)
+            fp = clean_display_string(product.footprint)
+            desc = clean_display_string(product.description)
+            qty = int(product.quantity_in_stock)
+    
+            group_key = build_group_key(cat, tech, val, pkg, fp)
+    
+            conn = self._db.get_connection()
+            with self._db.transaction():
+                # Validate category and type if canonical reference data is populated in database
+                has_ref_data = conn.execute("SELECT COUNT(*) FROM ref_categories;").fetchone()[0] > 0
+                if has_ref_data and cat:
+                    cat_rec = self.get_category_by_name(cat)
+                    if not cat_rec:
+                        raise ReferenceDataNotFoundError(f"Category '{cat}' does not exist in canonical reference data.")
+                    cat = cat_rec.name
+                    if tech:
+                        if not self.validate_category_type(cat, tech):
+                            raise ValidationError(
+                                f"Type/Technology '{tech}' is not an active technology for category '{cat}'."
+                            )
+                        type_rec = self.get_type_by_name(cat_rec.id, tech)
+                        if type_rec:
+                            tech = type_rec.name
+    
+                if clean_mfr:
+                    mfr_rec = self.get_manufacturer_by_name(clean_mfr)
+                    if mfr_rec:
+                        clean_mfr = mfr_rec.name
+    
+                # Recalculate group key with canonical names
+                group_key = build_group_key(cat, tech, val, pkg, fp)
+    
+                # Identity collision check (Manufacturer + MPN)
+                conflict = conn.execute(
+                    "SELECT id, manufacturer, mpn FROM components WHERE norm_manufacturer = ? AND norm_mpn = ?;",
+                    (norm_mfr, norm_mpn),
+                ).fetchone()
+                if conflict:
+                    existing = self.get_component_by_id(conflict["id"])
+                    raise ComponentConflictError(
+                        f"Component with identity '{clean_mfr}' + '{clean_mpn}' already exists in database (ID {conflict['id']}).",
+                        existing_component=existing,
+                        conflicting_data=product.to_dict(),
+                    )
+    
+                cursor = conn.execute(
+                    """
+                    INSERT INTO components (
+                        manufacturer, mpn, norm_manufacturer, norm_mpn,
+                        category, type_technology, package, raw_package,
+                        footprint, value, description, quantity_in_stock, group_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (clean_mfr, clean_mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key),
+                )
+                comp_id = cursor.lastrowid
+    
+                # Determine links to insert
+                links_to_insert: List[SupplierLink] = []
+                if supplier_links is not None:
+                    links_to_insert = list(supplier_links)
+                elif product.supplier_links:
+                    links_to_insert = list(product.supplier_links)
+                elif product.purchase_link and str(product.purchase_link).strip():
+                    parsed = parse_vendor_links(product.purchase_link)
+                    if parsed.links:
+                        for entry in parsed.links.values():
+                            links_to_insert.append(
+                                SupplierLink(
+                                    vendor_id=entry.vendor_id,
+                                    vendor_label=entry.vendor_label,
+                                    url=entry.url,
+                                    display_name=entry.display_name,
+                                )
+                            )
+                    else:
                         links_to_insert.append(
                             SupplierLink(
-                                vendor_id=entry.vendor_id,
-                                vendor_label=entry.vendor_label,
-                                url=entry.url,
-                                display_name=entry.display_name,
+                                vendor_id="generic",
+                                vendor_label="LINK",
+                                url=str(product.purchase_link).strip(),
                             )
                         )
-                else:
-                    links_to_insert.append(
+    
+                inserted_links = []
+                for l in links_to_insert:
+                    if not l.url or not str(l.url).strip():
+                        continue
+                    cur_link = conn.execute(
+                        """
+                        INSERT INTO supplier_links (component_id, vendor_id, vendor_label, url, display_name)
+                        VALUES (?, ?, ?, ?, ?);
+                        """,
+                        (comp_id, l.vendor_id or "generic", l.vendor_label or "LINK", str(l.url).strip(), l.display_name or ""),
+                    )
+                    inserted_links.append(
                         SupplierLink(
-                            vendor_id="generic",
-                            vendor_label="LINK",
-                            url=str(product.purchase_link).strip(),
+                            id=cur_link.lastrowid,
+                            component_id=comp_id,
+                            vendor_id=l.vendor_id or "generic",
+                            vendor_label=l.vendor_label or "LINK",
+                            url=str(l.url).strip(),
+                            display_name=l.display_name or "",
                         )
                     )
-
-            inserted_links = []
-            for l in links_to_insert:
-                if not l.url or not str(l.url).strip():
-                    continue
-                cur_link = conn.execute(
-                    """
-                    INSERT INTO supplier_links (component_id, vendor_id, vendor_label, url, display_name)
-                    VALUES (?, ?, ?, ?, ?);
-                    """,
-                    (comp_id, l.vendor_id or "generic", l.vendor_label or "LINK", str(l.url).strip(), l.display_name or ""),
-                )
-                inserted_links.append(
-                    SupplierLink(
-                        id=cur_link.lastrowid,
-                        component_id=comp_id,
-                        vendor_id=l.vendor_id or "generic",
-                        vendor_label=l.vendor_label or "LINK",
-                        url=str(l.url).strip(),
-                        display_name=l.display_name or "",
-                    )
-                )
-
-        return self.get_component_by_id(comp_id)
+    
+            created = self.get_component_by_id(comp_id)
+            tracker.complete(f"Successfully created component '{clean_mfr}' '{clean_mpn}' (ID {comp_id})")
+            return created
 
     def get_component_by_id(self, component_id: int) -> Optional[InventoryProduct]:
         conn = self._db.get_connection()
@@ -1281,99 +1285,102 @@ class SqliteInventoryRepository(IInventoryRepository):
         Updates an existing component record. Enforces identity uniqueness against other
         components and re-aggregates group key if grouping attributes change.
         """
-        conn = self._db.get_connection()
-        with self._db.transaction():
-            row = conn.execute("SELECT * FROM components WHERE id = ?;", (component_id,)).fetchone()
-            if not row:
-                raise ComponentNotFoundError(f"Component ID {component_id} not found.")
-
-            mfr = clean_display_string(fields.get("manufacturer", row["manufacturer"]))
-            mpn = clean_display_string(fields.get("mpn", row["mpn"]))
-            if not mfr or not mpn:
-                raise ValidationError("Manufacturer and MPN cannot be empty.")
-
-            norm_mfr = normalize_identity_part(mfr)
-            norm_mpn = normalize_identity_part(mpn)
-
-            # Check collision with other components
-            conflict = conn.execute(
-                "SELECT id FROM components WHERE norm_manufacturer = ? AND norm_mpn = ? AND id != ?;",
-                (norm_mfr, norm_mpn, component_id),
-            ).fetchone()
-            if conflict:
-                existing = self.get_component_by_id(conflict["id"])
-                raise ComponentConflictError(
-                    f"Cannot update component {component_id} to '{mfr}' + '{mpn}': "
-                    f"identity is already in use by component ID {conflict['id']}.",
-                    existing_component=existing,
+        with track_operation("Inventory", f"Update component ID {component_id}") as tracker:
+            conn = self._db.get_connection()
+            with self._db.transaction():
+                row = conn.execute("SELECT * FROM components WHERE id = ?;", (component_id,)).fetchone()
+                if not row:
+                    raise ComponentNotFoundError(f"Component ID {component_id} not found.")
+    
+                mfr = clean_display_string(fields.get("manufacturer", row["manufacturer"]))
+                mpn = clean_display_string(fields.get("mpn", row["mpn"]))
+                if not mfr or not mpn:
+                    raise ValidationError("Manufacturer and MPN cannot be empty.")
+    
+                norm_mfr = normalize_identity_part(mfr)
+                norm_mpn = normalize_identity_part(mpn)
+    
+                # Check collision with other components
+                conflict = conn.execute(
+                    "SELECT id FROM components WHERE norm_manufacturer = ? AND norm_mpn = ? AND id != ?;",
+                    (norm_mfr, norm_mpn, component_id),
+                ).fetchone()
+                if conflict:
+                    existing = self.get_component_by_id(conflict["id"])
+                    raise ComponentConflictError(
+                        f"Cannot update component {component_id} to '{mfr}' + '{mpn}': "
+                        f"identity is already in use by component ID {conflict['id']}.",
+                        existing_component=existing,
+                    )
+    
+                cat = clean_display_string(fields.get("category", row["category"]))
+                tech = clean_display_string(fields.get("type_technology", row["type_technology"]))
+    
+                # Validate category and type if canonical reference data is populated
+                has_ref_data = conn.execute("SELECT COUNT(*) FROM ref_categories;").fetchone()[0] > 0
+                if has_ref_data and cat:
+                    cat_rec = self.get_category_by_name(cat)
+                    if not cat_rec:
+                        raise ReferenceDataNotFoundError(f"Category '{cat}' does not exist in canonical reference data.")
+                    cat = cat_rec.name
+                    if tech:
+                        if not self.validate_category_type(cat, tech):
+                            raise ValidationError(
+                                f"Type/Technology '{tech}' is not an active technology for category '{cat}'."
+                            )
+                        type_rec = self.get_type_by_name(cat_rec.id, tech)
+                        if type_rec:
+                            tech = type_rec.name
+    
+                if mfr:
+                    mfr_rec = self.get_manufacturer_by_name(mfr)
+                    if mfr_rec:
+                        mfr = mfr_rec.name
+    
+                val = clean_display_string(fields.get("value", row["value"]))
+                raw_pkg = clean_display_string(fields.get("raw_package", fields.get("package", row["package"])))
+                pkg = normalize_package(fields.get("package", row["package"]))
+                fp = clean_display_string(fields.get("footprint", row["footprint"]))
+                desc = clean_display_string(fields.get("description", row["description"]))
+    
+                qty_val = fields.get("quantity_in_stock", row["quantity_in_stock"])
+                if qty_val is not None:
+                    if not isinstance(qty_val, (int, float)) or int(qty_val) < 0:
+                        raise ValidationError(f"Quantity in stock must be non-negative (received {qty_val}).")
+                    qty = int(qty_val)
+                else:
+                    qty = row["quantity_in_stock"]
+    
+                group_key = build_group_key(cat, tech, val, pkg, fp)
+    
+                conn.execute(
+                    """
+                    UPDATE components SET
+                        manufacturer = ?,
+                        mpn = ?,
+                        norm_manufacturer = ?,
+                        norm_mpn = ?,
+                        category = ?,
+                        type_technology = ?,
+                        package = ?,
+                        raw_package = ?,
+                        footprint = ?,
+                        value = ?,
+                        description = ?,
+                        quantity_in_stock = ?,
+                        group_key = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?;
+                    """,
+                    (mfr, mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key, component_id),
                 )
+    
+                if "supplier_links" in fields and fields["supplier_links"] is not None:
+                    self.set_supplier_links(component_id, fields["supplier_links"])
 
-            cat = clean_display_string(fields.get("category", row["category"]))
-            tech = clean_display_string(fields.get("type_technology", row["type_technology"]))
-
-            # Validate category and type if canonical reference data is populated
-            has_ref_data = conn.execute("SELECT COUNT(*) FROM ref_categories;").fetchone()[0] > 0
-            if has_ref_data and cat:
-                cat_rec = self.get_category_by_name(cat)
-                if not cat_rec:
-                    raise ReferenceDataNotFoundError(f"Category '{cat}' does not exist in canonical reference data.")
-                cat = cat_rec.name
-                if tech:
-                    if not self.validate_category_type(cat, tech):
-                        raise ValidationError(
-                            f"Type/Technology '{tech}' is not an active technology for category '{cat}'."
-                        )
-                    type_rec = self.get_type_by_name(cat_rec.id, tech)
-                    if type_rec:
-                        tech = type_rec.name
-
-            if mfr:
-                mfr_rec = self.get_manufacturer_by_name(mfr)
-                if mfr_rec:
-                    mfr = mfr_rec.name
-
-            val = clean_display_string(fields.get("value", row["value"]))
-            raw_pkg = clean_display_string(fields.get("raw_package", fields.get("package", row["package"])))
-            pkg = normalize_package(fields.get("package", row["package"]))
-            fp = clean_display_string(fields.get("footprint", row["footprint"]))
-            desc = clean_display_string(fields.get("description", row["description"]))
-
-            qty_val = fields.get("quantity_in_stock", row["quantity_in_stock"])
-            if qty_val is not None:
-                if not isinstance(qty_val, (int, float)) or int(qty_val) < 0:
-                    raise ValidationError(f"Quantity in stock must be non-negative (received {qty_val}).")
-                qty = int(qty_val)
-            else:
-                qty = row["quantity_in_stock"]
-
-            group_key = build_group_key(cat, tech, val, pkg, fp)
-
-            conn.execute(
-                """
-                UPDATE components SET
-                    manufacturer = ?,
-                    mpn = ?,
-                    norm_manufacturer = ?,
-                    norm_mpn = ?,
-                    category = ?,
-                    type_technology = ?,
-                    package = ?,
-                    raw_package = ?,
-                    footprint = ?,
-                    value = ?,
-                    description = ?,
-                    quantity_in_stock = ?,
-                    group_key = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?;
-                """,
-                (mfr, mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key, component_id),
-            )
-
-            if "supplier_links" in fields and fields["supplier_links"] is not None:
-                self.set_supplier_links(component_id, fields["supplier_links"])
-
-        return self.get_component_by_id(component_id)
+            updated = self.get_component_by_id(component_id)
+            tracker.complete(f"Successfully updated component ID {component_id} ('{mfr}' '{mpn}')")
+            return updated
 
     def delete_component(self, component_id: int) -> bool:
         """
@@ -1386,29 +1393,33 @@ class SqliteInventoryRepository(IInventoryRepository):
           group's stock policy record in the same database transaction.
         - If any error occurs, the transaction rolls back atomically.
         """
-        conn = self._db.get_connection()
-        with self._db.transaction():
-            # 1. Lookup group_key for component before deletion
-            row = conn.execute("SELECT group_key FROM components WHERE id = ?;", (component_id,)).fetchone()
-            if not row:
-                return False
-            group_key = row["group_key"]
+        with track_operation("Inventory", f"Delete component ID {component_id}") as tracker:
+            conn = self._db.get_connection()
+            with self._db.transaction():
+                # 1. Lookup group_key for component before deletion
+                row = conn.execute("SELECT group_key FROM components WHERE id = ?;", (component_id,)).fetchone()
+                if not row:
+                    tracker.fail(f"Component ID {component_id} not found for deletion", level="WARNING")
+                    return False
+                group_key = row["group_key"]
 
-            # 2. Delete the component
-            cursor = conn.execute("DELETE FROM components WHERE id = ?;", (component_id,))
-            if cursor.rowcount == 0:
-                return False
+                # 2. Delete the component
+                cursor = conn.execute("DELETE FROM components WHERE id = ?;", (component_id,))
+                if cursor.rowcount == 0:
+                    tracker.fail(f"Component ID {component_id} could not be deleted", level="WARNING")
+                    return False
 
-            # 3. Check if any components remain in this group
-            remaining = conn.execute(
-                "SELECT COUNT(*) FROM components WHERE group_key = ?;", (group_key,)
-            ).fetchone()[0]
+                # 3. Check if any components remain in this group
+                remaining = conn.execute(
+                    "SELECT COUNT(*) FROM components WHERE group_key = ?;", (group_key,)
+                ).fetchone()[0]
 
-            # 4. If no components remain, atomically clean up the orphaned stock policy
-            if remaining == 0:
-                conn.execute("DELETE FROM stock_policies WHERE group_key = ?;", (group_key,))
+                # 4. If no components remain, atomically clean up the orphaned stock policy
+                if remaining == 0:
+                    conn.execute("DELETE FROM stock_policies WHERE group_key = ?;", (group_key,))
 
-            return True
+                tracker.complete(f"Successfully deleted component ID {component_id}")
+                return True
 
     def search_components(self, query: str) -> List[InventoryProduct]:
         """Multi-token keyword search matching component fields."""
@@ -1660,13 +1671,18 @@ class SqliteInventoryRepository(IInventoryRepository):
                 (group_key, cat, tech, val, pkg, fp, min_stock, target_stock, description or ""),
             )
 
-        return self.get_policy(group_key)
+        pol = self.get_policy(group_key)
+        log_event("Inventory", "COMPLETION", f"Updated stock policy for group '{group_key}' (Min: {min_stock}, Target: {target_stock})")
+        return pol
 
     def delete_policy(self, group_key: str) -> bool:
         conn = self._db.get_connection()
         with self._db.transaction():
             cursor = conn.execute("DELETE FROM stock_policies WHERE group_key = ?;", (group_key,))
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+            if deleted:
+                log_event("Inventory", "COMPLETION", f"Deleted stock policy for group '{group_key}'")
+            return deleted
 
     def get_all_policies(self) -> List[StockPolicyRecord]:
         conn = self._db.get_connection()

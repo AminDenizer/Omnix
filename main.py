@@ -8,12 +8,16 @@ from PyQt6.QtGui import QFont, QIcon
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import APP_NAME, get_bundle_dir
+from core.logger import setup_logging
 from ui.main_window import MainWindow
 from ui.splash_screen import SplashScreen
 from ui.styles import DARK_STYLESHEET
 
 
 def main():
+    # Initialize Core Diagnostic Logging & Event Reporting
+    setup_logging()
+
     # Set Windows Process App User Model ID
     if sys.platform == "win32":
         try:

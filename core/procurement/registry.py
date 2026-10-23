@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Type, Any, Union, Tuple
 from core.errors import UnknownVendorError
 from core.models import AdapterConfig, VendorSettings
 from core.vendor_interface import IVendorAdapter
+from core.logger import log_event, track_operation
 from core.plugins.manifest_validator import (
     validate_manifest,
     validate_manifest_file,
@@ -166,7 +167,10 @@ class VendorRegistry:
         if settings is not None:
             effective_enabled = settings.enabled
 
-        with self._lock:
+        tracker = track_operation("Plugins", f"Register vendor adapter '{clean_id}' v{clean_ver}")
+        tracker.__enter__()
+        self._lock.acquire()
+        try:
             # Identity consistency check
             existing_pid = self._vendor_to_plugin_id.get(clean_id)
             if existing_pid is not None and existing_pid != clean_plugin_id:
@@ -246,7 +250,13 @@ class VendorRegistry:
                 if clean_id not in self._active_versions:
                     self._active_versions[clean_id] = None
 
+            tracker.complete(f"Registered vendor adapter '{clean_id}' (version {clean_ver})")
             return reg
+        except Exception:
+            tracker.fail()
+            raise
+        finally:
+            self._lock.release()
 
     def register_plugin_manifest(
         self,
@@ -324,7 +334,10 @@ class VendorRegistry:
             effective_enabled = settings.enabled
 
         # Step 4: Atomic registration under lock
-        with self._lock:
+        tracker = track_operation("Plugins", f"Register manifest plugin '{plugin_id}' v{version}")
+        tracker.__enter__()
+        self._lock.acquire()
+        try:
             # Identity consistency check
             existing_pid = self._vendor_to_plugin_id.get(vendor_id)
             if existing_pid is not None and existing_pid != plugin_id:
@@ -404,7 +417,13 @@ class VendorRegistry:
                 if vendor_id not in self._active_versions:
                     self._active_versions[vendor_id] = None
 
+            tracker.complete(f"Registered manifest plugin '{plugin_id}' v{version} for vendor '{vendor_id}'")
             return reg
+        except Exception:
+            tracker.fail()
+            raise
+        finally:
+            self._lock.release()
 
     def activate_version(self, vendor_id: str, version: str) -> None:
         """
@@ -629,12 +648,16 @@ class VendorRegistry:
         with self._lock:
             if clean_id not in self._versions or not self._versions[clean_id]:
                 raise UnknownVendorError(f"Vendor '{clean_id}' is not registered.", vendor_id=clean_id)
-            self._vendor_enabled[clean_id] = enabled
-            settings = self._vendor_settings.get(clean_id)
-            if settings is not None:
-                settings.enabled = enabled
-            for reg in self._versions[clean_id].values():
-                reg.enabled = enabled
+            action_word = "Enable" if enabled else "Disable"
+            with track_operation("Plugins", f"{action_word} vendor plugin '{clean_id}'") as tracker:
+                self._vendor_enabled[clean_id] = enabled
+                settings = self._vendor_settings.get(clean_id)
+                if settings is not None:
+                    settings.enabled = enabled
+                for reg in self._versions[clean_id].values():
+                    reg.enabled = enabled
+                status_word = "Enabled" if enabled else "Disabled"
+                tracker.complete(f"{status_word} vendor plugin '{clean_id}'")
 
     def get_enabled_vendors(self) -> List[str]:
         """

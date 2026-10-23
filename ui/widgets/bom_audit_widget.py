@@ -170,7 +170,7 @@ class BOMAuditWidget(QWidget):
                 border: 1.5px solid #22324e;
                 border-radius: 6px;
                 color: #38bdf8;
-                font-size: 12px;
+                font-size: 9pt;
                 font-weight: bold;
                 padding: 4px 8px;
                 min-width: 190px;

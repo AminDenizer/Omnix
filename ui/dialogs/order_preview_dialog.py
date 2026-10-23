@@ -55,6 +55,7 @@ from core.procurement.reporting import (
 )
 from settings_manager import settings
 from ui.dialogs.settings_dialog import SettingsDialog
+from core.logger import log_event, track_operation
 
 
 class PlanDiscoveryWorkerThread(QThread):
@@ -128,22 +129,35 @@ class OrderWorkerThread(QThread):
 
     def _run_direct_items(self):
         """Execute direct shortage ordering via unified ProcurementBridge."""
-        def on_progress(current: int, total: int, part_name: str, qty: int, msg: str):
-            self.progress_signal.emit(current, total, part_name, qty, msg)
+        with track_operation("Procurement", f"Direct procurement batch for {len(self.items)} shortage items") as tracker:
+            def on_progress(current: int, total: int, part_name: str, qty: int, msg: str):
+                self.progress_signal.emit(current, total, part_name, qty, msg)
+                if current % max(1, total // 5) == 0 or current == total:
+                    tracker.progress(f"Processing item {current}/{total}: {part_name} - {msg}")
 
-        res = ProcurementBridge.execute_staged_procurement_batch(
-            items=self.items,
-            progress_callback=on_progress,
-            registry=self.registry,
-            orchestrator=self.orchestrator,
-        )
-        self.finished_signal.emit(res)
+            res = ProcurementBridge.execute_staged_procurement_batch(
+                items=self.items,
+                progress_callback=on_progress,
+                registry=self.registry,
+                orchestrator=self.orchestrator,
+            )
+            if res.get("success"):
+                tracker.complete(
+                    f"Direct procurement batch finished: {res.get('successful_count', 0)} succeeded, {res.get('failed_count', 0)} failed"
+                )
+            else:
+                tracker.fail(
+                    f"Direct procurement batch finished with issues: {res.get('message', 'Errors occurred')}",
+                    level="WARNING",
+                )
+            self.finished_signal.emit(res)
 
     def _run_procurement_results(self):
         """Execute Mode B / GAP-07 staging via orchestrator."""
         orderable_results = [r for r in self.results if r.selected_evaluation is not None and r.selected_evaluation.is_eligible]
 
         if not orderable_results:
+            log_event("Procurement", "COMPLETION", "No eligible candidate items selected for staging")
             self.finished_signal.emit({
                 "success": True,
                 "message": "No eligible candidate items selected for staging.",
@@ -155,75 +169,93 @@ class OrderWorkerThread(QThread):
             })
             return
 
-        successful_count = 0
-        failed_count = 0
-        noop_count = 0
-        staged_count = 0
-        results_log = []
+        with track_operation("Procurement", f"Multi-vendor cart staging for {len(orderable_results)} candidate items") as tracker:
+            successful_count = 0
+            failed_count = 0
+            noop_count = 0
+            staged_count = 0
+            results_log = []
 
-        for idx, r in enumerate(orderable_results, start=1):
-            p_name = r.request.part_number
-            cand = r.selected_evaluation.candidate
-            eff_qty = r.selected_evaluation.effective_quantity
-            v_name = cand.vendor_id.replace("vendor_", "").title()
+            for idx, r in enumerate(orderable_results, start=1):
+                p_name = r.request.part_number
+                cand = r.selected_evaluation.candidate
+                eff_qty = r.selected_evaluation.effective_quantity
+                v_name = cand.vendor_id.replace("vendor_", "").title()
 
-            self.progress_signal.emit(
-                idx, len(orderable_results), p_name, eff_qty, f"Staging {eff_qty} pcs to {v_name}..."
-            )
-
-            try:
-                stage_res: CartMutationResult = self.orchestrator.stage_candidate(
-                    cand, eff_qty, sync_cart=True
+                self.progress_signal.emit(
+                    idx, len(orderable_results), p_name, eff_qty, f"Staging {eff_qty} pcs to {v_name}..."
                 )
-                if stage_res.success:
-                    successful_count += 1
-                    if stage_res.is_noop:
-                        noop_count += 1
-                        msg = f"Already satisfied in cart ({stage_res.initial_cart_qty}/{stage_res.target_qty} pcs)"
-                    else:
-                        staged_count += 1
-                        msg = stage_res.raw_vendor_message or f"Added {stage_res.actual_quantity_staged} pcs"
 
-                    r.status = "RESOLVED"
-                    results_log.append({
-                        "part": p_name,
-                        "status": "SUCCESS",
-                        "qty": stage_res.actual_quantity_staged,
-                        "msg": msg,
-                        "vendor_id": cand.vendor_id,
-                        "is_noop": stage_res.is_noop,
-                    })
-                    self.progress_signal.emit(idx, len(orderable_results), p_name, stage_res.actual_quantity_staged, msg)
-                else:
+                try:
+                    stage_res: CartMutationResult = self.orchestrator.stage_candidate(
+                        cand, eff_qty, sync_cart=True
+                    )
+                    if stage_res.success:
+                        successful_count += 1
+                        if stage_res.is_noop:
+                            noop_count += 1
+                            msg = f"Already satisfied in cart ({stage_res.initial_cart_qty}/{stage_res.target_qty} pcs)"
+                        else:
+                            staged_count += 1
+                            msg = stage_res.raw_vendor_message or f"Added {stage_res.actual_quantity_staged} pcs"
+
+                        r.status = "RESOLVED"
+                        results_log.append({
+                            "part": p_name,
+                            "status": "SUCCESS",
+                            "qty": stage_res.actual_quantity_staged,
+                            "msg": msg,
+                            "vendor_id": cand.vendor_id,
+                            "is_noop": stage_res.is_noop,
+                        })
+                        self.progress_signal.emit(idx, len(orderable_results), p_name, stage_res.actual_quantity_staged, msg)
+                    else:
+                        failed_count += 1
+                        msg = stage_res.raw_vendor_message or stage_res.error_category or "Staging failed"
+                        results_log.append({
+                            "part": p_name,
+                            "status": "FAILED",
+                            "qty": 0,
+                            "msg": msg,
+                            "vendor_id": cand.vendor_id,
+                        })
+                        self.progress_signal.emit(idx, len(orderable_results), p_name, 0, f"Failed: {msg}")
+                except Exception as e:
                     failed_count += 1
-                    msg = stage_res.raw_vendor_message or stage_res.error_category or "Staging failed"
+                    err_msg = str(e)
                     results_log.append({
                         "part": p_name,
                         "status": "FAILED",
                         "qty": 0,
-                        "msg": msg,
+                        "msg": err_msg,
                         "vendor_id": cand.vendor_id,
                     })
-                    self.progress_signal.emit(idx, len(orderable_results), p_name, 0, f"Failed: {msg}")
-            except Exception as e:
-                failed_count += 1
-                err_msg = str(e)
-                results_log.append({
-                    "part": p_name,
-                    "status": "FAILED",
-                    "qty": 0,
-                    "msg": err_msg,
-                    "vendor_id": cand.vendor_id,
-                })
-                self.progress_signal.emit(idx, len(orderable_results), p_name, 0, f"Error: {err_msg}")
+                    self.progress_signal.emit(idx, len(orderable_results), p_name, 0, f"Error: {err_msg}")
 
-        overall_success = (failed_count == 0) and (successful_count > 0)
-        self.finished_signal.emit({
-            "success": overall_success,
-            "message": f"Staging completed: {successful_count} succeeded ({noop_count} no-op), {failed_count} failed.",
-            "successful_count": successful_count,
-            "failed_count": failed_count,
-            "noop_count": noop_count,
+                if idx % max(1, len(orderable_results) // 4) == 0 or idx == len(orderable_results):
+                    tracker.progress(f"Processed {idx}/{len(orderable_results)} items ({successful_count} succeeded, {failed_count} failed)")
+
+            overall_success = (failed_count == 0) and (successful_count > 0)
+            if overall_success:
+                tracker.complete(
+                    f"Multi-vendor staging completed: {successful_count} succeeded ({staged_count} added, {noop_count} in cart)"
+                )
+            elif successful_count > 0 and failed_count > 0:
+                tracker.fail(
+                    f"Multi-vendor staging partially failed: {successful_count} succeeded, {failed_count} failed",
+                    level="WARNING",
+                )
+            else:
+                tracker.fail(
+                    f"Multi-vendor staging failed: all {failed_count} items failed to stage",
+                    level="ERROR",
+                )
+            self.finished_signal.emit({
+                "success": overall_success,
+                "message": f"Staging completed: {successful_count} succeeded ({noop_count} no-op), {failed_count} failed.",
+                "successful_count": successful_count,
+                "failed_count": failed_count,
+                "noop_count": noop_count,
             "staged_count": staged_count,
             "results": results_log,
         })

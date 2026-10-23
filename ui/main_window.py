@@ -55,6 +55,7 @@ from ui.widgets.sidebar import CollapsibleSidebar
 from ui.widgets.backup_restore_widget import DatabaseBackupRestoreWidget
 from ui.widgets.reference_data_widget import ReferenceDataWidget, ReferenceDataDialog
 from ui.widgets.vendor_plugins_widget import VendorPluginsWidget
+from ui.widgets.live_log_widget import LiveLogWidget
 from core.procurement.link_validator import LinkValidator, LinkValidationItem
 from ui.dialogs.link_validation_dialog import LinkValidationDialog
 from ui.dialogs import (
@@ -568,6 +569,14 @@ class MainWindow(QMainWindow):
         plugins_page_layout.addWidget(self.vendor_plugins_widget)
         self.content_stack.addWidget(self.vendor_plugins_page)
 
+        # Tools Destination 2: Live Log & Event Reporting
+        self.live_log_page = QWidget()
+        live_log_page_layout = QVBoxLayout(self.live_log_page)
+        live_log_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.live_log_widget = LiveLogWidget(parent=self)
+        live_log_page_layout.addWidget(self.live_log_widget)
+        self.content_stack.addWidget(self.live_log_page)
+
         # Settings Views added directly to content_stack (No top tab bar, Section 5 & Phase 1.1)
         # Settings Destination 1: General (General settings & stock policy)
         self.general_settings_page = self._build_general_settings_page()
@@ -917,6 +926,8 @@ class MainWindow(QMainWindow):
                 if hasattr(self, "vendor_plugins_widget"):
                     self.vendor_plugins_widget.refresh_plugins()
                 self.content_stack.setCurrentWidget(self.vendor_plugins_page)
+            elif page_id in ("live_log", "logs", "log", "event_log"):
+                self.content_stack.setCurrentWidget(self.live_log_page)
             elif page_id in ("settings", "general_settings", "settings_general"):
                 self._sync_general_settings_page()
                 self.content_stack.setCurrentWidget(self.general_settings_page)

@@ -5,8 +5,10 @@ from ui.widgets.bom_audit_widget import BOMAuditWidget, DropZoneFrame
 from ui.widgets.number_stepper import NumberStepperWidget
 from ui.widgets.assembly_preparation_widget import AssemblyPreparationWidget, AssemblyTableWidget
 from ui.widgets.title_bar import WindowTitleBar
+from ui.widgets.live_log_widget import LiveLogWidget
 
 __all__ = [
+    "LiveLogWidget",
     "InventoryTableWidget",
     "StockCellDelegate",
     "StatsRibbonWidget",

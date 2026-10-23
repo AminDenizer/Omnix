@@ -57,7 +57,7 @@ QMainWindow, QDialog {
 QWidget {
     color: #e2e8f0;
     font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-    font-size: 13px;
+    font-size: 10pt;
 }
 
 /* Tab Bar & Navigation */

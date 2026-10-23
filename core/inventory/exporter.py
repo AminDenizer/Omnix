@@ -26,6 +26,7 @@ from core.inventory.models import (
     normalize_package,
 )
 from core.inventory.repository import SqliteInventoryRepository
+from core.logger import log_event, track_operation
 
 
 class InventoryExcelExporter:
@@ -50,38 +51,41 @@ class InventoryExcelExporter:
         Returns:
             The absolute path of the generated workbook.
         """
-        wb = openpyxl.Workbook()
-        # Remove default active sheet created by openpyxl
-        default_sheet = wb.active
+        with track_operation("Export", f"Inventory workbook export to '{os.path.basename(filepath)}'") as tracker:
+            wb = openpyxl.Workbook()
+            # Remove default active sheet created by openpyxl
+            default_sheet = wb.active
 
-        # 1. Sheet 1: Inventory (Individual component records)
-        ws_inventory = wb.create_sheet(title="Inventory")
-        cls._build_inventory_sheet(ws_inventory, repository)
+            # 1. Sheet 1: Inventory (Individual component records)
+            ws_inventory = wb.create_sheet(title="Inventory")
+            cls._build_inventory_sheet(ws_inventory, repository)
 
-        # 2. Sheet 2: Assembly View (Aggregated stock groups & policies)
-        ws_assembly = wb.create_sheet(title="Assembly View")
-        cls._build_assembly_sheet(ws_assembly, repository)
+            # 2. Sheet 2: Assembly View (Aggregated stock groups & policies)
+            ws_assembly = wb.create_sheet(title="Assembly View")
+            cls._build_assembly_sheet(ws_assembly, repository)
 
-        # Remove initial default sheet if still present
-        if default_sheet is not None and default_sheet in wb.worksheets:
-            wb.remove(default_sheet)
+            # Remove initial default sheet if still present
+            if default_sheet is not None and default_sheet in wb.worksheets:
+                wb.remove(default_sheet)
 
-        # Ensure gridlines are displayed when opened in Excel
-        try:
-            if hasattr(ws_inventory, "views") and ws_inventory.views.sheetView:
-                ws_inventory.views.sheetView[0].showGridLines = True
-            if hasattr(ws_assembly, "views") and ws_assembly.views.sheetView:
-                ws_assembly.views.sheetView[0].showGridLines = True
-        except Exception:
-            pass
+            # Ensure gridlines are displayed when opened in Excel
+            try:
+                if hasattr(ws_inventory, "views") and ws_inventory.views.sheetView:
+                    ws_inventory.views.sheetView[0].showGridLines = True
+                if hasattr(ws_assembly, "views") and ws_assembly.views.sheetView:
+                    ws_assembly.views.sheetView[0].showGridLines = True
+            except Exception:
+                pass
 
-        # Ensure directory exists and save
-        out_dir = os.path.dirname(os.path.abspath(filepath))
-        if out_dir:
-            os.makedirs(out_dir, exist_ok=True)
-        wb.save(filepath)
-        wb.close()
-        return os.path.abspath(filepath)
+            # Ensure directory exists and save
+            out_dir = os.path.dirname(os.path.abspath(filepath))
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            wb.save(filepath)
+            wb.close()
+            abs_p = os.path.abspath(filepath)
+            tracker.complete(f"Successfully exported inventory & assembly workbook to '{os.path.basename(abs_p)}'")
+            return abs_p
 
     @classmethod
     def _build_inventory_sheet(cls, ws, repo: SqliteInventoryRepository) -> None:

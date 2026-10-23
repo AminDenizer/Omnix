@@ -15,6 +15,7 @@ Provides:
 
 import os
 from typing import List, Optional, Tuple, Any
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject, QEvent
 from PyQt6.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QKeyEvent, QWheelEvent
 from PyQt6.QtWidgets import (
@@ -108,17 +109,22 @@ class WheelScrollForwarder(QObject):
         self.scroll_area = scroll_area
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.Wheel:
-            v_bar = self.scroll_area.verticalScrollBar()
-            if v_bar and v_bar.isVisible():
-                delta = event.angleDelta().y()
-                if delta != 0:
-                    steps = delta / 120.0
-                    scroll_amount = int(steps * v_bar.singleStep() * 3)
-                    if scroll_amount == 0:
-                        scroll_amount = 1 if delta > 0 else -1
-                    v_bar.setValue(v_bar.value() - scroll_amount)
-                    return True
+        try:
+            if sip.isdeleted(self.scroll_area):
+                return super().eventFilter(watched, event)
+            if event.type() == QEvent.Type.Wheel:
+                v_bar = self.scroll_area.verticalScrollBar()
+                if v_bar and not sip.isdeleted(v_bar) and v_bar.isVisible():
+                    delta = event.angleDelta().y()
+                    if delta != 0:
+                        steps = delta / 120.0
+                        scroll_amount = int(steps * v_bar.singleStep() * 3)
+                        if scroll_amount == 0:
+                            scroll_amount = 1 if delta > 0 else -1
+                        v_bar.setValue(v_bar.value() - scroll_amount)
+                        return True
+        except (RuntimeError, Exception):
+            return False
         return super().eventFilter(watched, event)
 
 
@@ -223,74 +229,84 @@ class CompleterKeyFilter(QObject):
             dlg._clear_field_error(self.combo)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        comp = self.combo.completer()
-        popup = comp.popup() if comp else None
-        popup_visible = popup is not None and popup.isVisible()
+        try:
+            if sip.isdeleted(self.combo) or (watched is not None and sip.isdeleted(watched)):
+                return False
+        except Exception:
+            return False
 
-        if event.type() == QEvent.Type.ShortcutOverride:
-            key_event = event
-            key = key_event.key()
-            if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
-                event.accept()
-                return True
+        try:
+            comp = self.combo.completer()
+            popup = comp.popup() if comp else None
+            popup_visible = popup is not None and not sip.isdeleted(popup) and popup.isVisible()
 
-        if event.type() == QEvent.Type.KeyPress:
-            key_event = event
-            key = key_event.key()
-
-            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
-                if popup_visible and popup is not None and popup.model():
-                    total_rows = popup.model().rowCount()
-                    if total_rows > 0:
-                        curr = popup.currentIndex()
-                        if not curr.isValid():
-                            target_row = 0 if key == Qt.Key.Key_Down else total_rows - 1
-                        else:
-                            if key == Qt.Key.Key_Down:
-                                target_row = min(curr.row() + 1, total_rows - 1)
-                            else:
-                                target_row = max(curr.row() - 1, 0)
-                        popup.setCurrentIndex(popup.model().index(target_row, 0))
-                        return True
-
-            elif key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
-                text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
-                if text_to_commit:
-                    self._commit(text_to_commit)
-
-                if popup_visible:
-                    popup.hide()
-
-                if key == Qt.Key.Key_Tab:
-                    self.combo.focusNextChild()
-                else:
-                    self.combo.focusPreviousChild()
-                return True
-
-            elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
-                if text_to_commit:
-                    self._commit(text_to_commit)
-
-                if popup_visible:
-                    popup.hide()
-                return True
-
-            elif key == Qt.Key.Key_Escape:
-                if popup_visible:
-                    popup.hide()
+            if event.type() == QEvent.Type.ShortcutOverride:
+                key_event = event
+                key = key_event.key()
+                if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                    event.accept()
                     return True
 
-        elif event.type() == QEvent.Type.FocusOut:
-            if popup and popup.isVisible():
-                popup.hide()
-            text_to_commit = self._resolve_candidate(is_tab_or_enter=False)
-            if text_to_commit:
-                self._commit(text_to_commit)
-            # Notify dialog to validate field on focus out without erasing entered text
-            dlg = self.combo.window()
-            if hasattr(dlg, "_on_combo_focus_out"):
-                dlg._on_combo_focus_out(self.combo)
+            if event.type() == QEvent.Type.KeyPress:
+                key_event = event
+                key = key_event.key()
+
+                if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                    if popup_visible and popup is not None and popup.model():
+                        total_rows = popup.model().rowCount()
+                        if total_rows > 0:
+                            curr = popup.currentIndex()
+                            if not curr.isValid():
+                                target_row = 0 if key == Qt.Key.Key_Down else total_rows - 1
+                            else:
+                                if key == Qt.Key.Key_Down:
+                                    target_row = min(curr.row() + 1, total_rows - 1)
+                                else:
+                                    target_row = max(curr.row() - 1, 0)
+                            popup.setCurrentIndex(popup.model().index(target_row, 0))
+                            return True
+
+                elif key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                    text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
+                    if text_to_commit:
+                        self._commit(text_to_commit)
+
+                    if popup_visible:
+                        popup.hide()
+
+                    if key == Qt.Key.Key_Tab:
+                        self.combo.focusNextChild()
+                    else:
+                        self.combo.focusPreviousChild()
+                    return True
+
+                elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    text_to_commit = self._resolve_candidate(is_tab_or_enter=True)
+                    if text_to_commit:
+                        self._commit(text_to_commit)
+
+                    if popup_visible:
+                        popup.hide()
+                    return True
+
+                elif key == Qt.Key.Key_Escape:
+                    if popup_visible:
+                        popup.hide()
+                        return True
+
+            elif event.type() == QEvent.Type.FocusOut:
+                if popup and not sip.isdeleted(popup) and popup.isVisible():
+                    popup.hide()
+                text_to_commit = self._resolve_candidate(is_tab_or_enter=False)
+                if text_to_commit:
+                    self._commit(text_to_commit)
+                # Notify dialog to validate field on focus out without erasing entered text
+                dlg = self.combo.window()
+                if hasattr(dlg, "_on_combo_focus_out"):
+                    dlg._on_combo_focus_out(self.combo)
+
+        except (RuntimeError, Exception):
+            return False
 
         return super().eventFilter(watched, event)
 
@@ -578,7 +594,7 @@ class ComponentEditDialog(QDialog):
                 border-radius: 5px;
                 padding: 4px 8px;
                 padding-right: 28px;
-                font-size: 11px;
+                font-size: 10pt;
             }}
             QComboBox:hover {{
                 border-color: #334155;

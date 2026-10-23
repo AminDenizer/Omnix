@@ -82,6 +82,10 @@ SIDEBAR_ICON_SVGS: Dict[str, str] = {
   <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
   <line x1="12" y1="22.08" x2="12" y2="12"/>
 </svg>""",
+    "live_log": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="4 17 10 11 4 5"/>
+  <line x1="12" y1="19" x2="20" y2="19"/>
+</svg>""",
     "settings": """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
   <circle cx="12" cy="12" r="3"/>
@@ -443,6 +447,7 @@ class CollapsibleSidebar(QFrame):
         ]),
         ("TOOLS", [
             ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
+            ("live_log", "Live Log", "live_log"),
         ]),
         ("SETTINGS", [
             ("settings", "Settings", "settings"),
@@ -463,10 +468,14 @@ class CollapsibleSidebar(QFrame):
         ("bom_audit", "BOM Audit", "bom_audit"),
         ("assembly_prep", "Assembly & BOM Prep", "assembly_prep"),
         ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
+        ("live_log", "Live Log", "live_log"),
         ("settings", "Settings", "settings"),
     ]
 
     PAGE_ALIAS_MAP: Dict[str, str] = {
+        "log": "live_log",
+        "logs": "live_log",
+        "event_log": "live_log",
         "assembly_preparation": "assembly_prep",
         "export_backup": "backup_restore",
         "supplier_directory": "provider_management",

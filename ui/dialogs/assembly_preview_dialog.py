@@ -74,7 +74,7 @@ class AssemblyPreviewDialog(QDialog):
                 border: 1px solid #334155;
                 border-radius: 4px;
                 color: #38bdf8;
-                font-size: 11px;
+                font-size: 9pt;
                 font-weight: bold;
                 padding: 4px 8px;
                 min-width: 100px;

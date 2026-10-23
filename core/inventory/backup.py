@@ -19,6 +19,7 @@ from typing import Tuple, Dict, Any, Optional
 
 from core.inventory.database import DatabaseManager, CURRENT_SCHEMA_VERSION
 from core.inventory.repository import SqliteInventoryRepository
+from core.logger import log_event, track_operation
 
 
 REQUIRED_TABLES = [
@@ -138,33 +139,41 @@ class DatabaseBackupService:
         Exports a hot atomic snapshot of the active SQLite database to target_path.
         """
         abs_target = os.path.abspath(target_path)
-        if os.path.exists(abs_target) and not overwrite:
-            return False, f"Target file already exists: '{abs_target}'", {}
+        with track_operation("BackupRestore", f"Export database backup to '{os.path.basename(abs_target)}'") as tracker:
+            if os.path.exists(abs_target) and not overwrite:
+                msg = f"Target file already exists: '{abs_target}'"
+                tracker.fail(msg, level="WARNING")
+                return False, msg, {}
 
-        os.makedirs(os.path.dirname(abs_target), exist_ok=True)
+            os.makedirs(os.path.dirname(abs_target), exist_ok=True)
 
-        try:
-            # Perform native atomic backup
-            success = db_manager.backup(abs_target)
-            if not success:
-                return False, "SQLite native backup operation failed.", {}
+            try:
+                # Perform native atomic backup
+                success = db_manager.backup(abs_target)
+                if not success:
+                    tracker.fail("SQLite native backup operation failed", level="ERROR")
+                    return False, "SQLite native backup operation failed.", {}
 
-            # Validate the created snapshot
-            is_valid, msg, metadata = DatabaseBackupService.validate_backup_file(abs_target)
-            if not is_valid:
-                # Remove corrupted output
-                try:
-                    os.remove(abs_target)
-                except Exception:
-                    pass
-                return False, f"Backup creation failed integrity validation: {msg}", {}
+                # Validate the created snapshot
+                is_valid, msg, metadata = DatabaseBackupService.validate_backup_file(abs_target)
+                if not is_valid:
+                    # Remove corrupted output
+                    try:
+                        os.remove(abs_target)
+                    except Exception:
+                        pass
+                    tracker.fail(f"Backup failed integrity validation: {msg}", level="ERROR")
+                    return False, f"Backup creation failed integrity validation: {msg}", {}
 
-            metadata["backup_path"] = abs_target
-            metadata["exported_at"] = datetime.datetime.now().isoformat()
-            return True, f"Successfully created database backup at '{abs_target}'.", metadata
+                metadata["backup_path"] = abs_target
+                metadata["exported_at"] = datetime.datetime.now().isoformat()
+                tracker.complete(f"Database backup exported successfully to '{os.path.basename(abs_target)}'")
+                return True, f"Successfully created database backup at '{abs_target}'.", metadata
 
-        except Exception as e:
-            return False, f"Backup export error: {e}", {}
+            except Exception as e:
+                err_msg = f"Backup export error: {e}"
+                tracker.fail(err_msg, level="ERROR")
+                return False, err_msg, {}
 
     @staticmethod
     def restore_backup(
@@ -181,86 +190,98 @@ class DatabaseBackupService:
         5. In case of unexpected failure, automatically rolls back to the safety snapshot.
         """
         abs_backup = os.path.abspath(backup_path)
-        is_valid, val_msg, metadata = DatabaseBackupService.validate_backup_file(abs_backup)
-        if not is_valid:
-            return False, f"Cannot restore invalid backup: {val_msg}", {}
+        with track_operation("BackupRestore", f"Restore database from '{os.path.basename(abs_backup)}'") as tracker:
+            is_valid, val_msg, metadata = DatabaseBackupService.validate_backup_file(abs_backup)
+            if not is_valid:
+                msg = f"Cannot restore invalid backup: {val_msg}"
+                tracker.fail(msg, level="ERROR")
+                return False, msg, {}
 
-        current_db_path = repo.file_path
-        if not current_db_path or current_db_path == ":memory:":
-            return False, "Cannot restore into an in-memory or uninitialized database path.", {}
+            current_db_path = repo.file_path
+            if not current_db_path or current_db_path == ":memory:":
+                msg = "Cannot restore into an in-memory or uninitialized database path."
+                tracker.fail(msg, level="ERROR")
+                return False, msg, {}
 
-        # 1. Create Pre-Restore Safety Snapshot
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        if not safety_dir:
-            safety_dir = os.path.join(os.path.dirname(current_db_path), "safety_backups")
-        os.makedirs(safety_dir, exist_ok=True)
-        safety_path = os.path.join(safety_dir, f"pre_restore_safety_{timestamp}.db")
+            # 1. Create Pre-Restore Safety Snapshot
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            if not safety_dir:
+                safety_dir = os.path.join(os.path.dirname(current_db_path), "safety_backups")
+            os.makedirs(safety_dir, exist_ok=True)
+            safety_path = os.path.join(safety_dir, f"pre_restore_safety_{timestamp}.db")
 
-        safety_created = False
-        if os.path.exists(current_db_path):
-            safety_created = repo.backup(safety_path)
-            if not safety_created:
-                return False, f"Failed to create pre-restore safety snapshot at '{safety_path}'. Restore aborted.", {}
+            safety_created = False
+            if os.path.exists(current_db_path):
+                safety_created = repo.backup(safety_path)
+                if not safety_created:
+                    msg = f"Failed to create pre-restore safety snapshot at '{safety_path}'. Restore aborted."
+                    tracker.fail(msg, level="ERROR")
+                    return False, msg, {}
 
-        # 2. Transactionally apply backup into active database
-        backup_conn = None
-        target_conn = None
-        try:
-            # Connect to backup source and target destination
-            backup_conn = sqlite3.connect(abs_backup)
-            target_conn = sqlite3.connect(current_db_path)
-
-            with target_conn:
-                backup_conn.backup(target_conn)
-
-            target_conn.close()
-            target_conn = None
-            backup_conn.close()
+            # 2. Transactionally apply backup into active database
             backup_conn = None
+            target_conn = None
+            try:
+                # Connect to backup source and target destination
+                backup_conn = sqlite3.connect(abs_backup)
+                target_conn = sqlite3.connect(current_db_path)
 
-            # 3. Reload Repository Connection & Schema
-            repo.load(current_db_path)
+                with target_conn:
+                    backup_conn.backup(target_conn)
 
-            # 4. Verify Active DB Integrity after Restore
-            active_valid, active_msg, active_meta = DatabaseBackupService.validate_backup_file(current_db_path)
-            if not active_valid:
-                # Rollback to safety snapshot
+                target_conn.close()
+                target_conn = None
+                backup_conn.close()
+                backup_conn = None
+
+                # 3. Reload Repository Connection & Schema
+                repo.load(current_db_path)
+
+                # 4. Verify Active DB Integrity after Restore
+                active_valid, active_msg, active_meta = DatabaseBackupService.validate_backup_file(current_db_path)
+                if not active_valid:
+                    # Rollback to safety snapshot
+                    if safety_created and os.path.exists(safety_path):
+                        sb_conn = sqlite3.connect(safety_path)
+                        tb_conn = sqlite3.connect(current_db_path)
+                        with tb_conn:
+                            sb_conn.backup(tb_conn)
+                        sb_conn.close()
+                        tb_conn.close()
+                        repo.load(current_db_path)
+                    msg = f"Restored database failed integrity check ({active_msg}). Rolled back to safety snapshot."
+                    tracker.fail(msg, level="ERROR")
+                    return False, msg, {}
+
+                active_meta["safety_snapshot_path"] = safety_path
+                active_meta["restored_from"] = abs_backup
+                tracker.complete(f"Database restored successfully from '{os.path.basename(abs_backup)}'")
+                return True, f"Successfully restored database from '{abs_backup}'.", active_meta
+
+            except Exception as e:
+                # Rollback to safety snapshot on exception
                 if safety_created and os.path.exists(safety_path):
-                    sb_conn = sqlite3.connect(safety_path)
-                    tb_conn = sqlite3.connect(current_db_path)
-                    with tb_conn:
-                        sb_conn.backup(tb_conn)
-                    sb_conn.close()
-                    tb_conn.close()
-                    repo.load(current_db_path)
-                return False, f"Restored database failed integrity check ({active_msg}). Rolled back to safety snapshot.", {}
-
-            active_meta["safety_snapshot_path"] = safety_path
-            active_meta["restored_from"] = abs_backup
-            return True, f"Successfully restored database from '{abs_backup}'.", active_meta
-
-        except Exception as e:
-            # Rollback to safety snapshot on exception
-            if safety_created and os.path.exists(safety_path):
-                try:
-                    sb_conn = sqlite3.connect(safety_path)
-                    tb_conn = sqlite3.connect(current_db_path)
-                    with tb_conn:
-                        sb_conn.backup(tb_conn)
-                    sb_conn.close()
-                    tb_conn.close()
-                    repo.load(current_db_path)
-                except Exception:
-                    pass
-            return False, f"Error during database restore: {e}. Restored to previous state.", {}
-        finally:
-            if backup_conn:
-                try:
-                    backup_conn.close()
-                except Exception:
-                    pass
-            if target_conn:
-                try:
-                    target_conn.close()
-                except Exception:
-                    pass
+                    try:
+                        sb_conn = sqlite3.connect(safety_path)
+                        tb_conn = sqlite3.connect(current_db_path)
+                        with tb_conn:
+                            sb_conn.backup(tb_conn)
+                        sb_conn.close()
+                        tb_conn.close()
+                        repo.load(current_db_path)
+                    except Exception:
+                        pass
+                err_msg = f"Error during database restore: {e}. Restored to previous state."
+                tracker.fail(err_msg, level="ERROR")
+                return False, err_msg, {}
+            finally:
+                if backup_conn:
+                    try:
+                        backup_conn.close()
+                    except Exception:
+                        pass
+                if target_conn:
+                    try:
+                        target_conn.close()
+                    except Exception:
+                        pass

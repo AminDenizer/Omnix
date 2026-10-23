@@ -9,6 +9,7 @@ from core.procurement.models import (
     ManufacturerRule,
     ManufacturerDataState,
 )
+from core.logger import log_event, track_operation
 
 
 class BOMItem:
@@ -360,11 +361,17 @@ class BOMAuditor:
         Parse Altium BOM Excel file, validate all 20 canonical parameters, and evaluate
         shortages and procurement requirements according to the selected mode.
         """
-        if not os.path.exists(bom_file_path):
-            return False, f"BOM file not found: {bom_file_path}", None
-
+        bom_name = os.path.basename(bom_file_path) if bom_file_path else "Unknown"
         if isinstance(mode, str) and not isinstance(mode, ProcurementMode):
             mode = ProcurementMode(mode)
+
+        tracker = track_operation("BOM", f"BOM audit for '{bom_name}' (Mode: {mode.value}, Multiplier: {board_multiplier})")
+        tracker.__enter__()
+
+        if not os.path.exists(bom_file_path):
+            msg = f"BOM file not found: {bom_file_path}"
+            tracker.fail(msg, level="ERROR")
+            return False, msg, None
 
         try:
             wb = openpyxl.load_workbook(bom_file_path, data_only=True)
@@ -373,6 +380,8 @@ class BOMAuditor:
             wb.close()
 
             if not raw_rows:
+                msg = f"BOM file '{bom_name}' is empty."
+                tracker.fail(msg, level="ERROR")
                 return False, "BOM file is empty.", None
 
             # Locate columns in BOM header (Row 1)
@@ -705,7 +714,12 @@ class BOMAuditor:
                 result.items.append(bom_item)
 
             result.total_items_count = len(result.items)
+            tracker.complete(
+                f"Completed BOM audit for '{bom_name}': {result.total_items_count} items evaluated ({result.shortage_count} shortages, {result.in_stock_count} in stock)"
+            )
             return True, f"Audited {result.total_items_count} components from BOM ({mode.value}).", result
 
         except Exception as e:
+            err_msg = f"Failed to audit BOM '{bom_name}': {str(e)}"
+            tracker.fail(err_msg, level="ERROR")
             return False, f"Failed to audit BOM: {str(e)}", None
