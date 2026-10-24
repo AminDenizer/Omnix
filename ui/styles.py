@@ -1,7 +1,31 @@
 import os
 from config import get_bundle_dir
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPolygon
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QPolygon, QPen
 from PyQt6.QtCore import Qt, QPoint
+
+def ensure_checkbox_icons():
+    icons_dir = os.path.join(get_bundle_dir(), "ui", "icons")
+    try:
+        os.makedirs(icons_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    check_p = os.path.join(icons_dir, "checkbox_check.png")
+    try:
+        if not os.path.exists(check_p):
+            pm = QPixmap(32, 32)
+            pm.fill(Qt.GlobalColor.transparent)
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            pen = QPen(QColor("#ffffff"), 3.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            p.setPen(pen)
+            p.drawLine(7, 16, 13, 23)
+            p.drawLine(13, 23, 25, 9)
+            p.end()
+            pm.save(check_p)
+    except Exception:
+        pass
+    return check_p.replace("\\", "/")
 
 def ensure_spinbox_icons():
     icons_dir = os.path.join(get_bundle_dir(), "ui", "icons")
@@ -196,6 +220,37 @@ QTableCornerButton::section {
     border: none;
 }
 
+/* Table Checkbox Indicator */
+QTableWidget::indicator, QTableView::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #64748b;
+    background-color: #0f172a;
+}
+
+QTableWidget::indicator:hover, QTableView::indicator:hover {
+    border-color: #38bdf8;
+    background-color: #1e293b;
+}
+
+QTableWidget::indicator:checked, QTableView::indicator:checked {
+    background-color: #0284c7;
+    border-color: #38bdf8;
+    image: url('__CHECK_ICON__');
+}
+
+QTableWidget::indicator:checked:hover, QTableView::indicator:checked:hover {
+    background-color: #0369a1;
+    border-color: #7dd3fc;
+    image: url('__CHECK_ICON__');
+}
+
+QTableWidget::indicator:disabled, QTableView::indicator:disabled {
+    border: 1.5px dashed #334155;
+    background-color: rgba(15, 23, 42, 0.45);
+}
+
 /* Context menu */
 QMenu {
     background-color: #0f172a;
@@ -353,13 +408,30 @@ QCheckBox::indicator {
     width: 18px;
     height: 18px;
     border-radius: 4px;
-    border: 1.5px solid #334155;
-    background-color: #111a2e;
+    border: 1.5px solid #64748b;
+    background-color: #0f172a;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #38bdf8;
+    background-color: #1e293b;
 }
 
 QCheckBox::indicator:checked {
     background-color: #0284c7;
     border-color: #38bdf8;
+    image: url('__CHECK_ICON__');
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: #0369a1;
+    border-color: #7dd3fc;
+    image: url('__CHECK_ICON__');
+}
+
+QCheckBox::indicator:disabled {
+    border: 1.5px dashed #334155;
+    background-color: rgba(15, 23, 42, 0.45);
 }
 
 /* Progress Bar */
@@ -412,6 +484,12 @@ QPushButton#secondaryBtn {
 QPushButton#secondaryBtn:hover {
     background-color: #334155;
     border: 1px solid #475569;
+}
+
+QPushButton#secondaryBtn:disabled {
+    background-color: #1e293b;
+    color: #64748b;
+    border: 1px solid #334155;
 }
 
 QPushButton#dangerBtn {
@@ -553,8 +631,10 @@ QStatusBar::item {
 }
 """
 
+_check_icon = ensure_checkbox_icons()
 _up_icon, _up_hover, _down_icon, _down_hover = ensure_spinbox_icons()
-DARK_STYLESHEET = _RAW_DARK_STYLESHEET.replace("__SPIN_UP_ICON__", _up_icon) \
+DARK_STYLESHEET = _RAW_DARK_STYLESHEET.replace("__CHECK_ICON__", _check_icon) \
+    .replace("__SPIN_UP_ICON__", _up_icon) \
     .replace("__SPIN_UP_HOVER_ICON__", _up_hover) \
     .replace("__SPIN_DOWN_ICON__", _down_icon) \
     .replace("__SPIN_DOWN_HOVER_ICON__", _down_hover)

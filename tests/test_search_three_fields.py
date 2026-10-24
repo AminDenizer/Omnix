@@ -27,15 +27,13 @@ from unittest.mock import patch
 from PyQt6.QtCore import Qt
 
 from ui.main_window import MainWindow
-from core.inventory import resolve_inventory_database_path
 from core.inventory.models import InventoryProduct, StockPolicyGroup
 
 
 @pytest.fixture
 def win(qapp):
-    db_path = resolve_inventory_database_path()
     with patch.object(MainWindow, "_check_startup_shortages"):
-        w = MainWindow(default_file=db_path)
+        w = MainWindow()
         w.show()
         qapp.processEvents()
         yield w

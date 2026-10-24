@@ -27,7 +27,7 @@ from config import (
     REPOSITORY_URL,
     LICENSE_TYPE,
 )
-from core.inventory import resolve_inventory_database_path
+from unittest.mock import patch
 from ui.main_window import MainWindow
 from ui.widgets.sidebar import (
     CollapsibleSidebar,
@@ -39,13 +39,13 @@ from ui.widgets.sidebar import (
 @pytest.fixture
 def main_window(qapp):
     """Fixture providing an instance of MainWindow with clean teardown."""
-    db_path = resolve_inventory_database_path()
-    win = MainWindow(default_file=db_path)
-    win.show()
-    qapp.processEvents()
-    yield win
-    win._is_force_closing = True
-    win.close()
+    with patch.object(MainWindow, "_check_startup_shortages"):
+        win = MainWindow()
+        win.show()
+        qapp.processEvents()
+        yield win
+        win._is_force_closing = True
+        win.close()
 
 
 class TestHeaderAndBranding:
@@ -94,14 +94,17 @@ class TestSidebarHierarchyAndIcons:
     """Verifies 3-section sidebar hierarchy, primary navigation keys, outline icons, and styling."""
 
     def test_primary_destinations_and_sections(self, main_window):
-        """Sidebar contains Workspace, Tools, and Settings sections and exactly 6 primary buttons."""
+        """Sidebar contains Workspace, Tools, and Settings sections and consolidated primary buttons."""
         sb = main_window.sidebar
         expected_keys = [
-            "assembly_view",
             "component_inventory",
+            "assembly_view",
             "bom_audit",
             "assembly_prep",
-            "vendor_plugins",
+            "reference_data",
+            "provider_management",
+            "backup_restore",
+            "live_log",
             "settings",
         ]
         assert [p[0] for p in sb.PAGES] == expected_keys
@@ -159,56 +162,33 @@ class TestSettingsSubsectionsAndAbout:
     """Verifies settings collapsible sidebar submenu, the 5 subsections, and factual metadata in About."""
 
     def test_settings_subsections_structure_and_submenu(self, main_window, qapp):
-        """Settings page has a collapsible sidebar submenu with 5 children and NO top tabs."""
+        """Settings page has a single sidebar button and tabbed interface for General, Vendors, About."""
         sb = main_window.sidebar
         assert hasattr(sb, "settings_parent_btn")
         assert hasattr(sb, "SETTINGS_CHILDREN")
 
         expected_children = [
             ("general_settings", "General", "general_settings"),
-            ("reference_data", "Reference Data", "reference_data"),
-            ("provider_management", "Supplier Directory", "provider_management"),
-            ("backup_restore", "Export & Backup", "backup_restore"),
+            ("vendor_plugins", "Vendors", "vendor_plugins"),
             ("about", "About", "about"),
         ]
         assert sb.SETTINGS_CHILDREN == expected_children
 
-        # Verify all children are present in _submenu_buttons
-        for child_id, label, _ in expected_children:
-            assert child_id in sb._submenu_buttons
-            btn = sb._submenu_buttons[child_id]
-            assert label in btn.text()
-            assert not btn.icon().isNull()
+        # Verify unified Settings tabs exist on MainWindow
+        assert hasattr(main_window, "settings_tabs")
+        assert main_window.settings_tabs.count() == 3
+        assert main_window.settings_tabs.tabText(0) == "General"
+        assert main_window.settings_tabs.tabText(1) == "Vendors"
+        assert main_window.settings_tabs.tabText(2) == "About"
 
-        # Test expand / collapse behavior and vector outline chevron indicator
-        sb.set_submenu_expanded(False)
-        qapp.processEvents()
-        assert sb.is_submenu_expanded() is False
-        assert sb.settings_parent_btn._chevron.text() == "▸"
-        assert not sb.settings_parent_btn._chevron.pixmap().isNull()
-        for btn in sb._submenu_buttons.values():
-            assert btn.isVisible() is False
-
-        sb.set_submenu_expanded(True)
-        qapp.processEvents()
-        assert sb.is_submenu_expanded() is True
-        assert sb.settings_parent_btn._chevron.text() == "▾"
-        assert not sb.settings_parent_btn._chevron.pixmap().isNull()
-        for btn in sb._submenu_buttons.values():
-            assert btn.isVisible() is True
-            # Indented styling
-            assert "padding-left: 24px;" in btn.styleSheet()
-
-        # Collapsing the sidebar rail centers submenu icons without breaking layout
+        # Collapsing the sidebar rail works cleanly
         sb.set_collapsed(True)
         qapp.processEvents()
-        assert sb.settings_parent_btn._chevron.isVisible() is False
-        for btn in sb._submenu_buttons.values():
-            assert "padding-left: 0px;" in btn.styleSheet()
-            assert "text-align: center;" in btn.styleSheet()
+        assert sb.is_collapsed() is True
 
         sb.set_collapsed(False)
         qapp.processEvents()
+        assert sb.is_collapsed() is False
 
     def test_no_tabs_across_content_area(self, main_window):
         """Settings views must render directly in main content area without a top QTabWidget."""
@@ -283,64 +263,68 @@ class TestNavigationRouting:
         assert win.sidebar.active_page() == "assembly_prep"
 
     def test_tools_vendor_plugins_routing(self, main_window, qapp):
-        """Vendor Plugins routes to vendor plugins page in content stack."""
+        """Vendor Plugins routes to unified Settings tab 1."""
         win = main_window
         win.sidebar._on_button_clicked("vendor_plugins")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.vendor_plugins_page
-        assert win.sidebar.active_page() == "vendor_plugins"
+        assert win.content_stack.currentWidget() == win.settings_page
+        assert win.settings_tabs.currentIndex() == 1
+        assert win.sidebar.active_page() == "settings"
 
     def test_settings_routing_and_legacy_aliases(self, main_window, qapp):
-        """Settings button and child navigation activate individual content pages without tabs."""
+        """Settings button and child navigation activate unified Settings tabs and Tools pages."""
         win = main_window
 
-        # Settings top-level (activates General settings page and expands submenu)
+        # Settings top-level (activates General settings tab 0)
         win.sidebar._on_button_clicked("settings")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.general_settings_page
+        assert win.content_stack.currentWidget() == win.settings_page
+        assert win.settings_tabs.currentIndex() == 0
         assert win.sidebar.active_page() == "settings"
         assert win.sidebar.settings_parent_btn._is_active is True
-        assert win.sidebar._submenu_buttons["general_settings"]._is_active is True
-        assert win.sidebar.is_submenu_expanded() is True
 
-        # Child: reference_data
+        # Child: vendor_plugins (Vendors tab 1)
+        win.sidebar._on_button_clicked("vendor_plugins")
+        qapp.processEvents()
+        assert win.content_stack.currentWidget() == win.settings_page
+        assert win.settings_tabs.currentIndex() == 1
+        assert win.sidebar.active_page() == "settings"
+        assert win.sidebar.settings_parent_btn._is_active is True
+
+        # Child: about (About tab 2)
+        win.sidebar._on_button_clicked("about")
+        qapp.processEvents()
+        assert win.content_stack.currentWidget() == win.settings_page
+        assert win.settings_tabs.currentIndex() == 2
+        assert win.sidebar.active_page() == "settings"
+        assert win.sidebar.settings_parent_btn._is_active is True
+
+        # Tool: reference_data
         win.sidebar._on_button_clicked("reference_data")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.reference_data_page
         assert win.sidebar.active_page() == "reference_data"
-        assert win.sidebar.settings_parent_btn._is_active is True
-        assert win.sidebar._submenu_buttons["reference_data"]._is_active is True
-        assert win.sidebar._submenu_buttons["general_settings"]._is_active is False
+        assert win.sidebar.settings_parent_btn._is_active is False
 
-        # Child: provider_management (Supplier Directory)
+        # Tool: provider_management (Supplier Directory)
         win.sidebar._on_button_clicked("provider_management")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.providers_page
         assert win.sidebar.active_page() == "provider_management"
-        assert win.sidebar.settings_parent_btn._is_active is True
-        assert win.sidebar._submenu_buttons["provider_management"]._is_active is True
+        assert win.sidebar.settings_parent_btn._is_active is False
 
-        # Child: backup_restore (Export & Backup)
+        # Tool: backup_restore (Export & Backup)
         win.sidebar._on_button_clicked("backup_restore")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.backup_restore_page
         assert win.sidebar.active_page() == "backup_restore"
-        assert win.sidebar.settings_parent_btn._is_active is True
-        assert win.sidebar._submenu_buttons["backup_restore"]._is_active is True
-
-        # Child: about
-        win.sidebar._on_button_clicked("about")
-        qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.about_page
-        assert win.sidebar.active_page() == "about"
-        assert win.sidebar.settings_parent_btn._is_active is True
-        assert win.sidebar._submenu_buttons["about"]._is_active is True
+        assert win.sidebar.settings_parent_btn._is_active is False
 
         # Navigating back to Workspace clears settings parent active state
         win.sidebar._on_button_clicked("assembly_view")
         qapp.processEvents()
+        assert win.sidebar.active_page() == "assembly_view"
         assert win.sidebar.settings_parent_btn._is_active is False
-        assert win.sidebar._submenu_buttons["about"]._is_active is False
 
 
 class TestExcelExport:

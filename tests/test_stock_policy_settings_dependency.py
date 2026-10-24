@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import QApplication, QPushButton, QCheckBox, QFrame
 from settings_manager import settings
 from ui.main_window import MainWindow
 from ui.dialogs.settings_dialog import SettingsDialog
-from core.inventory import resolve_inventory_database_path
 
 
 @pytest.fixture(scope="session")
@@ -45,9 +44,8 @@ def managed_window(qapp):
     orig_startup = settings.get("auto_check_startup_shortage", True)
     orig_match = settings.get("match_products_enabled", True)
 
-    db_path = resolve_inventory_database_path()
-    with patch("PyQt6.QtCore.QTimer.singleShot"):
-        win = MainWindow(default_file=db_path)
+    with patch.object(MainWindow, "_check_startup_shortages"), patch("PyQt6.QtCore.QTimer.singleShot"):
+        win = MainWindow()
         win.show()
         qapp.processEvents()
     yield win
@@ -315,8 +313,7 @@ class TestStartupExecutionDependency:
 
         # Provide simulated shortages
         mock_items = [{"Category": "Capacitor", "Part Number": "TEST-100NF"}]
-        with patch.object(win.excel, "rows", [{"test": 1}] * 5), \
-             patch.object(win.excel, "get_shortage_items", return_value=mock_items), \
+        with patch.object(win, "_get_stock_policy_replenishment_items", return_value=mock_items), \
              patch("ui.main_window.OrderPreviewDialog") as mock_preview_dlg:
             win._check_startup_shortages()
             assert mock_preview_dlg.called
@@ -403,7 +400,7 @@ class TestSettingsLayoutHierarchy:
         # Verify exact labels
         assert win.side_stock_policy_enabled_chk.text() == "Enable stock-policy features"
         assert win.side_stock_policy_validation_chk.text() == "Enable stock-policy validation / shortage checking"
-        assert win.side_stock_policy_show_columns_chk.text() == "Show Min Stock and Target Stock columns in Assembly View"
+        assert win.side_stock_policy_show_columns_chk.text() == "Show Min Stock and Target Stock columns in Component Inventory"
         assert win.side_startup_chk.text() == "Automatically check inventory shortages on application startup"
         assert win.side_match_products_chk.text() == "Show Matched Products in Assembly View"
 

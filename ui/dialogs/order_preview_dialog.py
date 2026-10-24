@@ -4,6 +4,7 @@ Governing GAP: GAP-07 (Multi-Candidate Comparison & Alternative Selection) & Mod
 Reuses UniversalProcurementOrchestrator, CandidateEvaluation, ProcurementBridge, and GAP-13 Delta Synchronization.
 """
 
+import datetime
 import math
 import os
 import webbrowser
@@ -43,6 +44,8 @@ from core.procurement.models import (
     ProcurementMode,
     ProcurementRequest,
     RequestProcurementResult,
+    SupplierItemResult,
+    SupplierOutcomeStatus,
     VendorProcurementCandidate,
 )
 from core.procurement.orchestrator import UniversalProcurementOrchestrator
@@ -53,8 +56,9 @@ from core.procurement.reporting import (
     ProcurementReportBuilder,
     ProcurementXLSXExporter,
 )
+from core.procurement.reporting.models import ReportType
 from settings_manager import settings
-from ui.dialogs.settings_dialog import SettingsDialog
+from ui.styles import ensure_checkbox_icons
 from core.logger import log_event, track_operation
 
 
@@ -424,6 +428,14 @@ class OrderPreviewDialog(QDialog):
        with candidate switching, dynamic cost recalculation, and multi-format reporting (GAP-18).
     """
 
+    COL_SELECT = 0
+    COL_PART = 1
+    COL_DESC = 2
+    COL_STOCK = 3
+    COL_NEEDED = 4
+    COL_LINK = 5
+    COL_STATUS = 6
+
     def __init__(
         self,
         all_shortages: Optional[List[Dict[str, Any]]] = None,
@@ -452,8 +464,8 @@ class OrderPreviewDialog(QDialog):
         self.worker: Optional[OrderWorkerThread] = None
         self.discovery_worker: Optional[PlanDiscoveryWorkerThread] = None
         self.staging_results_log: Optional[List[Dict[str, Any]]] = None
-        self._has_updated_inventory = False
         self.active_row_idx: Optional[int] = None
+        self._is_updating_table: bool = False
 
         # Determine if this is Mode B (pre-computed / multi-candidate plan) or Mode A (direct shortage confirmation)
         if plan is not None and len(plan.results) > 0:
@@ -533,6 +545,16 @@ class OrderPreviewDialog(QDialog):
         self.orderable_items = self.lion_items + self.other_vendor_items + self.multi_vendor_items
         self.invalid_items = self.external_items + self.blank_link_items
 
+        # Initialize selection state: orderable items default to selected, others unselected
+        for it in self.all_shortages:
+            if it in self.orderable_items:
+                if "_selected" not in it:
+                    it["_selected"] = True
+            else:
+                it["_selected"] = False
+
+        self._is_updating_table = True
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(10)
@@ -554,27 +576,115 @@ class OrderPreviewDialog(QDialog):
         desc_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
         layout.addWidget(desc_lbl)
 
-        # Main Table of All Shortages (6 columns matching Image 2)
+        # Selection Control Bar (Select All, Deselect All, Count)
+        selection_bar = QHBoxLayout()
+        selection_bar.setContentsMargins(0, 2, 0, 2)
+        selection_bar.setSpacing(8)
+
+        btn_style = """
+            QPushButton {
+                background-color: #1e293b;
+                color: #e2e8f0;
+                border: 1px solid #334155;
+                border-radius: 5px;
+                padding: 4px 10px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                color: #ffffff;
+                border-color: #475569;
+            }
+            QPushButton:pressed {
+                background-color: #0f172a;
+            }
+            QPushButton:disabled {
+                background-color: #1e293b;
+                color: #64748b;
+                border-color: #1e293b;
+            }
+        """
+
+        self.select_all_btn = QPushButton("☑ Select All")
+        self.select_all_btn.setObjectName("secondaryBtn")
+        self.select_all_btn.setStyleSheet(btn_style)
+        self.select_all_btn.setFixedHeight(28)
+        self.select_all_btn.setToolTip("Select all valid orderable items")
+        self.select_all_btn.clicked.connect(self._select_all_orderable)
+        selection_bar.addWidget(self.select_all_btn)
+
+        self.deselect_all_btn = QPushButton("☐ Deselect All")
+        self.deselect_all_btn.setObjectName("secondaryBtn")
+        self.deselect_all_btn.setStyleSheet(btn_style)
+        self.deselect_all_btn.setFixedHeight(28)
+        self.deselect_all_btn.setToolTip("Deselect all items")
+        self.deselect_all_btn.clicked.connect(self._deselect_all_orderable)
+        selection_bar.addWidget(self.deselect_all_btn)
+
+        selection_bar.addStretch()
+
+        self.selection_count_lbl = QLabel()
+        self.selection_count_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self.selection_count_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 500;")
+        selection_bar.addWidget(self.selection_count_lbl)
+
+        layout.addLayout(selection_bar)
+
+        # Main Table of All Shortages (7 columns: Select + 6 info columns)
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "Part / Designator", "Part Number / Description", "Current Stock", "Shortage Needed", "Store Link", "Validation & Status"
+            "Select", "Part / Designator", "Part Number / Description", "Current Stock", "Shortage Needed", "Store Link", "Validation & Status"
         ])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 150)
-        self.table.setColumnWidth(2, 100)
-        self.table.setColumnWidth(3, 120)
-        self.table.setColumnWidth(4, 240)
-        self.table.setColumnWidth(5, 150)
+        header.setSectionResizeMode(self.COL_SELECT, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(self.COL_DESC, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(self.COL_SELECT, 56)
+        self.table.setColumnWidth(self.COL_PART, 140)
+        self.table.setColumnWidth(self.COL_STOCK, 95)
+        self.table.setColumnWidth(self.COL_NEEDED, 115)
+        self.table.setColumnWidth(self.COL_LINK, 230)
+        self.table.setColumnWidth(self.COL_STATUS, 150)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemDoubleClicked.connect(self._on_mode_a_item_double_clicked)
+        _chk = ensure_checkbox_icons()
+        self.table.setStyleSheet(f"""
+            QTableWidget::indicator {{
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border: 1.5px solid #64748b;
+                background-color: #0f172a;
+            }}
+            QTableWidget::indicator:hover {{
+                border-color: #38bdf8;
+                background-color: #1e293b;
+            }}
+            QTableWidget::indicator:checked {{
+                background-color: #0284c7;
+                border-color: #38bdf8;
+                image: url('{_chk}');
+            }}
+            QTableWidget::indicator:checked:hover {{
+                background-color: #0369a1;
+                border-color: #7dd3fc;
+                image: url('{_chk}');
+            }}
+            QTableWidget::indicator:disabled {{
+                border: 1.5px dashed #334155;
+                background-color: rgba(15, 23, 42, 0.45);
+            }}
+        """)
 
         self._populate_mode_a_table()
+        self.table.itemChanged.connect(self._on_table_item_changed)
+        self._is_updating_table = False
+
         layout.addWidget(self.table)
 
         # Compact Status Ribbon in footer
@@ -669,32 +779,21 @@ class OrderPreviewDialog(QDialog):
         # Action Buttons
         btn_layout = QHBoxLayout()
 
-        self.settings_btn = QPushButton("⚙️ Account Settings")
-        self.settings_btn.setObjectName("secondaryBtn")
-        self.settings_btn.clicked.connect(self._open_settings)
-        btn_layout.addWidget(self.settings_btn)
-
-        self.export_btn = QPushButton("📄 Export Report ▼")
-        self.export_btn.setObjectName("secondaryBtn")
-        self.export_btn.clicked.connect(self._show_export_menu)
-        btn_layout.addWidget(self.export_btn)
+        self.export_post_operation_btn = QPushButton("📄 Export Staging Results (.xlsx)")
+        self.export_post_operation_btn.setObjectName("secondaryBtn")
+        self.export_post_operation_btn.setStyleSheet("""
+            QPushButton#secondaryBtn:disabled {
+                background-color: #1e293b;
+                color: #64748b;
+                border: 1px solid #334155;
+            }
+        """)
+        self.export_post_operation_btn.setEnabled(False)
+        self.export_post_operation_btn.clicked.connect(self._export_post_operation_results)
+        btn_layout.addWidget(self.export_post_operation_btn)
+        self.export_btn = self.export_post_operation_btn
 
         btn_layout.addStretch()
-
-        self.confirm_payment_btn = QPushButton("💰 Confirm Payment & Add Stock")
-        self.confirm_payment_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #ffffff;
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 7px 16px;
-            }
-            QPushButton:hover { background-color: #10b981; }
-        """)
-        self.confirm_payment_btn.hide()
-        self.confirm_payment_btn.clicked.connect(self._confirm_payment_and_add_stock)
-        btn_layout.addWidget(self.confirm_payment_btn)
 
         self.cancel_btn = QPushButton("Cancel / Dismiss")
         self.cancel_btn.setObjectName("secondaryBtn")
@@ -708,8 +807,7 @@ class OrderPreviewDialog(QDialog):
         btn_layout.addWidget(self.open_cart_btn)
 
         # Order Button
-        order_vendor_name = "Lion Electronic" if (len(self.lion_items) == len(self.orderable_items) and len(self.lion_items) > 0) else "Multi-Vendor"
-        self.order_btn = QPushButton(f"🛒 Order {len(self.orderable_items)} Items on {order_vendor_name}")
+        self.order_btn = QPushButton()
         self.order_btn.setStyleSheet("""
             QPushButton {
                 background-color: #059669;
@@ -722,13 +820,135 @@ class OrderPreviewDialog(QDialog):
             QPushButton:hover { background-color: #10b981; }
             QPushButton:disabled { background-color: #334155; color: #64748b; }
         """)
-        if len(self.orderable_items) == 0:
-            self.order_btn.setEnabled(False)
-            self.order_btn.setText("❌ No Orderable Items")
         self.order_btn.clicked.connect(self._execute_mode_a_order)
         btn_layout.addWidget(self.order_btn)
 
         layout.addLayout(btn_layout)
+
+        # Update initial selection state, count, and order button
+        self._update_selection_state_and_order_btn()
+
+    def get_selected_orderable_items(self) -> List[Dict[str, Any]]:
+        """Return list of valid orderable items currently selected in the UI."""
+        selected = []
+        for row in range(self.table.rowCount()):
+            item0 = self.table.item(row, self.COL_SELECT)
+            if item0 and item0.checkState() == Qt.CheckState.Checked:
+                idx = item0.data(Qt.ItemDataRole.UserRole)
+                if isinstance(idx, int) and 0 <= idx < len(self.all_shortages):
+                    it = self.all_shortages[idx]
+                    if it in self.orderable_items:
+                        selected.append(it)
+        return selected
+
+    @property
+    def selected_orderable_items(self) -> List[Dict[str, Any]]:
+        return self.get_selected_orderable_items()
+
+    def _select_all_orderable(self):
+        """Select all valid orderable items in the table."""
+        self._is_updating_table = True
+        try:
+            for row in range(self.table.rowCount()):
+                item0 = self.table.item(row, self.COL_SELECT)
+                if item0:
+                    idx = item0.data(Qt.ItemDataRole.UserRole)
+                    if isinstance(idx, int) and 0 <= idx < len(self.all_shortages):
+                        it = self.all_shortages[idx]
+                        if it in self.orderable_items:
+                            it["_selected"] = True
+                            item0.setCheckState(Qt.CheckState.Checked)
+                        else:
+                            it["_selected"] = False
+                            item0.setCheckState(Qt.CheckState.Unchecked)
+        finally:
+            self._is_updating_table = False
+        self._update_selection_state_and_order_btn()
+
+    def _deselect_all_orderable(self):
+        """Deselect all items in the table."""
+        self._is_updating_table = True
+        try:
+            for row in range(self.table.rowCount()):
+                item0 = self.table.item(row, self.COL_SELECT)
+                if item0:
+                    idx = item0.data(Qt.ItemDataRole.UserRole)
+                    if isinstance(idx, int) and 0 <= idx < len(self.all_shortages):
+                        self.all_shortages[idx]["_selected"] = False
+                    item0.setCheckState(Qt.CheckState.Unchecked)
+        finally:
+            self._is_updating_table = False
+        self._update_selection_state_and_order_btn()
+
+    def _on_table_item_changed(self, item: QTableWidgetItem):
+        """Handle user toggling of item selection checkbox."""
+        if getattr(self, "_is_updating_table", False):
+            return
+        if not item or item.column() != self.COL_SELECT:
+            return
+
+        idx = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(idx, int) and 0 <= idx < len(self.all_shortages):
+            it = self.all_shortages[idx]
+            if it in self.orderable_items:
+                it["_selected"] = (item.checkState() == Qt.CheckState.Checked)
+            else:
+                # Force non-orderable items to remain Unchecked
+                if item.checkState() != Qt.CheckState.Unchecked:
+                    self._is_updating_table = True
+                    try:
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                    finally:
+                        self._is_updating_table = False
+                it["_selected"] = False
+
+        self._update_selection_state_and_order_btn()
+
+    def _update_selection_state_and_order_btn(self):
+        """Update selection label and order button text/state based on current selection."""
+        if not hasattr(self, "order_btn"):
+            return
+
+        selected = self.get_selected_orderable_items()
+        sel_count = len(selected)
+        total_orderable = len(self.orderable_items)
+
+        if hasattr(self, "selection_count_lbl"):
+            self.selection_count_lbl.setText(
+                f"Selected: <b>{sel_count}</b> of <b>{total_orderable}</b> orderable items"
+            )
+
+        if total_orderable == 0:
+            self.order_btn.setEnabled(False)
+            self.order_btn.setText("❌ No Orderable Items")
+            if hasattr(self, "select_all_btn"):
+                self.select_all_btn.setEnabled(True)
+                self.select_all_btn.setToolTip("No items have valid vendor links to select.")
+            if hasattr(self, "deselect_all_btn"):
+                self.deselect_all_btn.setEnabled(True)
+                self.deselect_all_btn.setToolTip("Clear all selections.")
+            return
+
+        if hasattr(self, "select_all_btn"):
+            self.select_all_btn.setEnabled(True)
+            self.select_all_btn.setToolTip("Select all valid orderable items")
+        if hasattr(self, "deselect_all_btn"):
+            self.deselect_all_btn.setEnabled(True)
+            self.deselect_all_btn.setToolTip("Deselect all items")
+
+        if sel_count == 0:
+            self.order_btn.setEnabled(False)
+            self.order_btn.setText("🛒 No Items Selected")
+            return
+
+        selected_lion_count = sum(1 for it in selected if it in self.lion_items)
+        if selected_lion_count == sel_count and sel_count > 0:
+            order_vendor_name = "Lion Electronic"
+        else:
+            order_vendor_name = "Multi-Vendor"
+
+        self.order_btn.setEnabled(True)
+        self.order_btn.setText(f"🛒 Order {sel_count} Items on {order_vendor_name}")
 
     def _get_vendor_name(self, vendor_id: Optional[str]) -> str:
         if not vendor_id:
@@ -740,105 +960,137 @@ class OrderPreviewDialog(QDialog):
         return str(vendor_id).replace("vendor_", "").title()
 
     def _populate_mode_a_table(self):
-        self.table.setRowCount(len(self.all_shortages))
-        font_txt = QFont("Segoe UI", 10)
-        font_num = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
+        self._is_updating_table = True
+        try:
+            self.table.setRowCount(len(self.all_shortages))
+            font_txt = QFont("Segoe UI", 10)
+            font_num = QFont("Segoe UI", 10, QFont.Weight.DemiBold)
 
-        for row, it in enumerate(self.all_shortages):
-            # 0. Part / Designator
-            p_name = it.get("part_name") or it.get("part_number") or it.get("designator", f"Item {row+1}")
-            item0 = QTableWidgetItem(str(p_name))
-            item0.setFont(font_txt)
-            self.table.setItem(row, 0, item0)
+            for row, it in enumerate(self.all_shortages):
+                # 0. Selection Checkbox
+                is_orderable = it in self.orderable_items
+                is_selected = is_orderable and it.get("_selected", True)
+                it["_selected"] = is_selected
 
-            # 1. Part Number / Description
-            desc = it.get("description") or it.get("comment") or it.get("part_number", "")
-            item1 = QTableWidgetItem(str(desc))
-            item1.setFont(font_txt)
-            self.table.setItem(row, 1, item1)
+                item_sel = QTableWidgetItem()
+                item_sel.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item_sel.setData(Qt.ItemDataRole.UserRole, row)
 
-            # 2. Current Stock
-            raw_c_stock = it.get("current_stock")
-            if raw_c_stock is None:
-                raw_c_stock = it.get("in_stock")
-            if raw_c_stock is None:
-                raw_c_stock = it.get("db_stock_qty")
-            if raw_c_stock is None:
-                raw_c_stock = it.get("stock_qty")
-            if raw_c_stock is None:
-                raw_c_stock = it.get("stock")
-            c_stock = str(raw_c_stock) if raw_c_stock is not None else "-"
-            item2 = QTableWidgetItem(str(c_stock))
-            item2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item2.setFont(font_num)
-            self.table.setItem(row, 2, item2)
-
-            # 3. Shortage Needed
-            needed = it.get("needed_qty") if it.get("needed_qty") is not None else it.get("shortage_qty", 0)
-            item3 = QTableWidgetItem(str(needed))
-            item3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item3.setFont(font_num)
-            item3.setForeground(QColor("#fbbf24"))
-            self.table.setItem(row, 3, item3)
-
-            # 4. Store Link & 5. Validation & Status
-            vendor_links = it.get("vendor_links") or {}
-            is_multi = it.get("is_multi_vendor") or len(vendor_links) > 1
-            selected_vid = it.get("selected_vendor_id")
-            link = str(it.get("link", "")).strip()
-
-            item4 = QTableWidgetItem()
-            item4.setFont(font_txt)
-            item5 = QTableWidgetItem()
-            item5.setFont(font_txt)
-
-            if is_multi:
-                v_names = [self._get_vendor_name(v) for v in sorted(vendor_links.keys())]
-                if selected_vid and selected_vid in vendor_links:
-                    sel_name = self._get_vendor_name(selected_vid)
-                    sel_url = it.get("selected_url") or vendor_links[selected_vid]
-                    item4.setText(f"{sel_name}: {sel_url}")
-                    item4.setForeground(QColor("#38bdf8"))
-                    item4.setToolTip(f"Selected: {sel_name}\nURL: {sel_url}\nAvailable: {', '.join(v_names)}")
-                    item5.setText(f"✅ {sel_name} Selected")
-                    item5.setForeground(QColor("#34d399"))
+                if is_orderable:
+                    item_sel.setFlags(
+                        Qt.ItemFlag.ItemIsUserCheckable
+                        | Qt.ItemFlag.ItemIsEnabled
+                        | Qt.ItemFlag.ItemIsSelectable
+                    )
+                    item_sel.setCheckState(
+                        Qt.CheckState.Checked if is_selected else Qt.CheckState.Unchecked
+                    )
+                    item_sel.setToolTip("Include this item in the purchase order")
                 else:
-                    item4.setText(f"⚡ Multi-Vendor ({', '.join(v_names)})")
-                    item4.setForeground(QColor("#a78bfa"))
-                    tt = "Multiple vendor options configured:\n" + "\n".join(f"• {self._get_vendor_name(v)}: {u}" for v, u in vendor_links.items()) + "\n\nDouble-click row to select vendor."
-                    item4.setToolTip(tt)
-                    item5.setText("⚡ Selection Required")
-                    item5.setForeground(QColor("#a78bfa"))
-            else:
-                vid = it.get("vendor_id") or self.registry.get_vendor_for_url(link, enabled_only=True)
-                is_registered_and_enabled = bool(vid and self.registry.has_vendor(vid) and self.registry.is_vendor_enabled(vid))
+                    item_sel.setFlags(Qt.ItemFlag.ItemIsSelectable)
+                    item_sel.setCheckState(Qt.CheckState.Unchecked)
+                    item_sel.setToolTip("Cannot select: Component has no valid vendor link registered in database. Add a supplier URL in Inventory to enable ordering.")
 
-                if is_registered_and_enabled:
-                    v_display = self._get_vendor_name(vid)
-                    item4.setText(link)
-                    item4.setForeground(QColor("#38bdf8"))
-                    item4.setToolTip(f"{v_display} link (Auto-Order Ready):\n{link}")
-                    item5.setText(f"✅ {v_display} Ready")
-                    item5.setForeground(QColor("#34d399"))
-                elif link.startswith("http"):
-                    domain = it.get("link_domain") or (link.split("/")[2] if "//" in link else "external")
-                    item4.setText(f"❌ Non-registered URL ({domain})")
-                    item4.setForeground(QColor("#f87171"))
-                    item4.setToolTip(f"No vendor plugin installed for this storefront URL: {link}\nAction: Install a compatible vendor plugin or update to a registered vendor in Inventory.xlsx.")
-                    item5.setText("❌ No Plugin Installed")
-                    item5.setForeground(QColor("#f87171"))
+                self.table.setItem(row, self.COL_SELECT, item_sel)
+
+                # 1. Part / Designator
+                p_name = it.get("part_name") or it.get("part_number") or it.get("designator", f"Item {row+1}")
+                item1 = QTableWidgetItem(str(p_name))
+                item1.setFont(font_txt)
+                self.table.setItem(row, self.COL_PART, item1)
+
+                # 2. Part Number / Description
+                desc = it.get("description") or it.get("comment") or it.get("part_number", "")
+                item2 = QTableWidgetItem(str(desc))
+                item2.setFont(font_txt)
+                self.table.setItem(row, self.COL_DESC, item2)
+
+                # 3. Current Stock
+                raw_c_stock = it.get("current_stock")
+                if raw_c_stock is None:
+                    raw_c_stock = it.get("in_stock")
+                if raw_c_stock is None:
+                    raw_c_stock = it.get("db_stock_qty")
+                if raw_c_stock is None:
+                    raw_c_stock = it.get("stock_qty")
+                if raw_c_stock is None:
+                    raw_c_stock = it.get("stock")
+                c_stock = str(raw_c_stock) if raw_c_stock is not None else "-"
+                item3 = QTableWidgetItem(str(c_stock))
+                item3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item3.setFont(font_num)
+                self.table.setItem(row, self.COL_STOCK, item3)
+
+                # 4. Shortage Needed
+                needed = it.get("needed_qty") if it.get("needed_qty") is not None else it.get("shortage_qty", 0)
+                item4 = QTableWidgetItem(str(needed))
+                item4.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item4.setFont(font_num)
+                item4.setForeground(QColor("#fbbf24"))
+                self.table.setItem(row, self.COL_NEEDED, item4)
+
+                # 5. Store Link & 6. Validation & Status
+                vendor_links = it.get("vendor_links") or {}
+                is_multi = it.get("is_multi_vendor") or len(vendor_links) > 1
+                selected_vid = it.get("selected_vendor_id")
+                link = str(it.get("link", "")).strip()
+
+                item5 = QTableWidgetItem()
+                item5.setFont(font_txt)
+                item6 = QTableWidgetItem()
+                item6.setFont(font_txt)
+
+                if is_multi:
+                    v_names = [self._get_vendor_name(v) for v in sorted(vendor_links.keys())]
+                    if selected_vid and selected_vid in vendor_links:
+                        sel_name = self._get_vendor_name(selected_vid)
+                        sel_url = it.get("selected_url") or vendor_links[selected_vid]
+                        item5.setText(f"{sel_name}: {sel_url}")
+                        item5.setForeground(QColor("#38bdf8"))
+                        item5.setToolTip(f"Selected: {sel_name}\nURL: {sel_url}\nAvailable: {', '.join(v_names)}")
+                        item6.setText(f"✅ {sel_name} Selected")
+                        item6.setForeground(QColor("#34d399"))
+                    else:
+                        item5.setText(f"⚡ Multi-Vendor ({', '.join(v_names)})")
+                        item5.setForeground(QColor("#a78bfa"))
+                        tt = "Multiple vendor options configured:\n" + "\n".join(f"• {self._get_vendor_name(v)}: {u}" for v, u in vendor_links.items()) + "\n\nDouble-click row to select vendor."
+                        item5.setToolTip(tt)
+                        item6.setText("⚡ Selection Required")
+                        item6.setForeground(QColor("#a78bfa"))
                 else:
-                    item4.setText("❌ Blank Store Link")
-                    item4.setForeground(QColor("#f87171"))
-                    item4.setToolTip("Store link is missing in database. Please add vendor URL in Inventory.xlsx.")
-                    item5.setText("⚠️ Blank Link")
-                    item5.setForeground(QColor("#fbbf24"))
+                    vid = it.get("vendor_id") or self.registry.get_vendor_for_url(link, enabled_only=True)
+                    is_registered_and_enabled = bool(vid and self.registry.has_vendor(vid) and self.registry.is_vendor_enabled(vid))
 
-            self.table.setItem(row, 4, item4)
-            self.table.setItem(row, 5, item5)
+                    if is_registered_and_enabled:
+                        v_display = self._get_vendor_name(vid)
+                        item5.setText(link)
+                        item5.setForeground(QColor("#38bdf8"))
+                        item5.setToolTip(f"{v_display} link (Auto-Order Ready):\n{link}")
+                        item6.setText(f"✅ {v_display} Ready")
+                        item6.setForeground(QColor("#34d399"))
+                    elif link.startswith("http"):
+                        domain = it.get("link_domain") or (link.split("/")[2] if "//" in link else "external")
+                        item5.setText(f"❌ Non-registered URL ({domain})")
+                        item5.setForeground(QColor("#f87171"))
+                        item5.setToolTip(f"No vendor plugin installed for this storefront URL: {link}\nAction: Install a compatible vendor plugin or update to a registered vendor in Inventory.xlsx.")
+                        item6.setText("❌ No Plugin Installed")
+                        item6.setForeground(QColor("#f87171"))
+                    else:
+                        item5.setText("❌ Blank Store Link")
+                        item5.setForeground(QColor("#f87171"))
+                        item5.setToolTip("Store link is missing in database. Please add vendor URL in Inventory.xlsx.")
+                        item6.setText("⚠️ Blank Link")
+                        item6.setForeground(QColor("#fbbf24"))
+
+                self.table.setItem(row, self.COL_LINK, item5)
+                self.table.setItem(row, self.COL_STATUS, item6)
+        finally:
+            self._is_updating_table = False
+
+        self._update_selection_state_and_order_btn()
 
     def _on_mode_a_item_double_clicked(self, item: QTableWidgetItem):
-        if not item:
+        if not item or item.column() == self.COL_SELECT:
             return
         row = item.row()
         raw_it = self.all_shortages[row] if row < len(self.all_shortages) else {}
@@ -849,7 +1101,7 @@ class OrderPreviewDialog(QDialog):
                 self._populate_mode_a_table()
             return
 
-        link_item = self.table.item(row, 4)
+        link_item = self.table.item(row, self.COL_LINK)
         if link_item:
             link = raw_it.get("link") or link_item.text()
             if link and link.startswith("http"):
@@ -857,13 +1109,14 @@ class OrderPreviewDialog(QDialog):
 
     def _execute_mode_a_order(self):
         """Execute automated purchasing on Lion / multi-vendor for Mode A items."""
-        if not self.orderable_items:
-            QMessageBox.warning(self, "No Items", "There are no valid vendor items to order.")
+        selected_orderable = self.get_selected_orderable_items()
+        if not selected_orderable:
+            QMessageBox.warning(self, "No Items Selected", "Please select at least one orderable item to purchase.")
             return
 
         # Prompt for any multi-vendor items lacking user selection
         items_needing_selection = [
-            it for it in self.orderable_items
+            it for it in selected_orderable
             if it.get("vendor_links") and len(it.get("vendor_links")) > 1 and not it.get("selected_vendor_id")
         ]
         if items_needing_selection:
@@ -878,7 +1131,7 @@ class OrderPreviewDialog(QDialog):
             (it.get("selected_vendor_id") == "vendor_lion") or
             (it.get("vendor_id") == "vendor_lion") or
             (it in self.lion_items)
-            for it in self.orderable_items
+            for it in selected_orderable
         )
         if has_lion_order:
             user = settings.get("lion_username", "").strip()
@@ -896,16 +1149,16 @@ class OrderPreviewDialog(QDialog):
                 return
 
         self.order_btn.setEnabled(False)
-        self.order_btn.setText("⏳ Ordering...")
+        self.order_btn.setText("⏳ Staging Items...")
         self.cancel_btn.setEnabled(False)
-        self.progress_bar.setRange(0, len(self.orderable_items))
+        self.progress_bar.setRange(0, len(selected_orderable))
         self.progress_bar.setValue(0)
         self.progress_bar.show()
-        self.progress_lbl.setText("Starting automated purchase...")
+        self.progress_lbl.setText("Starting supplier cart staging...")
         self.progress_lbl.show()
 
         self.worker = OrderWorkerThread(
-            items=self.orderable_items,
+            items=selected_orderable,
             registry=self.registry,
             orchestrator=self.orchestrator,
         )
@@ -918,37 +1171,41 @@ class OrderPreviewDialog(QDialog):
         self.progress_lbl.setText(f"Processing ({current}/{total}): {part_name} — {msg}")
 
         for row in range(self.table.rowCount()):
-            p_item = self.table.item(row, 0)
-            if p_item and p_item.text().strip() == part_name.strip():
-                status_item = self.table.item(row, 5)
+            p_item = self.table.item(row, self.COL_PART)
+            desc_item = self.table.item(row, self.COL_DESC)
+            p_text = p_item.text().strip() if p_item else ""
+            d_text = desc_item.text().strip() if desc_item else ""
+            if part_name.strip() in (p_text, d_text) or p_text.startswith(part_name.strip()):
+                status_item = self.table.item(row, self.COL_STATUS)
                 if status_item:
-                    if "Logging" in msg or "Authenticating" in msg:
+                    msg_lower = msg.lower()
+                    if "logging" in msg_lower or "authenticating" in msg_lower:
                         status_item.setText("⏳ Logging in...")
                         status_item.setForeground(QColor("#38bdf8"))
-                    elif "Staging" in msg or "Opening" in msg:
+                    elif "staging" in msg_lower or "opening" in msg_lower:
                         status_item.setText("⏳ Processing...")
                         status_item.setForeground(QColor("#38bdf8"))
-                    elif "Partial" in msg:
-                        status_item.setText(f"⚠️ Partial ({qty} pcs)")
-                        status_item.setForeground(QColor("#fbbf24"))
-                    elif msg.lower().startswith("already satisfied in cart"):
+                    elif "already satisfied" in msg_lower:
                         status_item.setText("No new quantity added")
                         status_item.setForeground(QColor("#94a3b8"))
-                    elif "Added" in msg or "Queued" in msg:
+                    elif "added" in msg_lower or "queued" in msg_lower:
                         status_item.setText(f"✅ Added {qty} pcs")
                         status_item.setForeground(QColor("#34d399"))
-                    elif "Insufficient" in msg:
-                        status_item.setText("⚠️ Low Site Stock")
+                    elif "insufficient" in msg_lower or "shortage" in msg_lower:
+                        status_item.setText("⚠️ Insufficient Stock")
                         status_item.setForeground(QColor("#fbbf24"))
-                    elif "Inquiry" in msg or "Sale Closed" in msg:
-                        status_item.setText("⚠️ Inquiry Only")
-                        status_item.setForeground(QColor("#fbbf24"))
-                    elif "Coming Soon" in msg:
-                        status_item.setText("⏳ Coming Soon")
-                        status_item.setForeground(QColor("#fbbf24"))
-                    elif "Out of stock" in msg or "0 available" in msg:
+                    elif "out of stock" in msg_lower or "0 available" in msg_lower:
                         status_item.setText("❌ Out of Stock")
                         status_item.setForeground(QColor("#f87171"))
+                    elif "challenge" in msg_lower or "blocked" in msg_lower:
+                        status_item.setText("❌ Challenge Blocked")
+                        status_item.setForeground(QColor("#f87171"))
+                    elif "skipped" in msg_lower:
+                        status_item.setText("⚠️ Skipped")
+                        status_item.setForeground(QColor("#fbbf24"))
+                    elif "partial" in msg_lower:
+                        status_item.setText(f"⚠️ Partial ({qty} pcs)")
+                        status_item.setForeground(QColor("#fbbf24"))
                     else:
                         short_txt = msg[:20] if len(msg) > 20 else msg
                         status_item.setText(f"❌ {short_txt}")
@@ -957,36 +1214,88 @@ class OrderPreviewDialog(QDialog):
 
     def _on_mode_a_order_finished(self, results: Dict[str, Any]):
         self.order_btn.setEnabled(True)
-        self.order_btn.setText("🛒 Order Batch Finished")
+        self.order_btn.setText("Staging Batch Finished")
         self.cancel_btn.setEnabled(True)
         self.cancel_btn.setText("Close")
         self.open_cart_btn.show()
-        self.confirm_payment_btn.show()
-        self.confirm_payment_btn.setEnabled(True)
         self.staging_results_log = results.get("results") or None
+        has_valid_staging = bool(
+            self.staging_results_log
+            and any(
+                r.get("status") == "SUCCESS"
+                or r.get("qty", 0) > 0
+                or r.get("is_noop", False)
+                for r in self.staging_results_log
+            )
+        )
+        self.export_post_operation_btn.setEnabled(has_valid_staging)
+        if has_valid_staging:
+            self.export_post_operation_btn.setToolTip("Export staging results and cart outcomes to Excel (.xlsx)")
+        else:
+            self.export_post_operation_btn.setToolTip("No valid staged items available to export.")
+
+        # Update table rows based on final staging results
+        results_list = results.get("results") or []
+        for r_entry in results_list:
+            p_name = str(r_entry.get("part") or "").strip()
+            st_code = r_entry.get("status_code")
+            is_noop = r_entry.get("is_noop", False)
+            qty = r_entry.get("qty", 0)
+            raw_msg = r_entry.get("msg", "")
+
+            for row in range(self.table.rowCount()):
+                p_item = self.table.item(row, self.COL_PART)
+                d_item = self.table.item(row, self.COL_DESC)
+                p_text = p_item.text().strip() if p_item else ""
+                d_text = d_item.text().strip() if d_item else ""
+                if p_name and (p_name in (p_text, d_text) or p_text.startswith(p_name)):
+                    status_item = self.table.item(row, self.COL_STATUS)
+                    if status_item:
+                        if is_noop or st_code == SupplierOutcomeStatus.NO_OP_SATISFIED:
+                            status_item.setText("No new quantity added")
+                            status_item.setForeground(QColor("#94a3b8"))
+                        elif st_code == SupplierOutcomeStatus.ADDED_TO_CART or (r_entry.get("status") == "SUCCESS" and qty > 0):
+                            status_item.setText(f"✅ Added {qty} pcs")
+                            status_item.setForeground(QColor("#34d399"))
+                        elif st_code == SupplierOutcomeStatus.INSUFFICIENT_STOCK:
+                            status_item.setText("⚠️ Insufficient Stock")
+                            status_item.setForeground(QColor("#fbbf24"))
+                        elif st_code == SupplierOutcomeStatus.OUT_OF_STOCK:
+                            status_item.setText("❌ Out of Stock")
+                            status_item.setForeground(QColor("#f87171"))
+                        elif st_code == SupplierOutcomeStatus.CHALLENGE_BLOCKED:
+                            status_item.setText("❌ Challenge Blocked")
+                            status_item.setForeground(QColor("#f87171"))
+                        elif st_code == SupplierOutcomeStatus.SKIPPED:
+                            status_item.setText("⚠️ Skipped")
+                            status_item.setForeground(QColor("#fbbf24"))
+                        elif r_entry.get("status") == "FAILED":
+                            status_item.setText(f"❌ {raw_msg[:20]}" if raw_msg else "❌ Failed")
+                            status_item.setForeground(QColor("#f87171"))
+                    break
 
         show_browser = settings.get("show_browser", False)
 
         if results.get("success"):
             succ_count = results.get('successful_count', 0)
-            self.progress_lbl.setText(f"✅ Order batch completed! ({succ_count} items in cart)")
+            self.progress_lbl.setText(f"✅ Staging batch completed! ({succ_count} items in cart)")
             self.progress_lbl.setStyleSheet("color: #34d399; font-size: 13px; font-weight: bold;")
 
             QMessageBox.information(
                 self,
-                "Order Processed",
-                f"Successfully added {succ_count} item(s) into your vendor cart!\n\n"
-                f"Click 'Open Shopping Cart in Browser' or review items to finalize checkout."
+                "Staging Processed",
+                f"Successfully added {succ_count} item(s) into your supplier cart!\n\n"
+                f"Click 'Open Shopping Cart in Browser' to review items and complete checkout."
             )
             if not show_browser:
                 self._open_shopping_cart()
         else:
-            self.progress_lbl.setText(f"❌ Order issue: {results.get('message', 'Unknown error')}")
+            self.progress_lbl.setText(f"❌ Staging issue: {results.get('message', 'Unknown error')}")
             self.progress_lbl.setStyleSheet("color: #f87171; font-size: 13px; font-weight: bold;")
             QMessageBox.warning(
                 self,
-                "Order Incomplete",
-                f"Automated ordering encountered an issue:\n{results.get('message')}"
+                "Staging Incomplete",
+                f"Automated staging encountered an issue:\n{results.get('message')}"
             )
 
     # =========================================================================
@@ -1123,36 +1432,25 @@ class OrderPreviewDialog(QDialog):
         # Bottom Action Bar
         btn_layout = QHBoxLayout()
 
-        self.settings_btn = QPushButton("⚙️ Account Settings")
-        self.settings_btn.setObjectName("secondaryBtn")
-        self.settings_btn.clicked.connect(self._open_settings)
-        btn_layout.addWidget(self.settings_btn)
-
-        self.export_btn = QPushButton("📄 Export Report ▼")
-        self.export_btn.setObjectName("secondaryBtn")
-        self.export_btn.clicked.connect(self._show_export_menu)
-        btn_layout.addWidget(self.export_btn)
+        self.export_post_operation_btn = QPushButton("📄 Export Staging Results (.xlsx)")
+        self.export_post_operation_btn.setObjectName("secondaryBtn")
+        self.export_post_operation_btn.setStyleSheet("""
+            QPushButton#secondaryBtn:disabled {
+                background-color: #1e293b;
+                color: #64748b;
+                border: 1px solid #334155;
+            }
+        """)
+        self.export_post_operation_btn.setEnabled(False)
+        self.export_post_operation_btn.clicked.connect(self._export_post_operation_results)
+        btn_layout.addWidget(self.export_post_operation_btn)
+        self.export_btn = self.export_post_operation_btn
 
         self.open_cart_btn = QPushButton("🛒 Open Shopping Cart in Browser")
         self.open_cart_btn.setObjectName("secondaryBtn")
         self.open_cart_btn.hide()
         self.open_cart_btn.clicked.connect(self._open_shopping_cart)
         btn_layout.addWidget(self.open_cart_btn)
-
-        self.confirm_payment_btn = QPushButton("💰 Confirm Payment & Add Stock")
-        self.confirm_payment_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #ffffff;
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 7px 16px;
-            }
-            QPushButton:hover { background-color: #10b981; }
-        """)
-        self.confirm_payment_btn.hide()
-        self.confirm_payment_btn.clicked.connect(self._confirm_payment_and_add_stock)
-        btn_layout.addWidget(self.confirm_payment_btn)
 
         btn_layout.addStretch()
 
@@ -1161,7 +1459,7 @@ class OrderPreviewDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
-        self.order_btn = QPushButton("🛒 Order Items Across Vendors")
+        self.order_btn = QPushButton("Stage Items to Supplier Cart")
         self.order_btn.setStyleSheet("""
             QPushButton {
                 background-color: #059669;
@@ -1279,10 +1577,10 @@ class OrderPreviewDialog(QDialog):
 
         if resolved_count > 0:
             self.order_btn.setEnabled(True)
-            self.order_btn.setText(f"🛒 Order {resolved_count} Ready Items Across Vendors")
+            self.order_btn.setText(f"Stage {resolved_count} Items to Supplier Cart")
         else:
             self.order_btn.setEnabled(False)
-            self.order_btn.setText("❌ No Eligible Items to Order")
+            self.order_btn.setText("❌ No Eligible Items to Stage")
 
     def _on_master_row_selected(self):
         selected_rows = self.master_table.selectionModel().selectedRows()
@@ -1473,13 +1771,25 @@ class OrderPreviewDialog(QDialog):
 
     def _on_staging_finished(self, results: Dict[str, Any]):
         self.order_btn.setEnabled(True)
-        self.order_btn.setText("🛒 Staging Finished")
+        self.order_btn.setText("Staging Batch Finished")
         self.cancel_btn.setEnabled(True)
         self.cancel_btn.setText("Close")
         self.open_cart_btn.show()
-        self.confirm_payment_btn.show()
-        self.confirm_payment_btn.setEnabled(True)
         self.staging_results_log = results.get("results", [])
+        has_valid_staging = bool(
+            self.staging_results_log
+            and any(
+                r.get("status") == "SUCCESS"
+                or r.get("qty", 0) > 0
+                or r.get("is_noop", False)
+                for r in self.staging_results_log
+            )
+        )
+        self.export_post_operation_btn.setEnabled(has_valid_staging)
+        if has_valid_staging:
+            self.export_post_operation_btn.setToolTip("Export staging results and cart outcomes to Excel (.xlsx)")
+        else:
+            self.export_post_operation_btn.setToolTip("No valid staged items available to export.")
 
         if results.get("success"):
             succ_count = results.get("successful_count", 0)
@@ -1506,100 +1816,8 @@ class OrderPreviewDialog(QDialog):
             )
 
     # =========================================================================
-    # COMMON ACTIONS: INVENTORY UPDATE, CART, SETTINGS, EXPORT
+    # COMMON ACTIONS: CART, SETTINGS, EXPORT
     # =========================================================================
-
-    def _confirm_payment_and_add_stock(self):
-        """Atomically increment Quantity in Stock in Inventory.xlsx for successfully ordered items."""
-        if self._has_updated_inventory:
-            QMessageBox.information(self, "Already Updated", "Inventory stock has already been updated for this batch.")
-            return
-
-        if not self.inventory_loader:
-            QMessageBox.warning(self, "No Database", "Active inventory database reference is not available.")
-            return
-
-        # Build list of items to increment
-        success_items: List[Dict[str, Any]] = []
-
-        if not self.is_mode_b_preview:
-            # Mode A: check orderable_items
-            for it in self.orderable_items:
-                if it.get("order_success") is True and (it.get("actual_ordered_qty") or 0) > 0:
-                    success_items.append(it)
-                elif it.get("order_success") is None:
-                    qty = it.get("actual_ordered_qty") or it.get("qty_ordered") or it.get("needed_qty") or it.get("shortage_qty")
-                    if qty and qty > 0:
-                        success_items.append(it)
-        else:
-            # Mode B: check results
-            for r in self.results:
-                if r.selected_evaluation and r.selected_evaluation.is_eligible:
-                    success_items.append({
-                        "part_number": r.request.part_number,
-                        "part_name": r.request.part_number,
-                        "actual_ordered_qty": r.selected_evaluation.effective_quantity,
-                        "needed_qty": r.request.required_quantity,
-                    })
-
-        if not success_items:
-            QMessageBox.information(
-                self,
-                "No Items Ordered",
-                "No items were successfully purchased in this batch to add to inventory."
-            )
-            return
-
-        lines = []
-        for it in success_items:
-            name = it.get("part_name") or it.get("part_number") or it.get("designator", "")
-            qty = it.get("actual_ordered_qty") if it.get("actual_ordered_qty") is not None else (it.get("qty_ordered") or it.get("needed_qty") or 0)
-            if qty > 0:
-                lines.append(f"• <b>{name}</b>: +{qty} pcs")
-
-        items_text = "<br>".join(lines[:15])
-        if len(lines) > 15:
-            items_text += f"<br><i>(+{len(lines)-15} more items)</i>"
-
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("Confirm Payment & Stock Update")
-        msg_box.setTextFormat(Qt.TextFormat.RichText)
-        msg_box.setText(
-            f"<b>Did you complete and pay for this order on the vendor site?</b><br><br>"
-            f"The following successfully purchased quantities (<b>{len(success_items)} item(s)</b>) will be added to <code>Quantity in Stock</code> in <code>Inventory.xlsx</code>:<br><br>"
-            f"{items_text}<br><br>"
-            f"Click <b>Yes</b> to add these quantities to your inventory now."
-        )
-        msg_box.setIcon(QMessageBox.Icon.Question)
-        yes_btn = msg_box.addButton("Yes, Add to Inventory", QMessageBox.ButtonRole.YesRole)
-        no_btn = msg_box.addButton("No / Cancel", QMessageBox.ButtonRole.NoRole)
-        msg_box.setDefaultButton(yes_btn)
-        msg_box.exec()
-
-        if msg_box.clickedButton() != yes_btn:
-            return
-
-        count, msg = self.inventory_loader.batch_increment_stock(success_items)
-        if count > 0:
-            self._has_updated_inventory = True
-            self.confirm_payment_btn.setText("✅ Stock Added to Inventory")
-            self.confirm_payment_btn.setEnabled(False)
-            self.confirm_payment_btn.setStyleSheet("background-color: #1e293b; color: #34d399; font-weight: bold;")
-
-            QMessageBox.information(
-                self,
-                "Inventory Updated",
-                f"✅ Success!\n\n{count} item(s) have been added to your current stock in Inventory.xlsx."
-            )
-
-            if self.on_stock_updated:
-                self.on_stock_updated()
-        else:
-            QMessageBox.warning(
-                self,
-                "Update Failed",
-                f"Could not update stock in Inventory.xlsx:\n{msg}"
-            )
 
     def _open_shopping_cart(self):
         """Open shopping cart URL in user's default browser via registered vendor adapters."""
@@ -1659,10 +1877,6 @@ class OrderPreviewDialog(QDialog):
                 "Some Carts Unavailable",
                 f"Could not open shopping cart for: {', '.join(failed_vendors)}.",
             )
-
-    def _open_settings(self):
-        dlg = SettingsDialog(parent=self)
-        dlg.exec()
 
     def _show_export_menu(self):
         menu = QMenu(self)
@@ -1734,6 +1948,118 @@ class OrderPreviewDialog(QDialog):
                 self,
                 "Export Failed",
                 f"Failed to export procurement report:\n{err_msg or 'Unknown exporter error'}",
+            )
+
+    def _export_pre_order_plan(self):
+        """Export Pre-Order Procurement Plan (.xlsx) before staging operations."""
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"Omnix_Procurement_Plan_{timestamp}.xlsx"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Pre-Order Procurement Plan (.xlsx)",
+            default_name,
+            "Excel Files (*.xlsx)",
+        )
+        if not path:
+            return
+
+        if self.is_mode_b_preview and self.plan and len(self.plan.results) > 0:
+            report_data = ProcurementReportBuilder.build(
+                plan=self.plan,
+                staging_results=None,
+                source_title=self.source_title,
+            )
+        else:
+            report_data = ProcurementReportBuilder.build_from_shortages(
+                shortages=self.all_shortages,
+                staging_results=None,
+                source_title=self.source_title,
+            )
+
+        try:
+            ProcurementXLSXExporter.export(report_data, path)
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Pre-Order Procurement Plan successfully exported to:\n{path}",
+            )
+            webbrowser.open(f"file:///{os.path.abspath(path)}")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                f"Failed to export pre-order plan:\n{str(e)}",
+            )
+
+    def _export_post_operation_results(self):
+        """Export Staging Results (.xlsx) reflecting actual cart outcomes."""
+        has_valid_staging = bool(
+            self.staging_results_log
+            and any(
+                r.get("status") == "SUCCESS"
+                or r.get("qty", 0) > 0
+                or r.get("is_noop", False)
+                for r in self.staging_results_log
+            )
+        )
+        if not has_valid_staging:
+            QMessageBox.warning(
+                self,
+                "No Staging Results",
+                "No procurement staging operation has produced exportable results yet. Export is available after staging completes with valid items.",
+            )
+            return
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"Omnix_Procurement_Results_{timestamp}.xlsx"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Procurement Staging Results (.xlsx)",
+            default_name,
+            "Excel Files (*.xlsx)",
+        )
+        if not path:
+            return
+
+        if self.is_mode_b_preview and self.plan and len(self.plan.results) > 0:
+            staged_results = [r for r in self.plan.results if r.selected_evaluation is not None]
+            export_plan = BOMProcurementPlan(results=staged_results if staged_results else self.plan.results)
+            report_data = ProcurementReportBuilder.build(
+                plan=export_plan,
+                staging_results=self.staging_results_log,
+                source_title=self.source_title,
+            )
+        else:
+            # Export the actual staged purchase items that were selected and executed
+            staged_items = self.get_selected_orderable_items()
+            if not staged_items:
+                staged_names = {str(r.get("part") or "").strip().upper() for r in (self.staging_results_log or [])}
+                staged_items = [
+                    it for it in self.all_shortages
+                    if str(it.get("part_name") or it.get("part_number") or "").strip().upper() in staged_names
+                ]
+            if not staged_items:
+                staged_items = [it for it in self.all_shortages if it in self.orderable_items]
+
+            report_data = ProcurementReportBuilder.build_from_shortages(
+                shortages=staged_items,
+                staging_results=self.staging_results_log,
+                source_title=self.source_title,
+            )
+
+        try:
+            ProcurementXLSXExporter.export(report_data, path)
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Procurement Staging Results successfully exported to:\n{path}",
+            )
+            webbrowser.open(f"file:///{os.path.abspath(path)}")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                f"Failed to export staging results:\n{str(e)}",
             )
 
     def closeEvent(self, event):

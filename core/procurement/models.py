@@ -25,8 +25,63 @@ class EvaluationState(str, Enum):
     INCOMPATIBLE_DIMENSIONS = "INCOMPATIBLE_DIMENSIONS"
     UNKNOWN_REQUIRED_PARAMETER = "UNKNOWN_REQUIRED_PARAMETER"
     OUT_OF_STOCK = "OUT_OF_STOCK"
+    INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK"
     UNORDERABLE = "UNORDERABLE"
     PRICE_UNAVAILABLE = "PRICE_UNAVAILABLE"
+
+
+class SupplierOutcomeStatus(str, Enum):
+    """
+    Normalized status outcomes for supplier cart staging operations.
+    Preserves strict separation between cart staging and purchase confirmation.
+    """
+    READY_FOR_PROCUREMENT = "READY"
+    ATTEMPTED = "ATTEMPTED"
+    ADDED_TO_CART = "ADDED_TO_CART"
+    PARTIALLY_ADDED = "PARTIALLY_ADDED"
+    INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK"
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+    INVALID_QUANTITY = "INVALID_QUANTITY"
+    MOQ_NOT_SATISFIED = "MOQ_NOT_SATISFIED"
+    AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
+    PRODUCT_UNAVAILABLE = "PRODUCT_UNAVAILABLE"
+    SUPPLIER_REJECTED = "SUPPLIER_REJECTED"
+    CHALLENGE_BLOCKED = "CHALLENGE_BLOCKED"
+    TIMEOUT = "TIMEOUT"
+    NETWORK_ERROR = "NETWORK_ERROR"
+    VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    MANUAL_REVIEW_REQUIRED = "MANUAL_REVIEW_REQUIRED"
+    SKIPPED = "SKIPPED"
+    FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
+    NO_OP_SATISFIED = "NO_OP_SATISFIED"
+
+
+@dataclass
+class SupplierItemResult:
+    """
+    Canonical audit record for an individual component supplier cart-staging operation.
+    """
+    run_id: str
+    item_id: str
+    mpn: str
+    vendor_id: str
+    requested_quantity: int
+    effective_quantity: int
+    staged_quantity: int
+    status: SupplierOutcomeStatus
+    message: str = ""
+    error_category: Optional[str] = None
+    available_quantity: Optional[int] = None
+    packaging_step: int = 1
+    moq: int = 1
+    unit_price_irr: Optional[int] = None
+    total_price_irr: Optional[int] = None
+    is_verified: bool = False
+    is_noop: bool = False
+    pdp_url: Optional[str] = None
+    raw_response: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class ProcurementMode(str, Enum):

@@ -18,7 +18,6 @@ from PyQt6.QtCore import Qt, QPoint, QPointF
 from PyQt6.QtGui import QMouseEvent
 
 from ui.main_window import MainWindow
-from core.inventory import resolve_inventory_database_path
 
 
 @pytest.fixture(scope="session")
@@ -31,9 +30,8 @@ def qapp():
 
 @pytest.fixture
 def test_window(qapp):
-    db_path = resolve_inventory_database_path()
-    with patch("PyQt6.QtCore.QTimer.singleShot"):
-        win = MainWindow(default_file=db_path)
+    with patch.object(MainWindow, "_check_startup_shortages"), patch("PyQt6.QtCore.QTimer.singleShot"):
+        win = MainWindow()
         win.resize(1000, 700)
         win.show()
         qapp.processEvents()

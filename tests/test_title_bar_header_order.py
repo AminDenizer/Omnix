@@ -9,21 +9,21 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
+from unittest.mock import patch
 from ui.main_window import MainWindow
 from ui.widgets.title_bar import WindowTitleBar
-from core.inventory import resolve_inventory_database_path
 
 
 @pytest.fixture
 def main_window(qapp):
     """Fixture providing a managed MainWindow instance."""
-    db_path = resolve_inventory_database_path()
-    win = MainWindow(default_file=db_path)
-    win.show()
-    qapp.processEvents()
-    yield win
-    win._is_force_closing = True
-    win.close()
+    with patch.object(MainWindow, "_check_startup_shortages"):
+        win = MainWindow()
+        win.show()
+        qapp.processEvents()
+        yield win
+        win._is_force_closing = True
+        win.close()
 
 
 class TestTitleBarBrandingOrder:

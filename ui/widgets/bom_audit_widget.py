@@ -260,11 +260,6 @@ class BOMAuditWidget(QWidget):
         action_layout.setContentsMargins(12, 8, 12, 8)
         action_layout.setSpacing(12)
 
-        self.export_report_btn = QPushButton("📄 Export Missing && Shortages Report")
-        self.export_report_btn.setObjectName("secondaryBtn")
-        self.export_report_btn.clicked.connect(self._export_missing_report)
-        action_layout.addWidget(self.export_report_btn)
-
         self.validate_links_btn = QPushButton("🔗 Validate Links")
         self.validate_links_btn.setObjectName("secondaryBtn")
         self.validate_links_btn.setVisible(False)
