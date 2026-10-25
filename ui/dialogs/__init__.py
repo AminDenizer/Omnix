@@ -7,7 +7,14 @@ from ui.dialogs.brand_rule_dialog import BrandRuleDialog
 from ui.dialogs.policy_edit_dialog import PolicyEditDialog
 from ui.dialogs.component_edit_dialog import ComponentEditDialog
 from ui.dialogs.provider_dialog import ProviderManagementDialog
-from ui.dialogs.link_validation_dialog import LinkValidationDialog, LinkValidationWorker
+from ui.dialogs.confirmation_dialog import (
+    FocusPaddedPushButton,
+    create_confirmation_dialog,
+    show_confirmation_dialog,
+)
+from ui.dialogs.stock_adjustment_dialog import StockAdjustmentDialog
+from ui.dialogs.component_threshold_dialog import ComponentThresholdDialog
+from ui.dialogs.plugin_trust_dialog import PluginTrustDialog
 
 __all__ = [
     "SettingsDialog",
@@ -20,7 +27,11 @@ __all__ = [
     "BrandRuleDialog",
     "PolicyEditDialog",
     "ComponentEditDialog",
+    "StockAdjustmentDialog",
+    "ComponentThresholdDialog",
     "ProviderManagementDialog",
-    "LinkValidationDialog",
-    "LinkValidationWorker",
+    "FocusPaddedPushButton",
+    "create_confirmation_dialog",
+    "show_confirmation_dialog",
+    "PluginTrustDialog",
 ]

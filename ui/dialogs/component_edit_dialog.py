@@ -846,6 +846,108 @@ class ComponentEditDialog(QDialog):
         det_grid.addWidget(lbl_qty, 0, 0)
         det_grid.addLayout(qty_stepper_layout, 0, 1)
 
+        # Min Stock Threshold
+        lbl_min_stock = QLabel("Min Stock Threshold:")
+        lbl_min_stock.setFixedWidth(LABEL_COL_WIDTH)
+        lbl_min_stock.setStyleSheet(lbl_field_style)
+
+        min_stepper_layout = QHBoxLayout()
+        min_stepper_layout.setSpacing(4)
+        min_stepper_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.min_stock_spin = QSpinBox()
+        self.min_stock_spin.setFont(QFont("Consolas", 10))
+        self.min_stock_spin.setRange(0, 10000000)
+        self.min_stock_spin.setValue(0)
+        self.min_stock_spin.setFixedHeight(32)
+        self.min_stock_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.min_stock_spin.setStyleSheet(input_style)
+        self.min_stock_spin.wheelEvent = lambda event: event.ignore()
+        self.min_stock_spin.installEventFilter(self._wheel_filter)
+        min_stepper_layout.addWidget(self.min_stock_spin, 1)
+
+        min_btn_layout = QVBoxLayout()
+        min_btn_layout.setSpacing(1)
+        min_btn_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.min_up_btn = QToolButton()
+        self.min_up_btn.setArrowType(Qt.ArrowType.UpArrow)
+        self.min_up_btn.setFixedSize(26, 15)
+        self.min_up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.min_up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.min_up_btn.setToolTip("Increase Min Stock Threshold")
+        self.min_up_btn.setAutoRepeat(True)
+        self.min_up_btn.setStyleSheet(stepper_btn_style)
+        self.min_up_btn.clicked.connect(self.min_stock_spin.stepUp)
+
+        self.min_down_btn = QToolButton()
+        self.min_down_btn.setArrowType(Qt.ArrowType.DownArrow)
+        self.min_down_btn.setFixedSize(26, 15)
+        self.min_down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.min_down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.min_down_btn.setToolTip("Decrease Min Stock Threshold")
+        self.min_down_btn.setAutoRepeat(True)
+        self.min_down_btn.setStyleSheet(stepper_btn_style)
+        self.min_down_btn.clicked.connect(self.min_stock_spin.stepDown)
+
+        min_btn_layout.addWidget(self.min_up_btn)
+        min_btn_layout.addWidget(self.min_down_btn)
+        min_stepper_layout.addLayout(min_btn_layout)
+
+        det_grid.addWidget(lbl_min_stock, 1, 0)
+        det_grid.addLayout(min_stepper_layout, 1, 1)
+
+        # Target Stock Threshold
+        lbl_target_stock = QLabel("Target Stock Threshold:")
+        lbl_target_stock.setFixedWidth(LABEL_COL_WIDTH)
+        lbl_target_stock.setStyleSheet(lbl_field_style)
+
+        target_stepper_layout = QHBoxLayout()
+        target_stepper_layout.setSpacing(4)
+        target_stepper_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.target_stock_spin = QSpinBox()
+        self.target_stock_spin.setFont(QFont("Consolas", 10))
+        self.target_stock_spin.setRange(0, 10000000)
+        self.target_stock_spin.setValue(0)
+        self.target_stock_spin.setFixedHeight(32)
+        self.target_stock_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.target_stock_spin.setStyleSheet(input_style)
+        self.target_stock_spin.wheelEvent = lambda event: event.ignore()
+        self.target_stock_spin.installEventFilter(self._wheel_filter)
+        target_stepper_layout.addWidget(self.target_stock_spin, 1)
+
+        target_btn_layout = QVBoxLayout()
+        target_btn_layout.setSpacing(1)
+        target_btn_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.target_up_btn = QToolButton()
+        self.target_up_btn.setArrowType(Qt.ArrowType.UpArrow)
+        self.target_up_btn.setFixedSize(26, 15)
+        self.target_up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.target_up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.target_up_btn.setToolTip("Increase Target Stock Threshold")
+        self.target_up_btn.setAutoRepeat(True)
+        self.target_up_btn.setStyleSheet(stepper_btn_style)
+        self.target_up_btn.clicked.connect(self.target_stock_spin.stepUp)
+
+        self.target_down_btn = QToolButton()
+        self.target_down_btn.setArrowType(Qt.ArrowType.DownArrow)
+        self.target_down_btn.setFixedSize(26, 15)
+        self.target_down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.target_down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.target_down_btn.setToolTip("Decrease Target Stock Threshold")
+        self.target_down_btn.setAutoRepeat(True)
+        self.target_down_btn.setStyleSheet(stepper_btn_style)
+        self.target_down_btn.clicked.connect(self.target_stock_spin.stepDown)
+
+        target_btn_layout.addWidget(self.target_up_btn)
+        target_btn_layout.addWidget(self.target_down_btn)
+        target_stepper_layout.addLayout(target_btn_layout)
+
+        det_grid.addWidget(lbl_target_stock, 2, 0)
+        det_grid.addLayout(target_stepper_layout, 2, 1)
+
         surface_layout.addLayout(det_grid)
 
         # Divider between Section C and Section D
@@ -1011,6 +1113,10 @@ class ComponentEditDialog(QDialog):
             self.desc_input.clear()
         if hasattr(self, "qty_spin"):
             self.qty_spin.setValue(0)
+        if hasattr(self, "min_stock_spin"):
+            self.min_stock_spin.setValue(0)
+        if hasattr(self, "target_stock_spin"):
+            self.target_stock_spin.setValue(0)
 
         self._clear_all_link_rows()
 
@@ -1458,6 +1564,10 @@ class ComponentEditDialog(QDialog):
         self.footprint_input.setText(comp.footprint)
         self.desc_input.setText(comp.description or "")
         self.qty_spin.setValue(int(comp.quantity_in_stock or 0))
+        if hasattr(self, "min_stock_spin"):
+            self.min_stock_spin.setValue(int(getattr(comp, "min_stock", 0) or 0))
+        if hasattr(self, "target_stock_spin"):
+            self.target_stock_spin.setValue(int(getattr(comp, "target_stock", 0) or 0))
 
         self._clear_all_link_rows()
 
@@ -1547,6 +1657,15 @@ class ComponentEditDialog(QDialog):
             self.validation_lbl.setText("Physical Quantity in Stock cannot be negative.")
             return
 
+        min_stk = self.min_stock_spin.value() if hasattr(self, "min_stock_spin") else 0
+        tgt_stk = self.target_stock_spin.value() if hasattr(self, "target_stock_spin") else 0
+        if min_stk < 0:
+            self.validation_lbl.setText("Min Stock threshold cannot be negative.")
+            return
+        if tgt_stk < min_stk:
+            self.validation_lbl.setText(f"Target Stock ({tgt_stk}) cannot be less than Min Stock ({min_stk}).")
+            return
+
         # Canonical reference validation if repository has populated reference data
         if self.repository:
             # Validate Manufacturer against reference data
@@ -1625,6 +1744,8 @@ class ComponentEditDialog(QDialog):
                     value=val,
                     description=desc,
                     quantity_in_stock=qty,
+                    min_stock=min_stk,
+                    target_stock=tgt_stk,
                     supplier_links=tuple(supplier_links),
                 )
                 if self.repository:
@@ -1647,6 +1768,8 @@ class ComponentEditDialog(QDialog):
                         value=val,
                         description=desc,
                         quantity_in_stock=qty,
+                        min_stock=min_stk,
+                        target_stock=tgt_stk,
                         supplier_links=supplier_links,
                     )
                 else:

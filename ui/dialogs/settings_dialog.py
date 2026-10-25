@@ -289,7 +289,7 @@ class SettingsDialog(QDialog):
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_layout.setSpacing(6)
 
-        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
+        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
         self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
         display_layout.addWidget(self.stock_policy_show_columns_chk)
 

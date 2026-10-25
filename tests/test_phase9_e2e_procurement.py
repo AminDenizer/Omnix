@@ -492,32 +492,20 @@ class TestModeAInventoryShortagesEndToEnd:
         assert roboeq_cls.STAGED_CALLS[0][0].vendor_sku == "0202002"
         assert roboeq_cls.STAGED_CALLS[0][1] == 20  # 15 stepped to 20 due to step=10
 
-        # 6. Simulate payment confirmation & batch increment stock
-        # NE555P (orig_row_idx 2): +18
-        # AMS1117-3.3 (orig_row_idx 3): +50
-        # 100uF 25V (orig_row_idx 4): +20
-        stock_updates = [
-            {"orig_row_idx": shortage_map["NE555P"]["orig_row_idx"], "part_name": "NE555P", "actual_ordered_qty": 18},
-            {"orig_row_idx": shortage_map["AMS1117-3.3"]["orig_row_idx"], "part_name": "AMS1117-3.3", "actual_ordered_qty": 50},
-            {"orig_row_idx": shortage_map["100uF 25V"]["orig_row_idx"], "part_name": "100uF 25V", "actual_ordered_qty": 20},
-        ]
-        count, msg = loader.batch_increment_stock(stock_updates)
-        assert count == 3
+        # 6. Verify strict inventory immutability: procurement staging does not alter stock
+        assert not hasattr(loader, "batch_increment_stock")
+        assert not hasattr(loader, "save_cell_value")
 
-        # 7. Reload file from disk and assert verified post-order stock levels
+        # 7. Reload file from disk and assert inventory stock levels remain strictly untouched
         reloaded_loader = ExcelDataLoader()
         reloaded_loader.load_file(inv_path)
-        new_shortages = reloaded_loader.get_shortage_items()
-
-        # The 3 staged items should no longer be shortages (stock >= target)
-        new_shortage_names = {s["part_name"] for s in new_shortages}
-        assert "NE555P" not in new_shortage_names
-        assert "AMS1117-3.3" not in new_shortage_names
-        assert "100uF 25V" not in new_shortage_names
-
-        # Unorderable shortages remain
-        assert "OPA2134" in new_shortage_names
-        assert "Resistor 1k" in new_shortage_names
+        persisted_shortages = reloaded_loader.get_shortage_items()
+        persisted_names = {s["part_name"] for s in persisted_shortages}
+        assert "NE555P" in persisted_names
+        assert "AMS1117-3.3" in persisted_names
+        assert "100uF 25V" in persisted_names
+        assert "OPA2134" in persisted_names
+        assert "Resistor 1k" in persisted_names
 
 
 # ============================================================================
@@ -608,23 +596,18 @@ class TestModeBAltiumBOMAssemblyEndToEnd:
         assert len(roboeq_cls.STAGED_CALLS) == 1
         assert roboeq_cls.STAGED_CALLS[0][1] == 15
 
-        # 5. Increment stock for fulfilled BOM items
-        stm_row = next(idx for idx, r in inv_loader.rows if "STM32F103" in " ".join(r))
-        mcu_row = next(idx for idx, r in inv_loader.rows if "ATMEGA328P" in " ".join(r))
-        updates = [
-            {"orig_row_idx": stm_row, "part_name": "STM32F103C8T6", "actual_ordered_qty": 8},
-            {"orig_row_idx": mcu_row, "part_name": "ATMEGA328P-PU", "actual_ordered_qty": 15},
-        ]
-        count, up_msg = inv_loader.batch_increment_stock(updates)
-        assert count == 2
+        # 5. Verify strict inventory immutability: BOM fulfillment does not alter stock
+        assert not hasattr(inv_loader, "batch_increment_stock")
+        assert not hasattr(inv_loader, "save_cell_value")
 
-        # 6. Re-audit BOM with updated inventory -> Shortages should now be ZERO
-        inv_loader_updated = ExcelDataLoader()
-        inv_loader_updated.load_file(inv_path)
-        ok2, msg2, audit_res2 = BOMAuditor.audit_bom(bom_path, inv_loader_updated, board_multiplier=10)
-        assert ok2 is True
-        assert len(audit_res2.get_all_shortages()) == 0
-        assert len(audit_res2.get_orderable_shortages()) == 0
+        # 6. Verify inventory stock on disk remains strictly untouched
+        inv_loader_reloaded = ExcelDataLoader()
+        inv_loader_reloaded.load_file(inv_path)
+        stock_col = inv_loader_reloaded.get_column_index(["quantity in stock"])
+        stm_row_cells = next(r for idx, r in inv_loader_reloaded.rows if "STM32F103" in " ".join(r))
+        mcu_row_cells = next(r for idx, r in inv_loader_reloaded.rows if "ATMEGA328P" in " ".join(r))
+        assert stm_row_cells[stock_col] == "2"   # untouched original stock
+        assert mcu_row_cells[stock_col] == "5"   # untouched original stock
 
 
 # ============================================================================

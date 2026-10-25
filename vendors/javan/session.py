@@ -14,7 +14,10 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from core.models import AdapterConfig
 from core.procurement.challenge_handler import SessionContinuityMode, SessionPromotionResult
-from vendors.javan.selectors import JavanSelectors
+try:
+    from .selectors import JavanSelectors
+except ImportError:
+    from vendors.javan.selectors import JavanSelectors
 
 
 class JavanSessionManager:

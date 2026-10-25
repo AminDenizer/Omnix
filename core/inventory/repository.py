@@ -1096,6 +1096,13 @@ class SqliteInventoryRepository(IInventoryRepository):
 
         purchase_link = format_supplier_links_as_string(links) or None
 
+        min_stk = 0
+        tgt_stk = 0
+        if "min_stock" in row.keys() and row["min_stock"] is not None:
+            min_stk = int(row["min_stock"])
+        if "target_stock" in row.keys() and row["target_stock"] is not None:
+            tgt_stk = int(row["target_stock"])
+
         return InventoryProduct(
             id=comp_id,
             manufacturer=row["manufacturer"],
@@ -1110,6 +1117,8 @@ class SqliteInventoryRepository(IInventoryRepository):
             value=row["value"],
             description=row["description"] or "",
             quantity_in_stock=row["quantity_in_stock"],
+            min_stock=min_stk,
+            target_stock=tgt_stk,
             purchase_link=purchase_link,
             group_key=row["group_key"],
             supplier_links=tuple(links),
@@ -1149,9 +1158,15 @@ class SqliteInventoryRepository(IInventoryRepository):
             fp = clean_display_string(product.footprint)
             desc = clean_display_string(product.description)
             qty = int(product.quantity_in_stock)
-    
+            min_stk = int(getattr(product, "min_stock", 0) or 0)
+            tgt_stk = int(getattr(product, "target_stock", 0) or 0)
+            if min_stk < 0:
+                raise ValidationError(f"min_stock must be non-negative (received {min_stk}).")
+            if tgt_stk < min_stk:
+                raise ValidationError(f"target_stock ({tgt_stk}) cannot be less than min_stock ({min_stk}).")
+
             group_key = build_group_key(cat, tech, val, pkg, fp)
-    
+
             conn = self._db.get_connection()
             with self._db.transaction():
                 # Validate category and type if canonical reference data is populated in database
@@ -1169,15 +1184,15 @@ class SqliteInventoryRepository(IInventoryRepository):
                         type_rec = self.get_type_by_name(cat_rec.id, tech)
                         if type_rec:
                             tech = type_rec.name
-    
+
                 if clean_mfr:
                     mfr_rec = self.get_manufacturer_by_name(clean_mfr)
                     if mfr_rec:
                         clean_mfr = mfr_rec.name
-    
+
                 # Recalculate group key with canonical names
                 group_key = build_group_key(cat, tech, val, pkg, fp)
-    
+
                 # Identity collision check (Manufacturer + MPN)
                 conflict = conn.execute(
                     "SELECT id, manufacturer, mpn FROM components WHERE norm_manufacturer = ? AND norm_mpn = ?;",
@@ -1190,16 +1205,17 @@ class SqliteInventoryRepository(IInventoryRepository):
                         existing_component=existing,
                         conflicting_data=product.to_dict(),
                     )
-    
+
                 cursor = conn.execute(
                     """
                     INSERT INTO components (
                         manufacturer, mpn, norm_manufacturer, norm_mpn,
                         category, type_technology, package, raw_package,
-                        footprint, value, description, quantity_in_stock, group_key
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        footprint, value, description, quantity_in_stock, group_key,
+                        min_stock, target_stock
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """,
-                    (clean_mfr, clean_mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key),
+                    (clean_mfr, clean_mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key, min_stk, tgt_stk),
                 )
                 comp_id = cursor.lastrowid
     
@@ -1350,9 +1366,18 @@ class SqliteInventoryRepository(IInventoryRepository):
                     qty = int(qty_val)
                 else:
                     qty = row["quantity_in_stock"]
-    
+
+                min_stk_raw = fields.get("min_stock", row["min_stock"] if "min_stock" in row.keys() else 0)
+                tgt_stk_raw = fields.get("target_stock", row["target_stock"] if "target_stock" in row.keys() else 0)
+                min_stk = int(min_stk_raw or 0)
+                tgt_stk = int(tgt_stk_raw or 0)
+                if min_stk < 0:
+                    raise ValidationError(f"min_stock must be non-negative (received {min_stk}).")
+                if tgt_stk < min_stk:
+                    raise ValidationError(f"target_stock ({tgt_stk}) cannot be less than min_stock ({min_stk}).")
+
                 group_key = build_group_key(cat, tech, val, pkg, fp)
-    
+
                 conn.execute(
                     """
                     UPDATE components SET
@@ -1369,17 +1394,102 @@ class SqliteInventoryRepository(IInventoryRepository):
                         description = ?,
                         quantity_in_stock = ?,
                         group_key = ?,
+                        min_stock = ?,
+                        target_stock = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?;
                     """,
-                    (mfr, mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key, component_id),
+                    (mfr, mpn, norm_mfr, norm_mpn, cat, tech, pkg, raw_pkg, fp, val, desc, qty, group_key, min_stk, tgt_stk, component_id),
                 )
-    
+
                 if "supplier_links" in fields and fields["supplier_links"] is not None:
                     self.set_supplier_links(component_id, fields["supplier_links"])
 
             updated = self.get_component_by_id(component_id)
             tracker.complete(f"Successfully updated component ID {component_id} ('{mfr}' '{mpn}')")
+            return updated
+
+    def update_component_thresholds(
+        self, component_id: int, min_stock: int, target_stock: int
+    ) -> InventoryProduct:
+        """
+        Updates min_stock and target_stock for an individual physical component.
+        Strictly enforces: min_stock >= 0 and target_stock >= min_stock.
+        Leaves physical on-hand stock, identity, and supplier links unaltered.
+        """
+        if not isinstance(min_stock, int) or isinstance(min_stock, bool):
+            raise ValidationError(f"min_stock must be an integer (received {type(min_stock).__name__}).")
+        if not isinstance(target_stock, int) or isinstance(target_stock, bool):
+            raise ValidationError(f"target_stock must be an integer (received {type(target_stock).__name__}).")
+        if min_stock < 0:
+            raise ValidationError(f"min_stock must be non-negative (received {min_stock}).")
+        if target_stock < min_stock:
+            raise ValidationError(
+                f"target_stock ({target_stock}) cannot be less than min_stock ({min_stock})."
+            )
+
+        with track_operation("Inventory", f"Update component ID {component_id} thresholds: min={min_stock}, target={target_stock}") as tracker:
+            conn = self._db.get_connection()
+            with self._db.transaction():
+                row = conn.execute(
+                    "SELECT id, manufacturer, mpn FROM components WHERE id = ?;",
+                    (component_id,),
+                ).fetchone()
+                if not row:
+                    raise ComponentNotFoundError(f"Component ID {component_id} not found.")
+
+                conn.execute(
+                    """
+                    UPDATE components SET
+                        min_stock = ?,
+                        target_stock = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?;
+                    """,
+                    (min_stock, target_stock, component_id),
+                )
+
+            updated = self.get_component_by_id(component_id)
+            tracker.complete(f"Updated thresholds for component {component_id} ('{row['manufacturer']}' '{row['mpn']}')")
+            return updated
+
+    def update_component_stock(self, component_id: int, new_quantity: int) -> InventoryProduct:
+        """
+        Updates the physical on-hand stock quantity for an existing component.
+        Strictly modifies only quantity_in_stock and updated_at; leaves all metadata,
+        identity, and supplier links unaltered.
+        """
+        if not isinstance(new_quantity, int) or isinstance(new_quantity, bool):
+            raise ValidationError(f"Quantity in stock must be an integer (received {type(new_quantity).__name__}).")
+        if new_quantity < 0:
+            raise ValidationError(f"Quantity in stock must be non-negative (received {new_quantity}).")
+
+        with track_operation("Inventory", f"Update component ID {component_id} stock to {new_quantity}") as tracker:
+            conn = self._db.get_connection()
+            with self._db.transaction():
+                row = conn.execute(
+                    "SELECT id, manufacturer, mpn, quantity_in_stock FROM components WHERE id = ?;",
+                    (component_id,),
+                ).fetchone()
+                if not row:
+                    raise ComponentNotFoundError(f"Component ID {component_id} not found.")
+
+                old_qty = row["quantity_in_stock"]
+                mfr = row["manufacturer"]
+                mpn = row["mpn"]
+
+                conn.execute(
+                    """
+                    UPDATE components SET
+                        quantity_in_stock = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?;
+                    """,
+                    (new_quantity, component_id),
+                )
+
+            updated = self.get_component_by_id(component_id)
+            tracker.complete(f"Updated stock for component ID {component_id} ('{mfr}' '{mpn}'): {old_qty} -> {new_quantity}")
             return updated
 
     def delete_component(self, component_id: int) -> bool:
@@ -1772,6 +1882,8 @@ class SqliteInventoryRepository(IInventoryRepository):
 
             if prods:
                 current_stock = sum(p.quantity_in_stock for p in prods)
+                comp_min_sum = sum(p.min_stock for p in prods)
+                comp_tgt_sum = sum(p.target_stock for p in prods)
                 sample_p = prods[0]
                 cat = sample_p.category
                 tech = sample_p.type_technology
@@ -1779,6 +1891,9 @@ class SqliteInventoryRepository(IInventoryRepository):
                 pkg = sample_p.package
                 fp = sample_p.footprint
                 desc = (pol.description if pol and pol.description else sample_p.description) or ""
+                # In Option B, physical components exclusively determine group-level displayed aggregate thresholds
+                min_stock = comp_min_sum
+                target_stock = comp_tgt_sum
             elif pol:
                 current_stock = 0
                 cat = pol.category
@@ -1787,11 +1902,10 @@ class SqliteInventoryRepository(IInventoryRepository):
                 pkg = pol.package
                 fp = pol.footprint
                 desc = pol.description or ""
+                min_stock = pol.min_stock
+                target_stock = pol.target_stock
             else:
                 continue
-
-            min_stock = pol.min_stock if pol else None
-            target_stock = pol.target_stock if pol else None
 
             missing = []
             if min_stock is None:
@@ -1825,6 +1939,8 @@ class SqliteInventoryRepository(IInventoryRepository):
 
         if prods:
             current_stock = sum(p.quantity_in_stock for p in prods)
+            comp_min_sum = sum(p.min_stock for p in prods)
+            comp_tgt_sum = sum(p.target_stock for p in prods)
             sample_p = prods[0]
             cat = sample_p.category
             tech = sample_p.type_technology
@@ -1832,6 +1948,9 @@ class SqliteInventoryRepository(IInventoryRepository):
             pkg = sample_p.package
             fp = sample_p.footprint
             desc = (pol.description if pol and pol.description else sample_p.description) or ""
+            # In Option B, physical components exclusively determine group-level displayed aggregate thresholds
+            min_stock = comp_min_sum
+            target_stock = comp_tgt_sum
         else:
             current_stock = 0
             cat = pol.category
@@ -1840,9 +1959,8 @@ class SqliteInventoryRepository(IInventoryRepository):
             pkg = pol.package
             fp = pol.footprint
             desc = pol.description or ""
-
-        min_stock = pol.min_stock if pol else None
-        target_stock = pol.target_stock if pol else None
+            min_stock = pol.min_stock if pol else None
+            target_stock = pol.target_stock if pol else None
 
         missing = []
         if min_stock is None:

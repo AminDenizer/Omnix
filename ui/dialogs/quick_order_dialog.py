@@ -484,21 +484,6 @@ class QuickOrderDialog(QDialog):
         self.btn_mpn_open_cart.clicked.connect(self._on_open_cart_clicked)
         actions_layout.addWidget(self.btn_mpn_open_cart)
 
-        self.btn_mpn_confirm_stock = QPushButton("💰 Confirm Payment & Add Stock")
-        self.btn_mpn_confirm_stock.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #ffffff;
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 7px 16px;
-            }
-            QPushButton:hover { background-color: #10b981; }
-        """)
-        self.btn_mpn_confirm_stock.hide()
-        self.btn_mpn_confirm_stock.clicked.connect(self._on_confirm_stock_clicked)
-        actions_layout.addWidget(self.btn_mpn_confirm_stock)
-
         actions_layout.addStretch()
 
         self.btn_mpn_stage = QPushButton("🛒 Add Selected Candidate to Cart")
@@ -599,21 +584,6 @@ class QuickOrderDialog(QDialog):
         self.btn_url_open_cart.hide()
         self.btn_url_open_cart.clicked.connect(self._on_open_cart_clicked)
         actions_layout.addWidget(self.btn_url_open_cart)
-
-        self.btn_url_confirm_stock = QPushButton("💰 Confirm Payment & Add Stock")
-        self.btn_url_confirm_stock.setStyleSheet("""
-            QPushButton {
-                background-color: #059669;
-                color: #ffffff;
-                font-weight: bold;
-                border-radius: 6px;
-                padding: 7px 16px;
-            }
-            QPushButton:hover { background-color: #10b981; }
-        """)
-        self.btn_url_confirm_stock.hide()
-        self.btn_url_confirm_stock.clicked.connect(self._on_confirm_stock_clicked)
-        actions_layout.addWidget(self.btn_url_confirm_stock)
 
         actions_layout.addStretch()
 
@@ -898,7 +868,6 @@ class QuickOrderDialog(QDialog):
                 msg = f"✅ Staged {res.actual_quantity_staged} pcs to {res.vendor_id} cart! ({res.raw_vendor_message})"
             self.status_msg_lbl.setText(msg)
             self.btn_mpn_open_cart.show()
-            self.btn_mpn_confirm_stock.show()
 
             QMessageBox.information(
                 self,
@@ -1033,7 +1002,6 @@ class QuickOrderDialog(QDialog):
                 msg = f"✅ Staged {res.actual_quantity_staged} pcs to {res.vendor_id} cart! ({res.raw_vendor_message})"
             self.status_msg_lbl.setText(msg)
             self.btn_url_open_cart.show()
-            self.btn_url_confirm_stock.show()
 
             QMessageBox.information(
                 self,
@@ -1113,48 +1081,4 @@ class QuickOrderDialog(QDialog):
             vendor_id = self.url_candidate.vendor_id
 
         self._open_vendor_cart(vendor_id)
-
-    def _on_confirm_stock_clicked(self):
-        if not self.inventory_loader:
-            QMessageBox.information(
-                self,
-                "No Inventory Database",
-                "Direct Quick Order was executed standalone. No active Inventory.xlsx database loaded."
-            )
-            return
-
-        cand = None
-        qty = 0
-        if self.tabs.currentIndex() == 0 and self.selected_mpn_eval_idx is not None:
-            cand = self.mpn_evaluations[self.selected_mpn_eval_idx].candidate
-            qty = self.mpn_evaluations[self.selected_mpn_eval_idx].effective_quantity
-        elif self.tabs.currentIndex() == 1 and self.url_candidate and self.url_evaluation:
-            cand = self.url_candidate
-            qty = self.url_evaluation.effective_quantity
-
-        if not cand or qty <= 0:
-            return
-
-        item_dict = {
-            "part_number": cand.part_number,
-            "part_name": cand.part_number,
-            "actual_ordered_qty": qty,
-            "order_success": True,
-        }
-
-        count, msg = self.inventory_loader.batch_increment_stock([item_dict])
-        if count > 0:
-            QMessageBox.information(
-                self,
-                "Inventory Updated",
-                f"✅ Success!\n\nAdded {qty} units of '{cand.part_number}' to Inventory.xlsx.",
-            )
-            if self.on_stock_updated:
-                self.on_stock_updated()
-        else:
-            QMessageBox.warning(
-                self,
-                "Inventory Update Failed",
-                f"Could not update stock in Inventory.xlsx: {msg}"
-            )
 

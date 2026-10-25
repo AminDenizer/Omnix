@@ -1,0 +1,79 @@
+{
+  "manifest_version": "1.0.0",
+  "plugin_id": "ir.lionelectronic.adapter",
+  "vendor_id": "vendor_lion",
+  "display_name": "Lion Electronic",
+  "description": "Lion Electronic Component Distributor Automation Plugin",
+  "version": "1.0.0",
+  "min_omnix_version": "1.0.0",
+  "omnix_contract_version": "1.0.0",
+  "entry_point": "vendors.lion.adapter:LionVendorAdapter",
+  "publisher": {
+    "name": "Omnix Core Engineering",
+    "type": "OFFICIAL",
+    "key_id": "core-official-key-01"
+  },
+  "capabilities": [
+    "PRODUCT_URL_RECOGNITION",
+    "PRODUCT_INSPECTION",
+    "CART_URL_RESOLUTION",
+    "MPN_SEARCH",
+    "LIVE_STOCK_PROBE",
+    "TIERED_PRICING",
+    "MODE_A_STAGING",
+    "MODE_B_STAGING"
+  ],
+  "supported_modes": [
+    "MODE_A",
+    "MODE_B"
+  ],
+  "routes": {
+    "base_url": "https://lionelectronic.ir",
+    "cart_url": "https://lionelectronic.ir/cart",
+    "domains": [
+      "lionelectronic.ir"
+    ],
+    "pdp_patterns": [
+      "^https?://(?:www\\.)?lionelectronic\\.ir/products/\\d+-[a-zA-Z0-9_.-]+(?:/.*)?$"
+    ]
+  },
+  "config_schema": {
+    "fields": [
+      {
+        "key": "username",
+        "label": "Username / Phone / Email",
+        "type": "string",
+        "required": true,
+        "is_secret": false,
+        "default": "",
+        "description": "Lion Electronic account username, mobile number, or email address."
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "type": "password",
+        "required": true,
+        "is_secret": true,
+        "description": "Lion Electronic account password (stored encrypted)."
+      },
+      {
+        "key": "timeout_seconds",
+        "label": "Page Load Timeout (s)",
+        "type": "integer",
+        "required": false,
+        "is_secret": false,
+        "default": 30,
+        "description": "Maximum wait time in seconds for page navigation and DOM elements."
+      },
+      {
+        "key": "headless",
+        "label": "Run Browser in Headless Mode",
+        "type": "boolean",
+        "required": false,
+        "is_secret": false,
+        "default": false,
+        "description": "Run browser in the background unless interactive login or challenge resolution is required."
+      }
+    ]
+  }
+}

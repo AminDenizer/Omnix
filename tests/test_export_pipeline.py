@@ -624,7 +624,7 @@ class TestOrderPreviewDialogExportUI:
         dlg = OrderPreviewDialog(plan=sample_procurement_plan)
         assert hasattr(dlg, "export_btn")
         assert dlg.export_btn is not None
-        assert "Export Report" in dlg.export_btn.text()
+        assert "Export Staging Results" in dlg.export_btn.text()
 
         # Build report directly from dialog plan
         rep_pre = ProcurementReportBuilder.build(dlg.plan, staging_results=dlg.staging_results_log)

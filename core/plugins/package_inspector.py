@@ -976,6 +976,20 @@ class PackageInspector:
             errors=[err],
         )
 
+    @classmethod
+    def inspect_package(
+        cls,
+        target: Union[str, Path, bytes, BinaryIO, Any],
+        host_omnix_version: Optional[str] = None,
+        host_contract_version: Optional[str] = None,
+    ) -> PackageInspectionResult:
+        """Convenience classmethod to inspect an .xpl package file, raw bytes, or BytesIO."""
+        return cls().inspect(
+            target,
+            host_omnix_version=host_omnix_version,
+            host_contract_version=host_contract_version,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Convenience Module-Level Inspection Function

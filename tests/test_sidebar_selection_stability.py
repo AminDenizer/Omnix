@@ -36,9 +36,7 @@ class TestSidebarSelectionStability:
         "assembly_view",
         "bom_audit",
         "assembly_prep",
-        "reference_data",
-        "provider_management",
-        "backup_restore",
+        "vendor_plugins",
         "live_log",
         "settings",
     ]
@@ -149,42 +147,59 @@ class TestSidebarSelectionStability:
         assert win.sidebar.active_page() == "assembly_view"
         assert win.sidebar._buttons["assembly_view"]._is_active is True
 
-    def test_settings_unified_tabs_and_selection(self, main_window, qapp):
-        """Settings entry in sidebar opens unified interface with General, Vendors, and About tabs."""
+    def test_settings_hierarchical_parent_and_child_selection(self, main_window, qapp):
+        """Settings parent remains visibly selected whenever any settings child is active."""
         win = main_window
         sb = win.sidebar
 
-        # 1. Clicking Settings opens the unified Settings view
-        win.sidebar._on_button_clicked("settings")
-        qapp.processEvents()
-        assert sb.active_page() == "settings"
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert hasattr(win, "settings_tabs")
-        assert win.settings_tabs.count() == 3
-        assert win.settings_tabs.tabText(0) == "General"
-        assert win.settings_tabs.tabText(1) == "Vendors"
-        assert win.settings_tabs.tabText(2) == "About"
+        for child_id, label, _ in sb.SETTINGS_CHILDREN:
+            win._on_sidebar_page_changed(child_id)
+            qapp.processEvents()
 
-        # 2. Accessing Vendors section routes to Tab 1
-        win._open_settings("vendors")
-        qapp.processEvents()
-        assert sb.active_page() == "settings"
-        assert win.settings_tabs.currentIndex() == 1
+            # Parent Settings button must communicate active section
+            assert sb.settings_parent_btn._is_active is True, f"Parent Settings not active on {child_id}"
+            # Selected child must communicate active destination
+            assert sb._submenu_buttons[child_id]._is_active is True, f"Child {child_id} not active"
 
-        # 3. Accessing About section routes to Tab 2
-        win._open_settings("about")
-        qapp.processEvents()
-        assert sb.active_page() == "settings"
-        assert win.settings_tabs.currentIndex() == 2
+            # All other children must be inactive
+            for other_id, other_btn in sb._submenu_buttons.items():
+                if other_id != child_id:
+                    assert other_btn._is_active is False, f"Child {other_id} must be inactive when {child_id} is active"
 
-        # 4. Accessing General section routes to Tab 0
-        win._open_settings("general")
-        qapp.processEvents()
-        assert sb.active_page() == "settings"
-        assert win.settings_tabs.currentIndex() == 0
+            # Primary section buttons (Workspace/Tools) must be inactive
+            for pid, btn in sb._buttons.items():
+                if pid != "settings" and pid not in sb._submenu_buttons:
+                    assert btn._is_active is False, f"Primary button {pid} must be inactive when in Settings section"
 
-        # 5. Transitioning back to Workspace clears Settings selection
-        win._on_sidebar_page_changed("component_inventory")
+        # Transitioning back to Workspace clears Settings parent and child selection
+        win._on_sidebar_page_changed("assembly_view")
         qapp.processEvents()
-        assert sb._buttons["settings"]._is_active is False
-        assert sb._buttons["component_inventory"]._is_active is True
+        assert sb.settings_parent_btn._is_active is False
+        for btn in sb._submenu_buttons.values():
+            assert btn._is_active is False
+        assert sb._buttons["assembly_view"]._is_active is True
+
+    def test_settings_submenu_toggle_cycles(self, main_window, qapp):
+        """Clicking Settings repeatedly reliably opens and closes the submenu without desync."""
+        win = main_window
+        sb = win.sidebar
+
+        # Ensure collapsed initially
+        sb.set_submenu_expanded(False)
+        qapp.processEvents()
+        assert sb.is_submenu_expanded() is False
+
+        for cycle in range(3):
+            # Click 1: expands
+            sb.settings_parent_btn.click()
+            qapp.processEvents()
+            assert sb.is_submenu_expanded() is True, f"Failed expand on cycle {cycle}"
+            for btn in sb._submenu_buttons.values():
+                assert btn.isVisible() is True
+
+            # Click 2: collapses
+            sb.settings_parent_btn.click()
+            qapp.processEvents()
+            assert sb.is_submenu_expanded() is False, f"Failed collapse on cycle {cycle}"
+            for btn in sb._submenu_buttons.values():
+                assert btn.isVisible() is False

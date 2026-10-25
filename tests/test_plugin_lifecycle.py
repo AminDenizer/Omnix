@@ -20,11 +20,13 @@ Verifies:
 14. Full procurement, quantity calculation, and staging operate correctly when vendors are explicitly registered.
 """
 
+import copy
 import os
 import openpyxl
 import pytest
 from unittest.mock import MagicMock, patch
 from PyQt6.QtWidgets import QApplication, QLabel
+from settings_manager import settings
 
 from core.models import (
     AdapterConfig,
@@ -181,11 +183,19 @@ def valid_manifest_dict():
 
 
 @pytest.fixture(autouse=True)
-def ensure_clean_default_registry():
-    """Ensure default_registry is pristine and empty before and after every test."""
+def ensure_clean_default_registry(tmp_path):
+    """Ensure default_registry and settings persistence are isolated before and after every test."""
+    orig_settings_file_path = settings.file_path
+    orig_settings_data = copy.deepcopy(settings.settings)
+    settings.file_path = str(tmp_path / "isolated_settings.json")
+    settings.settings = settings._default_settings()
     reset_default_registry()
-    yield
-    reset_default_registry()
+    try:
+        yield
+    finally:
+        reset_default_registry()
+        settings.file_path = orig_settings_file_path
+        settings.settings = orig_settings_data
 
 
 @pytest.fixture(scope="session")
@@ -404,10 +414,11 @@ class TestSettingsUIDynamicLifecycle:
         empty_reg = VendorRegistry()
         dlg = SettingsDialog(registry=empty_reg)
 
-        # Tabs count: 1 empty vendor tab + 1 general tab = 2 tabs
-        assert dlg.tabs.count() == 2
+        # Tabs count: 1 empty vendor tab + 1 general tab + 1 about tab = 3 tabs
+        assert dlg.tabs.count() == 3
         assert dlg.tabs.tabText(0) == "Vendors"
         assert dlg.tabs.tabText(1) == "General"
+        assert dlg.tabs.tabText(2) == "About"
 
         # Check empty state message exists
         vendor_tab_widget = dlg.tabs.widget(0)
@@ -425,10 +436,11 @@ class TestSettingsUIDynamicLifecycle:
 
         dlg = SettingsDialog(registry=reg)
 
-        # Tabs count: 1 dynamic vendor tab ("Test Distributor") + 1 general tab = 2 tabs
-        assert dlg.tabs.count() == 2
+        # Tabs count: 1 dynamic vendor tab ("Test Distributor") + 1 general tab + 1 about tab = 3 tabs
+        assert dlg.tabs.count() == 3
         assert dlg.tabs.tabText(0) == "Test Distributor"
         assert dlg.tabs.tabText(1) == "General"
+        assert dlg.tabs.tabText(2) == "About"
         assert "vendor_test_dist" in dlg._vendor_widgets
 
         # Toggle disable and save

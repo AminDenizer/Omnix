@@ -333,61 +333,66 @@ class LiveLogWidget(QWidget):
         self._update_counter()
 
     def _append_record_internal(self, record: EventRecord):
-        self._all_records.append(record)
-        if len(self._all_records) > self.MAX_DISPLAY_ROWS:
-            self._all_records = self._all_records[-self.MAX_DISPLAY_ROWS:]
+        try:
+            if not hasattr(self, "table") or self.table is None:
+                return
+            self._all_records.append(record)
+            if len(self._all_records) > self.MAX_DISPLAY_ROWS:
+                self._all_records = self._all_records[-self.MAX_DISPLAY_ROWS:]
 
-        if not self._record_matches_filters(record):
-            return
+            if not self._record_matches_filters(record):
+                return
 
-        row = self.table.rowCount()
-        self.table.insertRow(row)
+            row = self.table.rowCount()
+            self.table.insertRow(row)
 
-        # 0. Timestamp
-        t_str = record.timestamp.replace("T", " ")[:19]
-        it_ts = QTableWidgetItem(t_str)
-        it_ts.setForeground(QColor("#94a3b8"))
-        it_ts.setToolTip(record.timestamp)
-        self.table.setItem(row, 0, it_ts)
+            # 0. Timestamp
+            t_str = record.timestamp.replace("T", " ")[:19]
+            it_ts = QTableWidgetItem(t_str)
+            it_ts.setForeground(QColor("#94a3b8"))
+            it_ts.setToolTip(record.timestamp)
+            self.table.setItem(row, 0, it_ts)
 
-        # 1. Severity Badge
-        it_sev = QTableWidgetItem(record.level)
-        if record.level == "ERROR":
-            it_sev.setForeground(QColor("#f87171"))  # Red
-        elif record.level == "WARNING":
-            it_sev.setForeground(QColor("#fbbf24"))  # Amber
-        else:
-            it_sev.setForeground(QColor("#38bdf8"))  # Cyan
-        font_b = it_sev.font()
-        font_b.setBold(True)
-        it_sev.setFont(font_b)
-        self.table.setItem(row, 1, it_sev)
+            # 1. Severity Badge
+            it_sev = QTableWidgetItem(record.level)
+            if record.level == "ERROR":
+                it_sev.setForeground(QColor("#f87171"))  # Red
+            elif record.level == "WARNING":
+                it_sev.setForeground(QColor("#fbbf24"))  # Amber
+            else:
+                it_sev.setForeground(QColor("#38bdf8"))  # Cyan
+            font_b = it_sev.font()
+            font_b.setBold(True)
+            it_sev.setFont(font_b)
+            self.table.setItem(row, 1, it_sev)
 
-        # 2. Domain
-        it_dom = QTableWidgetItem(record.domain)
-        it_dom.setForeground(QColor("#e2e8f0"))
-        self.table.setItem(row, 2, it_dom)
+            # 2. Domain
+            it_dom = QTableWidgetItem(record.domain)
+            it_dom.setForeground(QColor("#e2e8f0"))
+            self.table.setItem(row, 2, it_dom)
 
-        # 3. Phase / Event Type
-        it_phase = QTableWidgetItem(record.event_type)
-        it_phase.setForeground(QColor("#cbd5e1"))
-        self.table.setItem(row, 3, it_phase)
+            # 3. Phase / Event Type
+            it_phase = QTableWidgetItem(record.event_type)
+            it_phase.setForeground(QColor("#cbd5e1"))
+            self.table.setItem(row, 3, it_phase)
 
-        # 4. Message
-        msg_display = record.message
-        if record.operation_id:
-            msg_display = f"[{record.operation_id}] {msg_display}"
-        it_msg = QTableWidgetItem(msg_display)
-        it_msg.setForeground(QColor("#f8fafc"))
-        it_msg.setToolTip(record.message)
-        self.table.setItem(row, 4, it_msg)
+            # 4. Message
+            msg_display = record.message
+            if record.operation_id:
+                msg_display = f"[{record.operation_id}] {msg_display}"
+            it_msg = QTableWidgetItem(msg_display)
+            it_msg.setForeground(QColor("#f8fafc"))
+            it_msg.setToolTip(record.message)
+            self.table.setItem(row, 4, it_msg)
 
-        # Prune excess rows in table if exceeded
-        if self.table.rowCount() > self.MAX_DISPLAY_ROWS:
-            self.table.removeRow(0)
+            # Prune excess rows in table if exceeded
+            if self.table.rowCount() > self.MAX_DISPLAY_ROWS:
+                self.table.removeRow(0)
 
-        if self._auto_scroll:
-            self.table.scrollToBottom()
+            if self._auto_scroll:
+                self.table.scrollToBottom()
+        except (RuntimeError, AttributeError):
+            pass
 
     def _record_matches_filters(self, record: EventRecord) -> bool:
         # Severity
@@ -503,9 +508,14 @@ class LiveLogWidget(QWidget):
             log_event("LiveLog", "FAILURE", f"Could not open logs folder '{folder}': {e}", level="WARNING")
 
     def _update_counter(self):
-        total = len(self._all_records)
-        shown = self.table.rowCount()
-        if shown == total:
-            self.count_lbl.setText(f"{total} events recorded")
-        else:
-            self.count_lbl.setText(f"Showing {shown} of {total} events recorded")
+        try:
+            if not hasattr(self, "table") or self.table is None:
+                return
+            total = len(self._all_records)
+            shown = self.table.rowCount()
+            if shown == total:
+                self.count_lbl.setText(f"{total} events recorded")
+            else:
+                self.count_lbl.setText(f"Showing {shown} of {total} events recorded")
+        except (RuntimeError, AttributeError):
+            pass

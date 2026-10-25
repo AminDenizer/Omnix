@@ -5,7 +5,8 @@ from typing import Optional, List, Dict, Any
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QSpinBox, QLineEdit, QFrame,
-    QFileDialog, QHeaderView, QApplication, QMenu, QComboBox
+    QFileDialog, QHeaderView, QApplication, QMenu, QComboBox,
+    QCheckBox, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QMarginsF, QSizeF
 from PyQt6.QtGui import QColor, QFont, QDragEnterEvent, QDropEvent, QTextDocument, QPageSize, QPageLayout, QIntValidator
@@ -14,6 +15,10 @@ from PyQt6.QtPrintSupport import QPrinter
 from bom_auditor import BOMAuditor, BOMAuditResult, BOMItem
 from core.procurement.models import ProcurementMode, ManufacturerRule, ManufacturerDataState
 from excel_loader import ExcelDataLoader
+from core.procurement.reporting import (
+    ProcurementReportBuilder,
+    ProcurementXLSXExporter,
+)
 from ui.dialogs.order_preview_dialog import OrderPreviewDialog
 from ui.dialogs.brand_rule_dialog import BrandRuleDialog
 
@@ -109,14 +114,22 @@ class BOMAuditWidget(QWidget):
     bomLoaded = pyqtSignal(object)
     bomUnloaded = pyqtSignal()
 
-    def __init__(self, inventory_loader: ExcelDataLoader, parent=None):
+    def __init__(self, inventory_loader: Optional[Any] = None, parent=None):
         super().__init__(parent)
         self.inventory = inventory_loader
+        self.repository = inventory_loader
         self.current_bom_path: Optional[str] = None
         self.audit_result: Optional[BOMAuditResult] = None
         self.current_mode: ProcurementMode = ProcurementMode.DATABASE_AWARE
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self._init_ui()
+
+    def set_repository(self, repository: Any):
+        """Updates the active inventory repository and recalculates the audit if a BOM is loaded."""
+        self.inventory = repository
+        self.repository = repository
+        if self.current_bom_path and os.path.exists(self.current_bom_path):
+            self._recalculate_audit()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -156,37 +169,51 @@ class BOMAuditWidget(QWidget):
 
         top_layout.addStretch()
 
-        # Procurement Mode Selector (Mode A vs Mode B)
-        mode_lbl = QLabel("Mode:")
-        mode_lbl.setStyleSheet("font-weight: 600; color: #e2e8f0; font-size: 12px;")
-        top_layout.addWidget(mode_lbl)
-
+        # Procurement Mode Selector preserved internally for backend/testing compatibility
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("📊 Mode A (Database-Aware)", ProcurementMode.DATABASE_AWARE)
-        self.mode_combo.addItem("🚀 Mode B (Direct BOM Turnkey)", ProcurementMode.DIRECT_BOM)
-        self.mode_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #0b101b;
-                border: 1.5px solid #22324e;
-                border-radius: 6px;
-                color: #38bdf8;
-                font-size: 9pt;
-                font-weight: bold;
-                padding: 4px 8px;
-                min-width: 190px;
+        self.mode_combo.addItem("🚀 Mode B (Direct BOM Turnkey) — Coming Soon", ProcurementMode.DIRECT_BOM)
+        mode_model = self.mode_combo.model()
+        if mode_model and hasattr(mode_model, "item"):
+            item_mode_b = mode_model.item(1)
+            if item_mode_b:
+                item_mode_b.setEnabled(False)
+        def _guarded_mode_changed(idx):
+            if idx == 1:
+                self.mode_combo.setCurrentIndex(0)
+                return
+            self._on_mode_changed(idx)
+        self.mode_combo.currentIndexChanged.connect(_guarded_mode_changed)
+        self.mode_combo.hide()
+
+        # Deduct Internal Stock Checkbox
+        self.stock_checkbox = QCheckBox("Deduct internal stock")
+        self.stock_checkbox.setChecked(True)
+        self.stock_checkbox.setMinimumHeight(28)
+        self.stock_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-weight: 600;
+                color: #e2e8f0;
+                font-size: 12px;
+                spacing: 8px;
+                padding-right: 6px;
             }
-            QComboBox:hover {
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 1px solid #334155;
+                background-color: #0f172a;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0284c7;
                 border-color: #38bdf8;
             }
-            QComboBox QAbstractItemView {
-                background-color: #0f172a;
-                border: 1px solid #334155;
-                selection-background-color: #0284c7;
-                color: #f8fafc;
-            }
         """)
-        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
-        top_layout.addWidget(self.mode_combo)
+        self.stock_checkbox.toggled.connect(self._recalculate_audit)
+        top_layout.addWidget(self.stock_checkbox)
+
+        top_layout.addSpacing(10)
 
         # Board Assembly Quantity Multiplier (Modern Stepper with External Buttons)
         mult_lbl = QLabel("Boards to Assemble:")
@@ -260,11 +287,6 @@ class BOMAuditWidget(QWidget):
         action_layout.setContentsMargins(12, 8, 12, 8)
         action_layout.setSpacing(12)
 
-        self.validate_links_btn = QPushButton("🔗 Validate Links")
-        self.validate_links_btn.setObjectName("secondaryBtn")
-        self.validate_links_btn.setVisible(False)
-        self.validate_links_btn.clicked.connect(self._open_link_validation)
-
         action_layout.addStretch()
 
         self.order_btn = QPushButton("🛒 Order Project Shortages")
@@ -300,11 +322,13 @@ class BOMAuditWidget(QWidget):
 
         multiplier = self.multiplier_spin.value()
         inv = self.inventory if self.current_mode == ProcurementMode.DATABASE_AWARE else None
+        deduct = self.stock_checkbox.isChecked() if hasattr(self, "stock_checkbox") else True
         ok, msg, res = BOMAuditor.audit_bom(
             self.current_bom_path,
             inventory=inv,
             board_multiplier=multiplier,
-            mode=self.current_mode
+            mode=self.current_mode,
+            deduct_stock=deduct,
         )
         if not ok or not res:
             return
@@ -540,9 +564,10 @@ class BOMAuditWidget(QWidget):
                         item10.setToolTip(f"Multiple vendor links available ({vendor_names}):\n{it.link}\n(Select vendor in Order Preview)")
                     else:
                         v_name = it.vendor_id.replace("vendor_", "").title() if it.vendor_id else "Vendor"
-                        item10.setText(it.link)
+                        clean_url = it.to_dict().get("link") or it.link
+                        item10.setText(clean_url)
                         item10.setForeground(QColor("#38bdf8"))
-                        item10.setToolTip(f"{v_name} link (Auto-Order Ready): {it.link}")
+                        item10.setToolTip(f"{v_name} link (Auto-Order Ready): {clean_url}")
                 elif it.link_type == "INVALID":
                     item10.setText(f"❌ Unsupported URL ({it.link_domain})")
                     item10.setForeground(QColor("#f87171"))
@@ -553,7 +578,7 @@ class BOMAuditWidget(QWidget):
                         item10.setForeground(QColor("#f87171"))
                         item10.setToolTip("Component is in inventory database but store link is blank. Please add vendor URL in Inventory.xlsx.")
                     else:
-                        item10.setText("— Not in DB —" if it.status == "NOT_IN_DB" else it.link)
+                        item10.setText("— Not in DB —" if it.status == "NOT_IN_DB" else (it.link or "— Blank Store Link —"))
                         item10.setForeground(QColor("#64748b"))
                 self.table.setItem(row_idx, 10, item10)
 
@@ -665,25 +690,6 @@ class BOMAuditWidget(QWidget):
 
         res = self.audit_result
 
-        # Section 7: Automatic Link Validation before OrderPreviewDialog
-        items_to_check = res.get_all_shortages() if res.mode != ProcurementMode.DIRECT_BOM else res.get_orderable_shortages()
-        links_to_validate = []
-        for it in items_to_check:
-            link = (it.get("link") or it.get("raw_link") or "").strip()
-            if link and (link.startswith("http://") or link.startswith("https://")):
-                from core.procurement.link_validator import LinkValidationItem
-                links_to_validate.append(LinkValidationItem(
-                    component_name=it.get("part_name") or it.get("part_number") or it.get("designator", ""),
-                    manufacturer=it.get("manufacturer") or "",
-                    mpn=it.get("part_number") or it.get("mpn") or "",
-                    url=link,
-                ))
-
-        if links_to_validate:
-            from ui.dialogs.link_validation_dialog import LinkValidationDialog
-            val_dlg = LinkValidationDialog(links_to_validate, parent=self)
-            val_dlg.exec()
-
         if res.mode == ProcurementMode.DIRECT_BOM:
             all_items = res.get_all_shortages()
             dlg = OrderPreviewDialog(
@@ -710,133 +716,51 @@ class BOMAuditWidget(QWidget):
             )
             dlg.exec()
 
-    def _export_missing_report(self):
-        """Export missing components and stock shortages as a clean, printable PDF / CSV report."""
+    def _export_pre_order_plan(self):
+        """Export Pre-Order Procurement Plan (.xlsx) before staging operations."""
         if not self.audit_result:
             return
 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         res = self.audit_result
-        is_mode_b = res.mode == ProcurementMode.DIRECT_BOM
-
         default_base = res.file_name.replace(".xlsx", "").replace(".xls", "")
-        file_path, _ = QFileDialog.getSaveFileName(
+        default_name = f"Omnix_Procurement_Plan_{default_base}_{timestamp}.xlsx"
+
+        path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Missing Components & Shortages Report",
-            f"BOM_Shortages_Report_{default_base}.pdf",
-            "PDF Document (*.pdf);;CSV Spreadsheet (*.csv);;HTML Document (*.html)"
+            "Export Pre-Order Procurement Plan (.xlsx)",
+            default_name,
+            "Excel Files (*.xlsx)",
         )
-        if not file_path:
+        if not path:
             return
 
-        if file_path.lower().endswith(".csv"):
-            if is_mode_b:
-                lines = ["Status,Designator,Part Number,Manufacturer,Package,Footprint,Unit Qty,Total Needed,Brand Rule,Specs"]
-                for it in res.items:
-                    lines.append(
-                        f'"{it.status}","{it.designator}","{it.part_number}","{it.manufacturer}","{it.package}",'
-                        f'"{it.footprint}",{it.unit_qty},{it.total_needed_qty},"{it.mfg_data_state}","{it.required_specs}"'
-                    )
-            else:
-                lines = ["Status,Designator,Part Number,Comment,Footprint,Unit Qty,Total Needed,In Stock,Shortage,Link,Procurement Source"]
-                for it in res.items:
-                    if it.status in ["NOT_IN_DB", "SHORTAGE"]:
-                        source_str = "Lion Electronic" if it.link_type == "LION" else (it.link_domain if it.link_type == "EXTERNAL" else "None")
-                        lines.append(
-                            f'"{it.status}","{it.designator}","{it.part_number}","{it.comment}","{it.footprint}",'
-                            f'{it.unit_qty},{it.total_needed_qty},{it.db_stock_qty},{it.shortage_qty},"{it.link}","{source_str}"'
-                        )
-            with open(file_path, "w", encoding="utf-8-sig") as f:
-                f.write("\n".join(lines))
-            webbrowser.open(f"file:///{os.path.abspath(file_path)}")
-        else:
-            # HTML / PDF build
-            def format_designators(des_str: str) -> str:
-                parts = [p.strip() for p in des_str.split(',') if p.strip()]
-                if len(parts) > 6:
-                    return f"{', '.join(parts[:5])} ... (+{len(parts)-5})"
-                return ", ".join(parts)
+        all_shortages = res.get_all_shortages()
+        report_data = ProcurementReportBuilder.build_from_shortages(
+            shortages=all_shortages,
+            staging_results=None,
+            source_title=f"Project BOM Shortages — {res.file_name} ({res.board_multiplier} Boards)",
+            source_file=res.file_name,
+            procurement_mode=res.mode,
+            board_multiplier=res.board_multiplier,
+        )
 
-            html_rows = ""
-            for idx, it in enumerate(res.items, 1):
-                des_display = format_designators(it.designator)
-                bg = 'background-color:#ffffff;' if idx % 2 != 0 else 'background-color:#f8fafc;'
-                html_rows += f"""
-                <tr style="{bg}">
-                    <td style="text-align:center; color:#64748b; border:1px solid #94a3b8; padding:4px 6px;">{idx}</td>
-                    <td style="border:1px solid #94a3b8; padding:4px 6px;"><b>{des_display}</b></td>
-                    <td style="border:1px solid #94a3b8; padding:4px 6px;"><code>{it.part_number or '-'}</code></td>
-                    <td style="border:1px solid #94a3b8; padding:4px 6px;">{it.manufacturer or it.comment or '-'}</td>
-                    <td style="border:1px solid #94a3b8; padding:4px 6px;">{it.package or it.footprint or '-'}</td>
-                    <td style="text-align:center; border:1px solid #94a3b8; padding:4px 6px;">{it.total_needed_qty}</td>
-                    <td style="text-align:center; color:#b91c1c; font-weight:bold; border:1px solid #94a3b8; padding:4px 6px;">{it.shortage_qty}</td>
-                </tr>
-                """
+        try:
+            ProcurementXLSXExporter.export(report_data, path)
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Pre-Order Procurement Plan successfully exported to:\n{path}",
+            )
+            webbrowser.open(f"file:///{os.path.abspath(path)}")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                f"Failed to export pre-order plan:\n{str(e)}",
+            )
 
-            mode_title = "Direct Turnkey BOM Report" if is_mode_b else "BOM Assembly & Shortages Audit Report"
-            html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>{mode_title} — {res.file_name}</title>
-<style>
-    body {{ font-family: Arial, Helvetica, sans-serif; font-size: 8.5pt; color: #0f172a; margin: 0; padding: 0; }}
-    .header {{ border-bottom: 2px solid #0f172a; padding-bottom: 4px; margin-bottom: 10px; }}
-    h1 {{ font-size: 13.5pt; color: #0f172a; margin: 0 0 3px 0; font-weight: bold; }}
-    .meta {{ font-size: 8.5pt; color: #475569; }}
-    table.data-table {{ width: 100%; border-collapse: collapse; margin-bottom: 12px; border: 1px solid #475569; }}
-    table.data-table th {{ background-color: #1e293b; color: #ffffff; font-weight: bold; font-size: 8pt; padding: 5px 6px; border: 1px solid #475569; text-align: left; }}
-    code {{ font-family: Consolas, monospace; background-color: #f1f5f9; padding: 1px 3px; font-size: 7.5pt; }}
-    .footer {{ font-size: 7.5pt; color: #94a3b8; text-align: center; margin-top: 10px; border-top: 1px solid #cbd5e1; padding-top: 3px; }}
-</style>
-</head>
-<body>
-    <div class="header">
-        <h1>{mode_title}</h1>
-        <div class="meta">
-            <b>Project BOM:</b> {res.file_name} &nbsp;&nbsp;|&nbsp;&nbsp;
-            <b>Date:</b> {now_str} &nbsp;&nbsp;|&nbsp;&nbsp;
-            <b>Batch Quantity:</b> {res.board_multiplier} Board(s)
-        </div>
-    </div>
-    <table class="data-table" border="1" cellspacing="0" cellpadding="4">
-        <thead>
-            <tr>
-                <th width="3%" style="text-align:center;">#</th>
-                <th width="18%">Designator</th>
-                <th width="25%">Part Number</th>
-                <th width="20%">Manufacturer / Comment</th>
-                <th width="15%">Package / Footprint</th>
-                <th width="10%" style="text-align:center;">Total Qty</th>
-                <th width="9%" style="text-align:center;">Shortage</th>
-            </tr>
-        </thead>
-        <tbody>
-            {html_rows}
-        </tbody>
-    </table>
-    <div class="footer">Omnix Procurement & Inventory Management System</div>
-</body>
-</html>
-"""
-            if file_path.lower().endswith(".html"):
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(html_content)
-            else:
-                printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
-                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-                printer.setOutputFileName(file_path)
-                printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-                printer.setPageOrientation(QPageLayout.Orientation.Landscape)
-                printer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout.Unit.Millimeter)
-
-                doc = QTextDocument()
-                page_size = printer.pageLayout().paintRectPixels(printer.resolution()).size()
-                doc.setPageSize(QSizeF(page_size))
-                doc.setHtml(html_content)
-                doc.print(printer)
-
-            webbrowser.open(f"file:///{os.path.abspath(file_path)}")
+    _export_missing_report = _export_pre_order_plan
 
     def _edit_brand_rule(self, row_idx: int):
         """Open the interactive Brand / Manufacturer Rule Dialog for a BOM item."""
@@ -900,25 +824,3 @@ class BOMAuditWidget(QWidget):
                 open_link_act.triggered.connect(lambda _, url=it.link: webbrowser.open(url))
 
         menu.exec(self.table.viewport().mapToGlobal(pos))
-
-    def _open_link_validation(self):
-        if not self.audit_result:
-            return
-        from core.procurement.link_validator import LinkValidationItem
-        items = []
-        for it in (self.audit_result.shortage_items + self.audit_result.in_stock_items):
-            link = str(it.get("link", "") or it.get("raw_link", "")).strip()
-            if link:
-                items.append(LinkValidationItem(
-                    component_name=it.get("part_name") or it.get("part_number") or it.get("designator", ""),
-                    manufacturer=it.get("manufacturer") or "",
-                    mpn=it.get("part_number") or it.get("mpn") or "",
-                    url=link,
-                ))
-        if not items:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(self, "No Links Found", "No store links were found on items in this BOM.")
-            return
-        from ui.dialogs.link_validation_dialog import LinkValidationDialog
-        dlg = LinkValidationDialog(items, parent=self)
-        dlg.exec()

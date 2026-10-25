@@ -45,9 +45,14 @@ from core.errors import (
     DOMDriftError,
     UnknownVendorError,
 )
-from vendors.javan.selectors import JavanSelectors
-from vendors.javan.errors import JavanErrorTranslator
-from vendors.javan.session import JavanSessionManager
+try:
+    from .selectors import JavanSelectors
+    from .errors import JavanErrorTranslator
+    from .session import JavanSessionManager
+except ImportError:
+    from vendors.javan.selectors import JavanSelectors
+    from vendors.javan.errors import JavanErrorTranslator
+    from vendors.javan.session import JavanSessionManager
 
 
 def _normalize_persian_text(text: str) -> str:
@@ -248,8 +253,8 @@ class JavanVendorAdapter(IVendorAdapter):
             m = JavanSelectors.PDP_URL_PATTERN.match(raw)
             if m:
                 p_id = m.group("product_id")
-                mfr = m.group("manufacturer")
-                slug = m.group("slug")
+                mfr = m.group("manufacturer") or "generic"
+                slug = m.group("slug") or f"product-{p_id}"
                 return ProductReference(
                     vendor_id=self.VENDOR_ID,
                     vendor_sku=p_id,
@@ -299,8 +304,8 @@ class JavanVendorAdapter(IVendorAdapter):
         m_rel = JavanSelectors.PDP_PATH_PATTERN.match(raw)
         if m_rel:
             p_id = m_rel.group("product_id")
-            mfr = m_rel.group("manufacturer")
-            slug = m_rel.group("slug")
+            mfr = m_rel.group("manufacturer") or "generic"
+            slug = m_rel.group("slug") or f"product-{p_id}"
             full_url = urllib.parse.urljoin(self.BASE_URL, raw)
             return ProductReference(
                 vendor_id=self.VENDOR_ID,
@@ -643,11 +648,11 @@ class JavanVendorAdapter(IVendorAdapter):
                 if key and val and key != "Features" and key != "انتخاب ویژگی":
                     specs[key] = val
                     k_lower = key.lower()
-                    if "نام کارخانه‌ای" in key or "شماره فنی" in key or "part number" in k_lower or "mpn" in k_lower:
+                    if "نام کارخانه‌ای" in key or "شماره فنی" in key or "پارت نامبر" in key or "part number" in k_lower or "mpn" in k_lower:
                         mpn = val
                     elif not mpn and ("نام قطعه" in key or "part name" in k_lower):
                         mpn = val
-                    elif "برند" in key or "سازنده" in key or "brand" in k_lower or "manufacturer" in k_lower:
+                    elif "برند" in key or "سازنده" in key or "تولید کننده" in key or "تولیدکننده" in key or "brand" in k_lower or "manufacturer" in k_lower:
                         manufacturer = val
                     elif "پکیج" in key or "package" in k_lower or "case" in k_lower or "footprint" in k_lower:
                         package = val
@@ -657,11 +662,11 @@ class JavanVendorAdapter(IVendorAdapter):
         for line in full_text.splitlines():
             line_clean = line.strip(" •-\t\r")
             if not mpn:
-                m_mpn = re.search(r"^(?:نام\s*کارخانه‌ای|شماره\s*فنی|Part\s*Number|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
+                m_mpn = re.search(r"^(?:نام\s*کارخانه‌ای|شماره\s*فنی|پارت\s*نامبر|Part\s*Number|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
                 if m_mpn:
                     mpn = m_mpn.group(1).strip()
             if not manufacturer:
-                m_mfg = re.search(r"^(?:برند|سازنده|Brand|Manufacturer)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                m_mfg = re.search(r"^(?:برند|سازنده|تولید\s*کننده|Brand|Manufacturer)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
                 if m_mfg:
                     manufacturer = m_mfg.group(1).strip()
             if not package:
@@ -676,6 +681,14 @@ class JavanVendorAdapter(IVendorAdapter):
                 m_step = re.search(r"^ضریب\s*[:\s•-]+\s*(\d+)", line_clean)
                 if m_step:
                     specs["ضریب"] = m_step.group(1)
+
+        # 3. Fallback to PDP title / H1 if MPN is not in specs table or text
+        if not mpn:
+            title_el = soup.select_one(JavanSelectors.PDP_TITLE)
+            if title_el:
+                raw_t = title_el.get_text(strip=True)
+                if raw_t:
+                    mpn = raw_t
 
         return CanonicalComponentDraft(
             vendor_id=self.VENDOR_ID,
@@ -728,13 +741,38 @@ class JavanVendorAdapter(IVendorAdapter):
         target_url = product_ref.pdp_url
 
         try:
-            # 1. Ensure session is authenticated
+            # 1. Ensure session is authenticated (reuse valid session when available)
             try:
                 status = self.validate_session()
-                if not status.is_authenticated:
-                    self.authenticate()
             except Exception:
-                pass
+                status = SessionStatus(vendor_id=self.VENDOR_ID, is_authenticated=False)
+
+            if not status.is_authenticated:
+                # User-initiated cart addition authorizes login with configured credentials
+                from settings_manager import settings
+                v_cfg = settings.get_vendor_settings(self.VENDOR_ID) if hasattr(settings, "get_vendor_settings") else None
+                u = (v_cfg.username if v_cfg else "") or settings.get("javan_username", "").strip()
+                p = (v_cfg.password if v_cfg else "") or settings.get("javan_password", "").strip()
+
+                if not u or not p:
+                    raise AuthenticationRequiredError(
+                        "Javan Electronic credentials (Username & Password) are not configured.",
+                        vendor_id=self.VENDOR_ID,
+                    )
+
+                auth_res = self.authenticate(credentials=AuthCredentials(username=u, password=p))
+                if not auth_res or not auth_res.success:
+                    err_msg = auth_res.message if auth_res else "Authentication failed"
+                    if auth_res and getattr(auth_res, "requires_interactive", False):
+                        from core.errors import SecurityChallengeError
+                        raise SecurityChallengeError(
+                            f"Javan Electronic security challenge encountered: {err_msg}",
+                            vendor_id=self.VENDOR_ID,
+                        )
+                    raise AuthenticationRequiredError(
+                        f"Javan Electronic authentication failed: {err_msg}",
+                        vendor_id=self.VENDOR_ID,
+                    )
 
             # 2. Ensure we are on the PDP or base page
             cur_url = getattr(driver, "current_url", "") or ""
@@ -859,14 +897,22 @@ class JavanVendorAdapter(IVendorAdapter):
                     err = JavanErrorTranslator.translate_modal_message(ep_text, {"requested_qty": eff_qty, "product_sku": product_ref.vendor_sku})
                     raise err
 
+            try:
+                final_qty = int(actual_staged_qty)
+            except (ValueError, TypeError):
+                final_qty = eff_qty
+
+            if final_qty <= 0:
+                raise OmnixVendorError("Javan cart staging did not confirm any quantity.", vendor_id=self.VENDOR_ID)
+
             return CartMutationResult(
                 vendor_id=self.VENDOR_ID,
                 vendor_sku=product_ref.vendor_sku,
                 requested_quantity=quantity,
-                actual_quantity_staged=int(actual_staged_qty),
+                actual_quantity_staged=final_qty,
                 success=True,
                 error_category=None,
-                raw_vendor_message=f"Added {actual_staged_qty} units to Javan shopping cart",
+                raw_vendor_message=f"Added {final_qty} units to Javan shopping cart",
                 cart_total_items=1,
             )
 

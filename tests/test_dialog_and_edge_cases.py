@@ -45,11 +45,11 @@ class TestDialogAndEdgeCases:
         assert len(success_items) == 2
         assert [it['part_name'] for it in success_items] == ['NE555P', 'LM358N']
 
-        # Execute stock update
-        count, msg = loader.batch_increment_stock(success_items)
-        assert count == 2
+        # Verify strict inventory immutability: loader has no stock mutation methods
+        assert not hasattr(loader, "batch_increment_stock")
+        assert not hasattr(loader, "save_cell_value")
 
-        # Re-read file to verify exact disk state
+        # Verify inventory stock on disk remains strictly untouched
         loader.load_file(inv_path)
         stock_col = loader.get_column_index(['quantity in stock'])
         
@@ -58,10 +58,10 @@ class TestDialogAndEdgeCases:
         irfu = next(r for idx, r in loader.rows if 'IRFU120NPBF' in r)
         ao = next(r for idx, r in loader.rows if 'AO4294A' in r)
 
-        assert ne555[stock_col] == '55'  # 5 + 50
-        assert lm358[stock_col] == '60'  # 10 + 50
-        assert irfu[stock_col] == '0'    # untouched
-        assert ao[stock_col] == '0'      # untouched
+        assert ne555[stock_col] == '5'   # untouched
+        assert lm358[stock_col] == '10'  # untouched
+        assert irfu[stock_col] == '0'   # untouched
+        assert ao[stock_col] == '0'     # untouched
 
     def test_mode_a_dialog_instantiation(self, qapp):
         from ui.dialogs.order_preview_dialog import OrderPreviewDialog
@@ -107,10 +107,10 @@ class TestDialogAndEdgeCases:
             source_title="Project BOM Shortages — Test.xlsx (1 Boards)",
         )
         assert dlg.table.rowCount() == 4
-        assert dlg.table.columnCount() == 6
+        assert dlg.table.columnCount() == 7
         # Check stock values
-        assert dlg.table.item(0, 2).text() == "2"
-        assert dlg.table.item(1, 2).text() == "5"
+        assert dlg.table.item(0, dlg.COL_STOCK).text() == "2"
+        assert dlg.table.item(1, dlg.COL_STOCK).text() == "5"
         assert len(dlg.orderable_items) == 2
         assert len(dlg.external_items) == 1
         assert len(dlg.blank_link_items) == 1

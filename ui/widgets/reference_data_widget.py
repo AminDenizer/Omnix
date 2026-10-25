@@ -41,6 +41,8 @@ from core.inventory.models import (
     ValidationError,
 )
 from core.inventory.repository import SqliteInventoryRepository
+from ui.dark_frame import apply_dark_window_frame
+from ui.dialogs.confirmation_dialog import show_confirmation_dialog
 
 
 class ReferenceDataWidget(QWidget):
@@ -529,13 +531,13 @@ class ReferenceDataWidget(QWidget):
         if not mfr:
             return
 
-        confirm = QMessageBox.question(
+        confirm = show_confirmation_dialog(
             self,
             "Confirm Delete Manufacturer",
             f"Are you sure you want to delete manufacturer '{mfr.name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            is_danger=True,
         )
-        if confirm == QMessageBox.StandardButton.Yes:
+        if confirm:
             try:
                 self.repository.delete_manufacturer(mfr_id)
                 self._refresh_manufacturers()
@@ -637,13 +639,13 @@ class ReferenceDataWidget(QWidget):
         if not cat:
             return
 
-        confirm = QMessageBox.question(
+        confirm = show_confirmation_dialog(
             self,
             "Confirm Delete Category",
             f"Are you sure you want to delete category '{cat.name}'?\n(Categories in use or containing types cannot be deleted).",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            is_danger=True,
         )
-        if confirm == QMessageBox.StandardButton.Yes:
+        if confirm:
             try:
                 self.repository.delete_category(cat_id)
                 self._selected_category_id = None
@@ -746,13 +748,13 @@ class ReferenceDataWidget(QWidget):
         if not t:
             return
 
-        confirm = QMessageBox.question(
+        confirm = show_confirmation_dialog(
             self,
             "Confirm Delete Type",
             f"Are you sure you want to delete type '{t.name}' under category '{t.category_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            is_danger=True,
         )
-        if confirm == QMessageBox.StandardButton.Yes:
+        if confirm:
             try:
                 self.repository.delete_type(type_id)
                 self._refresh_types()
@@ -813,7 +815,6 @@ class ReferenceDataDialog(QDialog):
             }
         """)
 
-        from ui.dark_frame import apply_dark_window_frame
         apply_dark_window_frame(self)
 
         layout = QVBoxLayout(self)
@@ -827,5 +828,4 @@ class ReferenceDataDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        from ui.dark_frame import apply_dark_window_frame
         apply_dark_window_frame(self)

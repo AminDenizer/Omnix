@@ -1,4 +1,4 @@
-﻿# Python bytecode & cache
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -35,8 +35,19 @@ _internal/
 # Database & backup files
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.elecbak
 *.omnixbak
+*.obk
+!data/starter_backup.obk
+data/safety_backups/
+
+# Runtime logs & local scratch/debug workspace
+logs/
+scratch/
+req_t.txt
+vendors list.txt
 
 # Test & coverage
 .pytest_cache/

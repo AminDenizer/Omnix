@@ -41,6 +41,37 @@ from core.plugins.package_inspector import (
     MAX_ARCHIVE_ENTRIES,
     ALLOWED_EXTENSIONS,
 )
+from core.plugins.trust_engine import (
+    TrustEngine,
+    TrustStatus,
+    TrustVerificationResult,
+    TrustVerificationError,
+    ED25519_SIGNATURE_LENGTH_BYTES,
+    ED25519_PUBLIC_KEY_LENGTH_BYTES,
+)
+from core.plugins.plugin_store import (
+    PluginStore,
+    TransactionState,
+    InstalledPluginStatus,
+    TransactionJournal,
+    InstalledVersionRecord,
+    InstalledPluginRecord,
+)
+from core.plugins.plugin_installer import (
+    PluginInstaller,
+    PluginInstallationResult,
+)
+from core.plugins.plugin_loader import (
+    PluginLoader,
+    PluginLoadResult,
+)
+from core.plugins.plugin_lifecycle_manager import (
+    PluginLifecycleManager,
+    LifecycleResult,
+    LifecycleStatus,
+    get_lifecycle_manager,
+    restore_installed_plugins,
+)
 
 __all__ = [
     "ManifestValidator",
@@ -75,5 +106,31 @@ __all__ = [
     "COMPRESSION_RATIO_THRESHOLD_BYTES",
     "MAX_ARCHIVE_ENTRIES",
     "ALLOWED_EXTENSIONS",
+    # Trust Engine
+    "TrustEngine",
+    "TrustStatus",
+    "TrustVerificationResult",
+    "TrustVerificationError",
+    "ED25519_SIGNATURE_LENGTH_BYTES",
+    "ED25519_PUBLIC_KEY_LENGTH_BYTES",
+    # Plugin Store
+    "PluginStore",
+    "TransactionState",
+    "InstalledPluginStatus",
+    "TransactionJournal",
+    "InstalledVersionRecord",
+    "InstalledPluginRecord",
+    # Plugin Installer
+    "PluginInstaller",
+    "PluginInstallationResult",
+    # Plugin Loader
+    "PluginLoader",
+    "PluginLoadResult",
+    # Plugin Lifecycle Manager
+    "PluginLifecycleManager",
+    "LifecycleResult",
+    "LifecycleStatus",
+    "get_lifecycle_manager",
+    "restore_installed_plugins",
 ]
 

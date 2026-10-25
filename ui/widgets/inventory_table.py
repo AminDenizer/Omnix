@@ -84,6 +84,9 @@ class InventoryTableWidget(QTableWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setHorizontalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
         self.empty_overlay = EmptyStateOverlay(self.viewport())
         self.empty_overlay.hide()
         self._min_column_widths = {}
@@ -141,19 +144,9 @@ class InventoryTableWidget(QTableWidget):
                     target_w = base_widths[c] + extra
                     if self.columnWidth(c) != target_w:
                         self.setColumnWidth(c, target_w)
-            elif vp_width < total_base:
-                deficit = total_base - vp_width
-                sub_each = deficit // len(flex_cols)
-                rem = deficit % len(flex_cols)
-                for c in visible_cols:
-                    shrink = 0
-                    if c in flex_cols:
-                        idx_in_flex = flex_cols.index(c)
-                        shrink = sub_each + (1 if idx_in_flex < rem else 0)
-                    target_w = max(30, base_widths[c] - shrink)
-                    if self.columnWidth(c) != target_w:
-                        self.setColumnWidth(c, target_w)
             else:
+                # vp_width <= total_base: Preserve minimum practical widths.
+                # Do not compress columns below legible minimums; engage horizontal scrollbar instead.
                 for c in visible_cols:
                     target_w = base_widths[c]
                     if self.columnWidth(c) != target_w:

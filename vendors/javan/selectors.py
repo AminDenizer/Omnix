@@ -56,11 +56,11 @@ class JavanSelectors:
 
     # URL Patterns & Regexes
     PDP_URL_PATTERN: Pattern = re.compile(
-        r"^https?://(?:www\.)?javanelec\.com/shop/product/(?P<product_id>\d+)/(?P<manufacturer>[a-zA-Z0-9_.-]+)/(?P<slug>[a-zA-Z0-9_.-]+)(?:/.*)?$",
+        r"^https?://(?:www\.)?javanelec\.com/shop/product/(?P<product_id>\d+)(?:/(?P<manufacturer>[^/]+)(?:/(?P<slug>[^/?#]+))?)?(?:/.*)?$",
         re.IGNORECASE,
     )
     PDP_PATH_PATTERN: Pattern = re.compile(
-        r"^/shop/product/(?P<product_id>\d+)/(?P<manufacturer>[a-zA-Z0-9_.-]+)/(?P<slug>[a-zA-Z0-9_.-]+)(?:/.*)?$",
+        r"^/shop/product/(?P<product_id>\d+)(?:/(?P<manufacturer>[^/]+)(?:/(?P<slug>[^/?#]+))?)?(?:/.*)?$",
         re.IGNORECASE,
     )
     SEARCH_URL_TEMPLATE = "https://www.javanelec.com/shop?searchfilter={query}#filter_items_-1"

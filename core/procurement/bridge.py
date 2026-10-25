@@ -1,3 +1,4 @@
+import datetime
 """
 Universal Procurement Bridge Layer.
 
@@ -15,6 +16,8 @@ from urllib.parse import urlparse
 
 from core.models import CartMutationResult
 from core.procurement.models import (
+    SupplierOutcomeStatus,
+    SupplierItemResult,
     BOMProcurementPlan,
     CandidateEvaluation,
     ProcurementMode,
@@ -140,6 +143,15 @@ class ProcurementBridge:
                 return True, None
             return False, None
 
+        # Check for zero or negative shortage / needed quantity in Mode A
+        for q_key in ("needed_qty", "shortage_qty"):
+            if q_key in item and item[q_key] is not None:
+                try:
+                    if int(item[q_key]) <= 0:
+                        return False, None
+                except (ValueError, TypeError):
+                    pass
+
         # Check if an explicit vendor has been selected for a multi-vendor item
         selected_vid = item.get("selected_vendor_id") or item.get("selected_vendor")
         vendor_links = item.get("vendor_links")
@@ -198,18 +210,35 @@ class ProcurementBridge:
             raise ValueError("part_number must be a non-empty string. Fallback to comment is prohibited.")
         part_number = raw_pn.strip()
 
-        try:
-            req_qty = int(
-                item.get("needed_qty")
-                or item.get("shortage_qty")
-                or item.get("total_needed_qty")
-                or item.get("total_needed")
-                or item.get("unit_qty")
-                or 1
+        # Explicit check for known purchase requirement with strict zero preservation (Section 5 Fix C)
+        raw_qty = None
+        for key in ("needed_qty", "shortage_qty"):
+            if key in item and item[key] is not None:
+                try:
+                    raw_qty = int(item[key])
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+        if raw_qty is None:
+            for key in ("total_needed_qty", "total_needed", "unit_qty"):
+                if key in item and item[key] is not None:
+                    try:
+                        raw_qty = int(item[key])
+                        break
+                    except (ValueError, TypeError):
+                        pass
+
+        if raw_qty is None:
+            raw_qty = 1
+
+        if raw_qty <= 0:
+            raise ValueError(
+                f"Component '{part_number}' has zero or negative purchase requirement ({raw_qty} pcs). "
+                "Fully stocked components cannot be dispatched for procurement."
             )
-        except (ValueError, TypeError):
-            req_qty = 1
-        req_qty = max(1, req_qty)
+
+        req_qty = raw_qty
 
         if line_item_id:
             lid = line_item_id
@@ -357,6 +386,8 @@ class ProcurementBridge:
         successful_count = 0
         failed_count = 0
         results_log = []
+        supplier_results: List[SupplierItemResult] = []
+        run_id = f"RUN-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
         if total == 0:
             return {
@@ -375,13 +406,15 @@ class ProcurementBridge:
                 or item.get("designator")
                 or f"Item {idx}"
             )
-            needed_qty = int(
-                item.get("needed_qty")
-                or item.get("shortage_qty")
-                or item.get("total_needed_qty")
-                or item.get("unit_qty")
-                or 1
-            )
+            raw_n = item.get("needed_qty")
+            if raw_n is None:
+                raw_n = item.get("shortage_qty")
+            if raw_n is None:
+                raw_n = item.get("total_needed_qty") or item.get("unit_qty") or 1
+            try:
+                needed_qty = int(raw_n)
+            except (ValueError, TypeError):
+                needed_qty = 1
             link = str(item.get("link", "")).strip()
 
             is_orderable, vendor_id = ProcurementBridge.is_item_orderable(item, reg)
@@ -391,15 +424,36 @@ class ProcurementBridge:
                 item["order_success"] = False
                 item["actual_ordered_qty"] = 0
                 item["qty_ordered"] = 0
-                msg = f"No supported vendor adapter for link: {link}" if link else "Missing or invalid part number / store link"
+                if any(item.get(k) is not None and int(item.get(k)) <= 0 for k in ("needed_qty", "shortage_qty")):
+                    msg = "No procurement requirement: item is fully covered by stock (0 pcs needed)"
+                elif link:
+                    msg = f"No supported vendor adapter for link: {link}"
+                else:
+                    msg = "Missing or invalid part number / store link"
                 item["order_message"] = msg
+                is_stock_covered = any(item.get(k) is not None and int(item.get(k)) <= 0 for k in ("needed_qty", "shortage_qty"))
+                sc = SupplierOutcomeStatus.NO_OP_SATISFIED if is_stock_covered else SupplierOutcomeStatus.SKIPPED
                 results_log.append({
                     "part": p_name,
                     "status": "FAILED",
+                    "status_code": sc.value,
                     "qty": 0,
                     "msg": msg,
+                    "vendor_id": vendor_id or "",
                     "item": item,
                 })
+                supplier_results.append(SupplierItemResult(
+                    run_id=run_id,
+                    item_id=str(item.get("designator") or p_name),
+                    mpn=str(item.get("part_number") or p_name),
+                    vendor_id=vendor_id or "",
+                    requested_quantity=needed_qty,
+                    effective_quantity=needed_qty,
+                    staged_quantity=0,
+                    status=sc,
+                    message=msg,
+                    pdp_url=link,
+                ))
                 if progress_callback:
                     progress_callback(idx, total, p_name, 0, f"Skipped ({msg})")
                 continue
@@ -431,14 +485,33 @@ class ProcurementBridge:
                         item["qty_ordered"] = stage_res.actual_quantity_staged
                         msg = stage_res.raw_vendor_message or ("Already satisfied in cart" if stage_res.is_noop else "Added to cart")
                         item["order_message"] = msg
+                        sc = SupplierOutcomeStatus.NO_OP_SATISFIED if stage_res.is_noop else SupplierOutcomeStatus.ADDED_TO_CART
                         results_log.append({
                             "part": p_name,
                             "status": "SUCCESS",
+                            "status_code": sc.value,
                             "qty": stage_res.actual_quantity_staged,
                             "msg": msg,
                             "vendor_id": candidate.vendor_id,
                             "item": item,
                         })
+                        supplier_results.append(SupplierItemResult(
+                            run_id=run_id,
+                            item_id=str(item.get("designator") or p_name),
+                            mpn=candidate.part_number,
+                            vendor_id=candidate.vendor_id,
+                            requested_quantity=needed_qty,
+                            effective_quantity=res.selected_evaluation.effective_quantity,
+                            staged_quantity=stage_res.actual_quantity_staged,
+                            status=sc,
+                            message=msg,
+                            available_quantity=candidate.stock_quantity,
+                            unit_price_irr=res.selected_evaluation.effective_unit_price_irr,
+                            total_price_irr=res.selected_evaluation.effective_total_price_irr,
+                            is_verified=True,
+                            is_noop=stage_res.is_noop,
+                            pdp_url=candidate.product_ref.pdp_url if candidate.product_ref else link,
+                        ))
                         if progress_callback:
                             cb_msg = f"{msg}" if stage_res.is_noop else f"Added {stage_res.actual_quantity_staged} pcs ({msg})"
                             progress_callback(
@@ -456,14 +529,31 @@ class ProcurementBridge:
                         item["qty_ordered"] = stage_res.actual_quantity_staged
                         msg = stage_res.raw_vendor_message or "Staging failed"
                         item["order_message"] = msg
+                        sc = SupplierOutcomeStatus.CHALLENGE_BLOCKED if stage_res.error_category == "CHALLENGE_BLOCKED" else SupplierOutcomeStatus.FAILED
                         results_log.append({
                             "part": p_name,
                             "status": "FAILED",
+                            "status_code": sc.value,
                             "qty": stage_res.actual_quantity_staged,
                             "msg": msg,
                             "vendor_id": candidate.vendor_id,
                             "item": item,
                         })
+                        supplier_results.append(SupplierItemResult(
+                            run_id=run_id,
+                            item_id=str(item.get("designator") or p_name),
+                            mpn=candidate.part_number,
+                            vendor_id=candidate.vendor_id,
+                            requested_quantity=needed_qty,
+                            effective_quantity=res.selected_evaluation.effective_quantity if res.selected_evaluation else needed_qty,
+                            staged_quantity=0,
+                            status=sc,
+                            message=msg,
+                            error_category=stage_res.error_category,
+                            available_quantity=candidate.stock_quantity,
+                            is_verified=False,
+                            pdp_url=candidate.product_ref.pdp_url if candidate.product_ref else link,
+                        ))
                         if progress_callback:
                             progress_callback(
                                 idx,
@@ -479,14 +569,54 @@ class ProcurementBridge:
                     item["qty_ordered"] = 0
                     fail_msg = res.error_message if res else "Candidate resolution failed"
                     item["order_message"] = fail_msg
+                    is_insufficient = bool(res and res.status == "INSUFFICIENT_STOCK")
+                    is_oos = bool(res and res.status == "OUT_OF_STOCK")
+                    if is_insufficient:
+                        sc = SupplierOutcomeStatus.INSUFFICIENT_STOCK
+                        row_status = "SKIPPED"
+                    elif is_oos:
+                        sc = SupplierOutcomeStatus.OUT_OF_STOCK
+                        row_status = "FAILED"
+                    else:
+                        sc = SupplierOutcomeStatus.FAILED
+                        row_status = "FAILED"
                     results_log.append({
                         "part": p_name,
-                        "status": "FAILED",
+                        "status": row_status,
+                        "status_code": sc.value,
                         "qty": 0,
                         "msg": fail_msg,
                         "vendor_id": vendor_id or "multi_vendor",
                         "item": item,
                     })
+                    eff_q = needed_qty
+                    avail_q = None
+                    pkg_step = 1
+                    moq_val = 1
+                    if res and res.evaluations:
+                        ev0 = res.evaluations[0]
+                        eff_q = ev0.effective_quantity or needed_qty
+                        if ev0.candidate:
+                            avail_q = ev0.candidate.stock_quantity
+                            if ev0.candidate.order_constraints:
+                                pkg_step = ev0.candidate.order_constraints.packaging_step_raw or 1
+                                moq_val = ev0.candidate.order_constraints.moq_raw or 1
+
+                    supplier_results.append(SupplierItemResult(
+                        run_id=run_id,
+                        item_id=str(item.get("designator") or p_name),
+                        mpn=p_name,
+                        vendor_id=vendor_id or "multi_vendor",
+                        requested_quantity=needed_qty,
+                        effective_quantity=eff_q,
+                        staged_quantity=0,
+                        status=sc,
+                        message=fail_msg,
+                        available_quantity=avail_q,
+                        packaging_step=pkg_step,
+                        moq=moq_val,
+                        pdp_url=link,
+                    ))
                     if progress_callback:
                         progress_callback(idx, total, p_name, 0, f"Error: {fail_msg}")
 
@@ -519,5 +649,6 @@ class ProcurementBridge:
             "successful_count": successful_count,
             "failed_count": failed_count,
             "results": results_log,
+            "supplier_results": supplier_results,
             "items": items,
         }

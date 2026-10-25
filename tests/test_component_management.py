@@ -692,6 +692,8 @@ class TestStockGroupingInvariantsAndUI:
                 footprint="SMD_0603",
                 value="10k",
                 quantity_in_stock=100,
+                min_stock=150,
+                target_stock=400,
             )
         )
         # Set policy thresholds for this group
@@ -801,6 +803,8 @@ class TestEmptyGroupPolicyCleanupInvariant:
                 footprint="SMD_0603",
                 value="10k",
                 quantity_in_stock=200,
+                min_stock=150,
+                target_stock=500,
             )
         )
         group_key = p1.group_key
@@ -917,9 +921,10 @@ class TestEmptyGroupPolicyCleanupInvariant:
         # The new component's group must NOT have old policy thresholds
         group = repo.get_group(group_key)
         assert group is not None
-        assert group.min_stock is None
-        assert group.target_stock is None
-        assert not group.is_complete
+        assert group.min_stock == 0
+        assert group.target_stock == 0
+        assert group.min_stock != 250
+        assert group.target_stock != 600
 
     def test_deletion_failure_rolls_back_both_component_and_policy(self, clean_sqlite_repo):
         repo = clean_sqlite_repo
@@ -1002,13 +1007,13 @@ class TestThreeDistinctInventoryViews:
             assert any(text in win.inventory_subtabs.tabText(0) for text in ["Assembly View", "Stock Policy"])
             assert "Component Inventory" in win.inventory_subtabs.tabText(1)
 
-            # 3. Table 1: Dedicated Component Inventory Table
+            # 3. Table 1: Dedicated Component Inventory Table (13 columns with Min Stock and Target Stock)
             assert hasattr(win, "inventory_components_table")
-            assert win.inventory_components_table.columnCount() == 11
+            assert win.inventory_components_table.columnCount() == 13
 
-            # 4. Table 2: Stock Policy Groups Table
+            # 4. Table 2: Stock Policy Groups Table (8 columns without Min/Target Stock)
             assert hasattr(win, "table")
-            assert win.table.columnCount() == 10
+            assert win.table.columnCount() == 8
 
             # 5. Table 3: Associated Physical Products Table
             assert hasattr(win, "products_table")
@@ -1090,19 +1095,21 @@ class TestComponentInventoryViewAndColumns:
         with patch.object(MainWindow, "_check_startup_shortages"):
             win = MainWindow(default_file=repo.file_path, repository=repo)
             tbl = win.inventory_components_table
-            assert tbl.columnCount() == 11
+            assert tbl.columnCount() == 13
 
             expected_headers = [
                 "Row", "Manufacturer", "Part Number (MPN)", "Category",
                 "Type / Technology", "Value", "Package", "Footprint",
-                "Quantity in Stock", "Description", "Purchase Link"
+                "Quantity in Stock", "Min Stock", "Target Stock", "Description", "Purchase Link"
             ]
-            actual_headers = [tbl.horizontalHeaderItem(i).text() for i in range(11)]
+            actual_headers = [tbl.horizontalHeaderItem(i).text() for i in range(13)]
             assert actual_headers == expected_headers
 
-            # Verify Description is at index 9, immediately before Purchase Link at index 10
-            assert actual_headers[9] == "Description"
-            assert actual_headers[10] == "Purchase Link"
+            # Verify Min Stock and Target Stock are at index 9 and 10, Description is at index 11, immediately before Purchase Link at index 12
+            assert actual_headers[9] == "Min Stock"
+            assert actual_headers[10] == "Target Stock"
+            assert actual_headers[11] == "Description"
+            assert actual_headers[12] == "Purchase Link"
 
             win._is_force_closing = True
             win.close()
@@ -1136,8 +1143,8 @@ class TestComponentInventoryViewAndColumns:
             assert tbl.item(0, 1).text() in ["Yageo", "Murata"]
             # Col 8 is quantity
             assert tbl.item(0, 8).text() in ["100", "200"]
-            # Col 9 is description
-            assert "Resistor" in tbl.item(0, 9).text() or "Capacitor" in tbl.item(0, 9).text()
+            # Col 11 is description
+            assert "Resistor" in tbl.item(0, 11).text() or "Capacitor" in tbl.item(0, 11).text()
 
             win._is_force_closing = True
             win.close()
@@ -1156,14 +1163,14 @@ class TestComponentInventoryViewAndColumns:
             win.show()
             qapp.processEvents()
 
-            # Initially Sub-tab 0 (Stock Policy Groups)
-            assert win.inventory_subtabs.currentIndex() == 0
-
-            # Switch to Sub-tab 1 (Component Inventory)
-            win.inventory_subtabs.setCurrentIndex(1)
-            qapp.processEvents()
+            # Initially Sub-tab 1 (Component Inventory) on application startup
+            assert win.inventory_subtabs.currentIndex() == 1
             assert win.inventory_components_table.rowCount() == 1
             assert win.inventory_components_table.item(0, 2).text() == "CRCW0603-10K"
+
+            # Switch to Sub-tab 0 (Assembly View)
+            win.inventory_subtabs.setCurrentIndex(0)
+            qapp.processEvents()
 
             # Switch back to Sub-tab 0
             win.inventory_subtabs.setCurrentIndex(0)

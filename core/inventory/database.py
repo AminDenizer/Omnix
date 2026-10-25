@@ -11,7 +11,7 @@ from typing import Optional
 from config import get_app_dir
 from core.inventory.models import InventoryDatabaseError, normalize_identity_part
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 V1_SCHEMA_DDL = """
 -- Schema migration metadata
@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS components (
     description TEXT DEFAULT '',
     quantity_in_stock INTEGER NOT NULL DEFAULT 0 CHECK (quantity_in_stock >= 0),
     group_key TEXT NOT NULL,
+    min_stock INTEGER NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
+    target_stock INTEGER NOT NULL DEFAULT 0 CHECK (target_stock >= min_stock),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_component_identity UNIQUE (norm_manufacturer, norm_mpn)
@@ -238,8 +240,36 @@ class DatabaseManager:
                 conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION};")
                 conn.execute(
                     "INSERT INTO schema_version (version, description) VALUES (?, ?);",
-                    (CURRENT_SCHEMA_VERSION, "Initial schema with components, supplier links, stock policies, and reference data"),
+                    (CURRENT_SCHEMA_VERSION, "Initial schema with components (including min/target thresholds), supplier links, stock policies, and reference data"),
                 )
+                current_version = CURRENT_SCHEMA_VERSION
+
+            elif current_version == 1:
+                # Version 1 -> Version 2: Migrate min_stock and target_stock thresholds to components table
+                conn.execute("ALTER TABLE components ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0 CHECK (min_stock >= 0);")
+                conn.execute("ALTER TABLE components ADD COLUMN target_stock INTEGER NOT NULL DEFAULT 0 CHECK (target_stock >= min_stock);")
+
+                conn.execute("""
+                    UPDATE components SET
+                        min_stock = COALESCE((
+                            SELECT CASE WHEN sp.min_stock IS NOT NULL AND sp.min_stock >= 0 THEN sp.min_stock ELSE 0 END
+                            FROM stock_policies sp WHERE sp.group_key = components.group_key
+                        ), 0),
+                        target_stock = COALESCE((
+                            SELECT CASE
+                                WHEN sp.target_stock IS NOT NULL AND sp.target_stock >= COALESCE(sp.min_stock, 0) THEN sp.target_stock
+                                WHEN sp.min_stock IS NOT NULL AND sp.min_stock >= 0 THEN sp.min_stock
+                                ELSE 0
+                            END
+                            FROM stock_policies sp WHERE sp.group_key = components.group_key
+                        ), 0);
+                """)
+                conn.execute("PRAGMA user_version = 2;")
+                conn.execute(
+                    "INSERT INTO schema_version (version, description) VALUES (?, ?);",
+                    (2, "Migrate min_stock and target_stock thresholds to individual components"),
+                )
+                current_version = 2
 
             # Ensure ref_providers table and indexes exist
             conn.execute("""
@@ -275,7 +305,7 @@ class DatabaseManager:
                     default_providers,
                 )
 
-        return CURRENT_SCHEMA_VERSION if current_version == 0 else current_version
+        return current_version
 
     def backup(self, target_path: str) -> bool:
         """

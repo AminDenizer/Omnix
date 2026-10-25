@@ -46,9 +46,14 @@ from core.errors import (
     DOMDriftError,
     UnknownVendorError,
 )
-from vendors.lion.selectors import LionSelectors
-from vendors.lion.errors import LionErrorTranslator
-from vendors.lion.session import LionSessionManager
+try:
+    from .selectors import LionSelectors
+    from .errors import LionErrorTranslator
+    from .session import LionSessionManager
+except ImportError:
+    from vendors.lion.selectors import LionSelectors
+    from vendors.lion.errors import LionErrorTranslator
+    from vendors.lion.session import LionSessionManager
 
 
 def _normalize_persian_text(text: str) -> str:
@@ -492,9 +497,9 @@ class LionVendorAdapter(IVendorAdapter):
                 if key and val:
                     specs[key] = val
                     k_lower = key.lower()
-                    if "شماره فنی" in key or "part number" in k_lower or "partnumber" in k_lower or "mpn" in k_lower:
+                    if "شماره فنی" in key or "پارت نامبر" in key or "part number" in k_lower or "partnumber" in k_lower or "mpn" in k_lower:
                         mpn = val
-                    elif "سازنده" in key or "manufacturer" in k_lower or "manufacture" in k_lower or "brand" in k_lower:
+                    elif "سازنده" in key or "تولید کننده" in key or "تولیدکننده" in key or "manufacturer" in k_lower or "manufacture" in k_lower or "brand" in k_lower:
                         manufacturer = val
                     elif "پکیج" in key or "package" in k_lower or "case" in k_lower or "footprint" in k_lower:
                         package = val
@@ -504,17 +509,25 @@ class LionVendorAdapter(IVendorAdapter):
         for line in full_text.splitlines():
             line_clean = line.strip(" •-\t\r")
             if not mpn:
-                m_mpn = re.search(r"^(?:Part\s*Number|شماره\s*فنی|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
+                m_mpn = re.search(r"^(?:Part\s*Number|شماره\s*فنی|پارت\s*نامبر|MPN)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\+\/]+)", line_clean, re.IGNORECASE)
                 if m_mpn:
                     mpn = m_mpn.group(1).strip()
             if not manufacturer:
-                m_mfg = re.search(r"^(?:Manufacture|Manufacturer|سازنده|Brand|برند)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
+                m_mfg = re.search(r"^(?:Manufacture|Manufacturer|سازنده|تولید\s*کننده|Brand|برند)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
                 if m_mfg:
                     manufacturer = m_mfg.group(1).strip()
             if not package:
                 m_pkg = re.search(r"^(?:Package|پکیج|سایز|Footprint)\s*[:\s•-]+\s*([a-zA-Z0-9_.\-\s]+)", line_clean, re.IGNORECASE)
                 if m_pkg:
                     package = m_pkg.group(1).strip()
+
+        # 3. Fallback to PDP title / H1 if MPN is not in specs table or text
+        if not mpn:
+            title_el = soup.select_one(LionSelectors.PDP_TITLE)
+            if title_el:
+                raw_t = title_el.get_text(strip=True)
+                if raw_t:
+                    mpn = raw_t
 
         return CanonicalComponentDraft(
             vendor_id=self.VENDOR_ID,
@@ -570,6 +583,33 @@ class LionVendorAdapter(IVendorAdapter):
         target_url = product_ref.pdp_url
 
         try:
+            # Check authentication / session reuse (GAP-09)
+            try:
+                status = self.validate_session()
+            except Exception:
+                status = SessionStatus(vendor_id=self.VENDOR_ID, is_authenticated=False)
+
+            if not status.is_authenticated:
+                from settings_manager import settings
+                v_cfg = settings.get_vendor_settings(self.VENDOR_ID) if hasattr(settings, "get_vendor_settings") else None
+                u = (v_cfg.username if v_cfg else "") or settings.get("lion_username", "").strip()
+                p = (v_cfg.password if v_cfg else "") or settings.get("lion_password", "").strip()
+
+                if u and p:
+                    auth_res = self.authenticate(credentials=AuthCredentials(username=u, password=p))
+                    if not auth_res or not auth_res.success:
+                        err_msg = auth_res.message if auth_res else "Authentication failed"
+                        if auth_res and getattr(auth_res, "requires_interactive", False):
+                            from core.errors import SecurityChallengeError
+                            raise SecurityChallengeError(
+                                f"Lion Electronic security challenge encountered: {err_msg}",
+                                vendor_id=self.VENDOR_ID,
+                            )
+                        raise AuthenticationRequiredError(
+                            f"Lion Electronic authentication failed: {err_msg}",
+                            vendor_id=self.VENDOR_ID,
+                        )
+
             # Ensure we are on the PDP
             if driver.current_url.lower() != target_url.lower():
                 driver.get(target_url)

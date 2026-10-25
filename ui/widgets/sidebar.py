@@ -440,8 +440,8 @@ class CollapsibleSidebar(QFrame):
 
     SECTIONS = [
         ("WORKSPACE", [
-            ("assembly_view", "Assembly & Stock", "assembly_view"),
             ("component_inventory", "Component Inventory", "component_inventory"),
+            ("assembly_view", "Assembly & Stock", "assembly_view"),
             ("bom_audit", "BOM Audit", "bom_audit"),
             ("assembly_prep", "Assembly & BOM Prep", "assembly_prep"),
         ]),
@@ -463,8 +463,8 @@ class CollapsibleSidebar(QFrame):
     ]
 
     PAGES = [
-        ("assembly_view", "Assembly & Stock", "assembly_view"),
         ("component_inventory", "Component Inventory", "component_inventory"),
+        ("assembly_view", "Assembly & Stock", "assembly_view"),
         ("bom_audit", "BOM Audit", "bom_audit"),
         ("assembly_prep", "Assembly & BOM Prep", "assembly_prep"),
         ("vendor_plugins", "Vendor Plugins", "vendor_plugins"),
@@ -485,7 +485,10 @@ class CollapsibleSidebar(QFrame):
         "settings_supplier_directory": "provider_management",
         "settings_backup_restore": "backup_restore",
         "settings_about": "about",
+        "about": "about",
         "about_settings": "about",
+        "vendor_plugins": "vendor_plugins",
+        "vendors": "vendor_plugins",
         "backup": "backup_restore",
     }
 
@@ -493,7 +496,7 @@ class CollapsibleSidebar(QFrame):
         super().__init__(parent)
         self.setObjectName("collapsibleSidebar")
         self._is_collapsed = False
-        self._active_page_id = "assembly_view"
+        self._active_page_id = "component_inventory"
         self._submenu_expanded = False
         self._last_settings_child = "general_settings"
         self._buttons: _ButtonsDict = _ButtonsDict(self.PAGE_ALIAS_MAP, sidebar=self)
@@ -556,8 +559,8 @@ class CollapsibleSidebar(QFrame):
                 layout.addSpacing(6)
 
         # Set default active
-        if "assembly_view" in self._buttons:
-            self._buttons["assembly_view"].set_active(True)
+        if "component_inventory" in self._buttons:
+            self._buttons["component_inventory"].set_active(True)
 
         layout.addStretch(1)
 

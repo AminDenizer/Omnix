@@ -4,6 +4,7 @@ Governing Document: Phase 1 Master Architecture Specification
 """
 
 import os
+import dataclasses
 from typing import Optional, List, Dict, Any, Tuple
 import openpyxl
 

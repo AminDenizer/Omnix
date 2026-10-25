@@ -38,6 +38,7 @@ class TestSidebarIcons:
             "bom_audit",
             "assembly_prep",
             "vendor_plugins",
+            "live_log",
             "settings",
             "general_settings",
             "reference_data",
@@ -56,7 +57,7 @@ class TestSidebarIcons:
 
     def test_sidebar_buttons_have_valid_non_null_icons(self, sidebar):
         """Every button in the sidebar must have a valid non-null outline QIcon."""
-        assert len(sidebar.PAGES) == 6
+        assert len(sidebar.PAGES) == 7
         for page_id, label, icon_key in sidebar.PAGES:
             btn = sidebar._buttons[page_id]
             assert not btn.icon().isNull(), f"Icon for {page_id} is null"

@@ -218,8 +218,10 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 1. MPN matching
         # -------------------------------------------------------------
+        # Option A: Direct Link Staging Without Content Matching (DOC-OMNIX-PLAN-FINAL-003)
+        is_explicit_direct = bool(request and request.explicit_vendor_url)
         is_exact = cls._check_mpn_match(candidate.part_number, requested_part_number)
-        if exact_mpn_required and requested_part_number and not is_exact:
+        if exact_mpn_required and requested_part_number and not is_exact and not is_explicit_direct:
             reasons.append(f"MPN mismatch: '{candidate.part_number}' != '{requested_part_number}'")
             primary_failures.append(EvaluationState.INCOMPATIBLE_MPN)
 
@@ -231,7 +233,7 @@ class UniversalProcurementOrchestrator:
         ) or (
             allowed_manufacturers is not None and any(m.strip().upper() == "ANY" for m in allowed_manufacturers if m)
         )
-        if not effective_any:
+        if not effective_any and not is_explicit_direct:
             if allowed_manufacturers:
                 if not candidate.manufacturer or not candidate.manufacturer.strip():
                     unknown_params.append("manufacturer")
@@ -262,7 +264,7 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 3. Package Constraint (GAP-04)
         # -------------------------------------------------------------
-        if requested_package and requested_package.strip():
+        if requested_package and requested_package.strip() and not is_explicit_direct:
             if not candidate.package or not candidate.package.strip():
                 unknown_params.append("package")
                 reasons.append(f"Required package '{requested_package}' is unlisted/unknown on vendor candidate.")
@@ -277,7 +279,7 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 4. Footprint Constraint (GAP-04) - Evaluated Independently
         # -------------------------------------------------------------
-        if requested_footprint and requested_footprint.strip():
+        if requested_footprint and requested_footprint.strip() and not is_explicit_direct:
             cand_fp = candidate.footprint or candidate.specs.get("footprint")
             if not cand_fp or not str(cand_fp).strip():
                 unknown_params.append("footprint")
@@ -293,7 +295,7 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 5. Generic Technical Specifications (GAP-05)
         # -------------------------------------------------------------
-        if required_specs:
+        if required_specs and not is_explicit_direct:
             for spec_key, req_val in required_specs.items():
                 if not req_val or not str(req_val).strip():
                     continue
@@ -312,7 +314,7 @@ class UniversalProcurementOrchestrator:
         # -------------------------------------------------------------
         # 6. Physical Dimensions (GAP-05)
         # -------------------------------------------------------------
-        if required_dimensions:
+        if required_dimensions and not is_explicit_direct:
             for dim_key, req_val in required_dimensions.items():
                 if not req_val or not str(req_val).strip():
                     continue
@@ -364,7 +366,7 @@ class UniversalProcurementOrchestrator:
             reasons.append(
                 f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} needed)."
             )
-            primary_failures.append(EvaluationState.OUT_OF_STOCK)
+            primary_failures.append(EvaluationState.INSUFFICIENT_STOCK)
 
         # -------------------------------------------------------------
         # 9. Pricing
@@ -392,6 +394,7 @@ class UniversalProcurementOrchestrator:
                 EvaluationState.INCOMPATIBLE_DIMENSIONS,
                 EvaluationState.UNKNOWN_REQUIRED_PARAMETER,
                 EvaluationState.UNORDERABLE,
+                EvaluationState.INSUFFICIENT_STOCK,
                 EvaluationState.OUT_OF_STOCK,
                 EvaluationState.PRICE_UNAVAILABLE,
             ]
@@ -489,6 +492,10 @@ class UniversalProcurementOrchestrator:
             elif all(not c.in_stock or not c.can_order for c in cands):
                 status = "OUT_OF_STOCK"
                 err_msg = f"All {len(cands)} candidates for '{req.part_number}' are out of stock or inquiry-only."
+            elif any(e.state == EvaluationState.INSUFFICIENT_STOCK for e in evals):
+                status = "INSUFFICIENT_STOCK"
+                ins_eval = next(e for e in evals if e.state == EvaluationState.INSUFFICIENT_STOCK)
+                err_msg = f"Insufficient stock: {ins_eval.effective_quantity} units required by supplier package rules, but only {ins_eval.candidate.stock_quantity} are available. No quantity was added."
             else:
                 status = "UNRESOLVED"
                 reasons = [r for e in evals for r in e.rejection_reasons if r]

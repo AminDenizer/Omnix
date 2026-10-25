@@ -225,7 +225,10 @@ if HAS_PYQT:
         eventLogged = pyqtSignal(object)  # Emits EventRecord
 
         def emit_event(self, record: EventRecord) -> None:
-            self.eventLogged.emit(record)
+            try:
+                self.eventLogged.emit(record)
+            except RuntimeError:
+                pass
 else:
     class _LogEventBridge:  # type: ignore[no-redef]
         def emit_event(self, record: EventRecord) -> None:

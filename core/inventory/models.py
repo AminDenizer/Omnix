@@ -84,12 +84,57 @@ def format_supplier_links_as_string(links: Sequence[SupplierLink]) -> str:
     return " || ".join(f"{l.vendor_label}={l.url}" for l in links)
 
 
+# Database Exceptions
+class InventoryDatabaseError(Exception):
+    """Base exception for inventory database operations."""
+    pass
+
+
+class ComponentConflictError(InventoryDatabaseError):
+    """Raised when a component with identical normalized Manufacturer+MPN already exists."""
+    def __init__(
+        self,
+        message: str,
+        existing_component: Optional[Any] = None,
+        conflicting_data: Optional[dict] = None,
+    ):
+        super().__init__(message)
+        self.existing_component = existing_component
+        self.conflicting_data = conflicting_data
+
+
+class ComponentNotFoundError(InventoryDatabaseError):
+    """Raised when a requested component cannot be found."""
+    pass
+
+
+class ReferenceDataInUseError(InventoryDatabaseError):
+    """Raised when attempting to delete a reference entity that is still referenced by components."""
+    pass
+
+
+class ReferenceDataNotFoundError(InventoryDatabaseError):
+    """Raised when a referenced manufacturer, category, or type does not exist."""
+    pass
+
+
+class DuplicateReferenceError(InventoryDatabaseError):
+    """Raised when creating a reference entity with a duplicate normalized name."""
+    pass
+
+
+class ValidationError(InventoryDatabaseError):
+    """Raised when component, threshold, or reference attributes violate business rules."""
+    pass
+
+
 @dataclass(frozen=True)
 class InventoryProduct:
     """
     Individual physical product record from the 'Inventory' sheet or SQLite database.
     Preserves exact manufacturer, MPN, description, physical on-hand quantity,
     and supports both legacy single Purchase Link and normalized supplier links.
+    In Schema v2, each component owns its individual min_stock and target_stock thresholds.
     """
     manufacturer: str
     mpn: str
@@ -107,6 +152,8 @@ class InventoryProduct:
     supplier_links: Tuple[SupplierLink, ...] = ()
     norm_manufacturer: str = ""
     norm_mpn: str = ""
+    min_stock: int = 0
+    target_stock: int = 0
 
     def __post_init__(self):
         if not self.norm_manufacturer:
@@ -120,10 +167,35 @@ class InventoryProduct:
                 "group_key",
                 build_group_key(self.category, self.type_technology, self.value, pkg, self.footprint),
             )
+        if self.min_stock < 0:
+            raise ValidationError(f"min_stock must be non-negative (received {self.min_stock}).")
+        if self.target_stock < self.min_stock:
+            raise ValidationError(
+                f"target_stock ({self.target_stock}) cannot be less than min_stock ({self.min_stock})."
+            )
 
     @property
     def quantity(self) -> int:
         return self.quantity_in_stock
+
+    @property
+    def is_low_stock(self) -> bool:
+        """True if quantity_in_stock is strictly below min_stock (and min_stock > 0)."""
+        return self.min_stock > 0 and self.quantity_in_stock < self.min_stock
+
+    @property
+    def shortage_to_target(self) -> int:
+        """Number of units needed to bring quantity_in_stock up to target_stock."""
+        if self.min_stock > 0 and self.quantity_in_stock < self.target_stock:
+            return self.target_stock - self.quantity_in_stock
+        return 0
+
+    @property
+    def shortage_to_min(self) -> int:
+        """Number of units needed to bring quantity_in_stock up to min_stock."""
+        if self.min_stock > 0 and self.quantity_in_stock < self.min_stock:
+            return self.min_stock - self.quantity_in_stock
+        return 0
 
     def to_dict(self) -> dict:
         return {
@@ -140,6 +212,8 @@ class InventoryProduct:
             "value": self.value,
             "description": self.description,
             "quantity_in_stock": self.quantity_in_stock,
+            "min_stock": self.min_stock,
+            "target_stock": self.target_stock,
             "purchase_link": self.purchase_link,
             "group_key": self.group_key,
             "supplier_links": [
@@ -294,47 +368,4 @@ class StockPolicyGroup:
             return self.target_stock - self.current_stock
         return 0
 
-
-# Database Exceptions
-class InventoryDatabaseError(Exception):
-    """Base exception for inventory database operations."""
-    pass
-
-
-class ComponentConflictError(InventoryDatabaseError):
-    """Raised when a component with identical normalized Manufacturer+MPN already exists."""
-    def __init__(
-        self,
-        message: str,
-        existing_component: Optional[Any] = None,
-        conflicting_data: Optional[dict] = None,
-    ):
-        super().__init__(message)
-        self.existing_component = existing_component
-        self.conflicting_data = conflicting_data
-
-
-class ComponentNotFoundError(InventoryDatabaseError):
-    """Raised when a requested component cannot be found."""
-    pass
-
-
-class ReferenceDataInUseError(InventoryDatabaseError):
-    """Raised when attempting to delete a reference entity that is still referenced by components."""
-    pass
-
-
-class ReferenceDataNotFoundError(InventoryDatabaseError):
-    """Raised when a referenced manufacturer, category, or type does not exist."""
-    pass
-
-
-class DuplicateReferenceError(InventoryDatabaseError):
-    """Raised when creating a reference entity with a duplicate normalized name."""
-    pass
-
-
-class ValidationError(InventoryDatabaseError):
-    """Raised when component, threshold, or reference attributes violate business rules."""
-    pass
 

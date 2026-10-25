@@ -35,6 +35,7 @@ from core.inventory import (
     SqliteInventoryRepository,
     StockPolicyGroup,
     InventoryProduct,
+    format_supplier_links_as_string,
     resolve_database_path,
     resolve_inventory_database_path,
     bootstrap_sqlite_from_workbook,
@@ -56,14 +57,14 @@ from ui.widgets.backup_restore_widget import DatabaseBackupRestoreWidget
 from ui.widgets.reference_data_widget import ReferenceDataWidget, ReferenceDataDialog
 from ui.widgets.vendor_plugins_widget import VendorPluginsWidget
 from ui.widgets.live_log_widget import LiveLogWidget
-from core.procurement.link_validator import LinkValidator, LinkValidationItem
-from ui.dialogs.link_validation_dialog import LinkValidationDialog
 from ui.dialogs import (
     SettingsDialog,
     OrderPreviewDialog,
     QuickOrderDialog,
     PolicyEditDialog,
     ComponentEditDialog,
+    StockAdjustmentDialog,
+    ComponentThresholdDialog,
     ProviderManagementDialog,
 )
 
@@ -141,6 +142,20 @@ class MainWindow(QMainWindow):
         if not win_icon.isNull():
             self.setWindowIcon(win_icon)
 
+        # Stage 2 Phase 2 / Milestone 3: Restore installed and enabled plugins fail-closed on startup
+        try:
+            from core.plugins import restore_installed_plugins
+            from core.procurement.registry import default_registry
+            restore_installed_plugins(default_registry)
+        except Exception as exc:
+            from core.logger import log_event
+            log_event(
+                domain="Plugins",
+                event_type="STARTUP_RESTORE_ERROR",
+                message=f"Failed to restore installed plugins on startup: {exc}",
+                level="WARNING",
+            )
+
         self._init_ui()
         self._setup_shortcuts()
         self._setup_statusbar()
@@ -178,6 +193,13 @@ class MainWindow(QMainWindow):
                 self._update_stats_ribbon()
                 self.status_state_lbl.setText("● No inventory database found")
                 self.status_state_lbl.setStyleSheet("color: #f87171; font-weight: bold;")
+
+        # Startup Requirement: Component Inventory is initially selected and displayed
+        self.inventory_subtabs.setCurrentIndex(1)
+        self.tabs.setCurrentIndex(0)
+        self.content_stack.setCurrentWidget(self.tabs)
+        self.sidebar.set_active_page("component_inventory")
+        self._on_inventory_subtab_changed(1)
 
         # Focus search and trigger startup shortage audit
         QTimer.singleShot(150, self._focus_search)
@@ -480,6 +502,33 @@ class MainWindow(QMainWindow):
         self.edit_component_btn.clicked.connect(lambda: self._open_edit_component_dialog())
         comp_toolbar.addWidget(self.edit_component_btn)
 
+        self.stock_mgmt_btn = QPushButton("Stock Management")
+        self.stock_mgmt_btn.setFixedHeight(30)
+        self.stock_mgmt_btn.setEnabled(False)
+        self.stock_mgmt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.stock_mgmt_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1e293b;
+                color: #38bdf8;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 14px;
+                border-radius: 4px;
+                border: 1px solid #0284c7;
+            }
+            QPushButton:hover {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+            QPushButton:disabled {
+                background-color: #1e293b;
+                color: #64748b;
+                border: 1px solid #334155;
+            }
+        """)
+        self.stock_mgmt_btn.clicked.connect(lambda: self._open_stock_adjustment_dialog())
+        comp_toolbar.addWidget(self.stock_mgmt_btn)
+
         self.delete_component_btn = QPushButton("Delete Component")
         self.delete_component_btn.setFixedHeight(30)
         self.delete_component_btn.setEnabled(False)
@@ -507,9 +556,6 @@ class MainWindow(QMainWindow):
         self.delete_component_btn.clicked.connect(self._delete_selected_component)
         comp_toolbar.addWidget(self.delete_component_btn)
 
-        self.validate_links_btn = QPushButton("🔗 Validate Links")
-        self.validate_links_btn.setVisible(False)
-        self.validate_links_btn.clicked.connect(self._open_link_validation_dialog)
 
         comp_view_layout.addLayout(comp_toolbar)
 
@@ -541,7 +587,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.inventory_tab, "Inventory && Stock Control")
 
         # Tab 2: Altium BOM Project Assembly Auditor
-        self.bom_audit_widget = BOMAuditWidget(self.excel, self)
+        self.bom_audit_widget = BOMAuditWidget(self.inventory_repo or self.excel, self)
         self.tabs.addTab(self.bom_audit_widget, "Altium BOM Project Auditor")
 
         # Tab 3: Assembly & BOM Preparation
@@ -561,7 +607,7 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.content_stack.addWidget(self.tabs)
 
-        # Tools Container (Index 1): Vendor Plugins
+        # Tools Container (Index 1): Vendor Plugins (Standalone Page)
         self.vendor_plugins_page = QWidget()
         plugins_page_layout = QVBoxLayout(self.vendor_plugins_page)
         plugins_page_layout.setContentsMargins(0, 0, 0, 0)
@@ -577,7 +623,7 @@ class MainWindow(QMainWindow):
         live_log_page_layout.addWidget(self.live_log_widget)
         self.content_stack.addWidget(self.live_log_page)
 
-        # Settings Views added directly to content_stack (No top tab bar, Section 5 & Phase 1.1)
+        # Settings Views added directly to content_stack (Section 5 & Phase 1.1)
         # Settings Destination 1: General (General settings & stock policy)
         self.general_settings_page = self._build_general_settings_page()
         self.content_stack.addWidget(self.general_settings_page)
@@ -615,6 +661,7 @@ class MainWindow(QMainWindow):
 
         # For backwards compatibility with references expecting settings_page or export_excel_btn
         self.settings_page = self.general_settings_page
+        self.backup_restore_export_btn = self.backup_restore_widget.export_excel_btn
         self.export_excel_btn = self.backup_restore_widget.export_excel_btn
 
         # Body Layout: Collapsible Sidebar on left, Content Stack on right (Section 5)
@@ -684,8 +731,8 @@ class MainWindow(QMainWindow):
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_layout.setSpacing(8)
 
-        # 5. Show Min Stock and Target Stock columns in Assembly View
-        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Assembly View")
+        # 5. Show Min Stock and Target Stock columns in Component Inventory
+        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
         self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
         display_layout.addWidget(self.side_stock_policy_show_columns_chk)
 
@@ -730,6 +777,7 @@ class MainWindow(QMainWindow):
             settings.set("stock_policy_enabled", checked)
             _update_dependency_states()
             self._update_table_display()
+            self._apply_threshold_columns_visibility()
             self._update_stats_ribbon()
 
         def _on_side_validation_toggled(checked: bool):
@@ -741,7 +789,7 @@ class MainWindow(QMainWindow):
 
         def _on_side_columns_toggled(checked: bool):
             settings.set("stock_policy_show_columns", checked)
-            self._update_table_display()
+            self._apply_threshold_columns_visibility()
 
         def _on_side_startup_toggled(checked: bool):
             if self.side_startup_chk.isEnabled():
@@ -795,6 +843,7 @@ class MainWindow(QMainWindow):
         self.side_stock_policy_show_columns_chk.blockSignals(False)
         self.side_startup_chk.blockSignals(False)
         self.side_match_products_chk.blockSignals(False)
+        self._apply_threshold_columns_visibility()
 
     def _build_about_page(self) -> QWidget:
         """Constructs the dedicated About view in Settings."""
@@ -886,22 +935,6 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return widget
 
-    def _on_settings_subtab_changed(self, index: int):
-        """Refreshes relevant data when switching settings subsections."""
-        if index == 0:
-            self._sync_general_settings_page()
-        elif index == 1:
-            if hasattr(self, "reference_data_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
-                self.reference_data_widget.set_repository(self.inventory_repo)
-                self.reference_data_widget.refresh()
-        elif index == 2:
-            if hasattr(self, "providers_widget") and isinstance(self.inventory_repo, SqliteInventoryRepository):
-                self.providers_widget.set_repository(self.inventory_repo)
-                self.providers_widget.refresh()
-        elif index == 3:
-            if hasattr(self, "backup_restore_widget"):
-                self.backup_restore_widget.refresh_status()
-
     def _on_sidebar_page_changed(self, page_id: str):
         """Routes sidebar clicks to corresponding view in content_stack or tabs."""
         if getattr(self, "_is_syncing_navigation", False):
@@ -922,7 +955,7 @@ class MainWindow(QMainWindow):
             elif page_id in ("assembly_prep", "assembly_preparation"):
                 self.tabs.setCurrentIndex(2)
                 self.content_stack.setCurrentWidget(self.tabs)
-            elif page_id == "vendor_plugins":
+            elif page_id in ("vendor_plugins", "vendors"):
                 if hasattr(self, "vendor_plugins_widget"):
                     self.vendor_plugins_widget.refresh_plugins()
                 self.content_stack.setCurrentWidget(self.vendor_plugins_page)
@@ -1244,6 +1277,23 @@ class MainWindow(QMainWindow):
                 self.title_bar.update_maximize_state(self.isMaximized())
         super().changeEvent(event)
 
+    def _create_confirmation_dialog(
+        self,
+        title: str,
+        text: str,
+        informative_text: str = "",
+        is_danger: bool = False,
+    ) -> QMessageBox:
+        """Create and configure standardized high-contrast confirmation dialog with safe 'No' default."""
+        from ui.dialogs.confirmation_dialog import create_confirmation_dialog
+        return create_confirmation_dialog(
+            parent=self,
+            title=title,
+            text=text,
+            informative_text=informative_text,
+            is_danger=is_danger,
+        )
+
     def _show_confirmation_dialog(
         self,
         title: str,
@@ -1252,33 +1302,14 @@ class MainWindow(QMainWindow):
         is_danger: bool = False,
     ) -> bool:
         """Standardized high-contrast confirmation dialog with native dark frame and mock-safe execution."""
-        import unittest.mock
-        if isinstance(getattr(QMessageBox, "question", None), (unittest.mock.MagicMock, unittest.mock.Mock)):
-            mock_res = QMessageBox.question(self, title, text)
-            return mock_res in (QMessageBox.StandardButton.Yes, 1, True, "Yes", QMessageBox.ButtonRole.YesRole)
-
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(text)
-        if informative_text:
-            msg_box.setInformativeText(informative_text)
-        msg_box.setIcon(QMessageBox.Icon.Question)
-        yes_btn = msg_box.addButton("Yes", QMessageBox.ButtonRole.YesRole)
-        no_btn = msg_box.addButton("No", QMessageBox.ButtonRole.NoRole)
-        msg_box.setDefaultButton(no_btn)
-        msg_box.setEscapeButton(no_btn)
-
-        if is_danger:
-            yes_btn.setObjectName("dangerBtn")
-        else:
-            yes_btn.setObjectName("primaryBtn")
-        no_btn.setObjectName("secondaryBtn")
-
-        from ui.dark_frame import apply_dark_window_frame
-        apply_dark_window_frame(msg_box)
-
-        msg_box.exec()
-        return msg_box.clickedButton() == yes_btn
+        from ui.dialogs.confirmation_dialog import show_confirmation_dialog
+        return show_confirmation_dialog(
+            parent=self,
+            title=title,
+            text=text,
+            informative_text=informative_text,
+            is_danger=is_danger,
+        )
 
     def _prompt_exit_confirmation(self):
         if self._show_confirmation_dialog("Exit Confirmation", "Do you want to exit Omnix?", is_danger=True):
@@ -1304,10 +1335,27 @@ class MainWindow(QMainWindow):
             event.ignore()
 
     def _open_settings(self, initial_tab: Optional[str] = None):
-        dlg = SettingsDialog(self, initial_tab=initial_tab)
-        dlg.exec()
+        """Routes settings navigation to proper content_stack page and updates sidebar without modal popups."""
+        target = (initial_tab or "general_settings").strip().lower()
+        if target in ("plugins", "vendors", "vendor", "vendor_plugins"):
+            page_id = "vendor_plugins"
+        elif target in ("about", "settings_about"):
+            page_id = "about"
+        elif target in ("reference", "reference_data", "settings_reference_data"):
+            page_id = "reference_data"
+        elif target in ("providers", "provider_management", "supplier_directory", "settings_supplier_directory"):
+            page_id = "provider_management"
+        elif target in ("backup", "backup_restore", "export_backup", "settings_backup_restore"):
+            page_id = "backup_restore"
+        else:
+            page_id = "general_settings"
+
+        self._on_sidebar_page_changed(page_id)
+        if hasattr(self, "sidebar"):
+            if page_id in ("general_settings", "reference_data", "provider_management", "backup_restore", "about"):
+                self.sidebar.set_submenu_expanded(True)
+            self.sidebar.set_active_page(page_id)
         self._sync_general_settings_page()
-        # Refresh display in case stock policy columns or validation changed
         self._update_table_display()
         self._update_stats_ribbon()
 
@@ -1330,17 +1378,31 @@ class MainWindow(QMainWindow):
             return
         if not settings.get("auto_check_startup_shortage", True):
             return
+
+        if self.inventory_repo.is_loaded:
+            shortages = self._get_stock_policy_replenishment_items()
+            if shortages:
+                dlg = OrderPreviewDialog(
+                    all_shortages=shortages,
+                    source_title=f"Startup Stock Policy Shortage Alert ({len(shortages)} Groups Low)",
+                    inventory_loader=None,
+                    on_stock_updated=self._update_table_display,
+                    parent=self,
+                )
+                dlg.exec()
+            return
+
         if self.excel.total_rows == 0:
             return
 
         shortages = self.excel.get_shortage_items()
         if shortages:
             dlg = OrderPreviewDialog(
-                orderable_items=shortages,
+                all_shortages=shortages,
                 source_title=f"Startup Inventory Shortage Alert ({len(shortages)} Items Low)",
                 inventory_loader=self.excel,
                 on_stock_updated=self._on_stock_incremented_callback,
-                parent=self
+                parent=self,
             )
             dlg.exec()
 
@@ -1388,6 +1450,8 @@ class MainWindow(QMainWindow):
                 self.providers_widget.set_repository(self.inventory_repo)
             if hasattr(self, "backup_restore_widget") and self.backup_restore_widget:
                 self.backup_restore_widget.set_repository(self.inventory_repo)
+            if hasattr(self, "bom_audit_widget") and self.bom_audit_widget:
+                self.bom_audit_widget.set_repository(self.inventory_repo)
 
             file_name = os.path.basename(file_path)
             db_tag = "SQLite" if isinstance(self.inventory_repo, SqliteInventoryRepository) else "Excel"
@@ -1551,12 +1615,15 @@ class MainWindow(QMainWindow):
         )
         if self.inventory_repo.is_loaded:
             all_groups = self.inventory_repo.get_all_groups()
-            total_groups = len(all_groups)
-            filtered_groups = len(self.current_filtered_groups)
+            is_comp_tab = hasattr(self, "inventory_subtabs") and self.inventory_subtabs.currentIndex() == 1
+            all_products = self.inventory_repo.get_all_products() if is_comp_tab else None
+            total_groups = len(all_products) if is_comp_tab else len(all_groups)
+            filtered_groups = len(getattr(self, "_current_inventory_components", all_products)) if is_comp_tab else len(self.current_filtered_groups)
             total_cols = 10
             default_name = "omnix_inventory.db" if isinstance(self.inventory_repo, SqliteInventoryRepository) else "Inventory.xlsm"
             file_name = os.path.basename(self.inventory_repo.file_path) if self.inventory_repo.file_path else default_name
-            shortage_count = sum(1 for g in all_groups if g.is_low_stock)
+            shortages = self._get_stock_policy_replenishment_items()
+            shortage_count = len(shortages)
             incomplete_count = sum(1 for g in all_groups if not g.is_complete)
             self.stats_ribbon.update_stats(
                 total_groups,
@@ -1585,6 +1652,122 @@ class MainWindow(QMainWindow):
             validation_enabled=validation_active
         )
 
+    def _get_stock_policy_replenishment_items(self) -> List[Dict[str, Any]]:
+        """
+        Calculates Mode A replenishment shortage items using component-level thresholds (Option B).
+        Evaluates physical components:
+          - is_low_stock = comp.quantity_in_stock < comp.min_stock (where comp.min_stock > 0)
+          - shortage_qty = max(0, (comp.target_stock if comp.target_stock > 0 else comp.min_stock) - comp.quantity_in_stock)
+        Directly maps stored supplier product links without guessing or substitution.
+        Maintains fallback for policy-only groups without physical components.
+        """
+        if not self.inventory_repo.is_loaded:
+            return []
+
+        items: List[Dict[str, Any]] = []
+        all_products = self.inventory_repo.get_all_products()
+
+        for p in all_products:
+            min_s = int(getattr(p, "min_stock", 0) or 0)
+            if min_s <= 0:
+                continue
+            curr = int(p.quantity_in_stock or 0)
+            if curr >= min_s:
+                continue
+
+            target = int(getattr(p, "target_stock", 0) or 0)
+            if target <= 0 or target < min_s:
+                target = min_s
+
+            shortage_qty = max(0, target - curr)
+            if shortage_qty <= 0:
+                continue
+
+            link_str = ""
+            if p.supplier_links:
+                link_str = format_supplier_links_as_string(p.supplier_links)
+            elif p.purchase_link:
+                link_str = str(p.purchase_link).strip()
+
+            if link_str:
+                items.append({
+                    "part_name": p.mpn or f"{p.category} {p.value} {p.package}".strip(),
+                    "part_number": p.mpn or f"{p.category} {p.value} {p.package}".strip(),
+                    "manufacturer": p.manufacturer,
+                    "comment": p.description or f"{p.category} {p.type_technology}",
+                    "category": p.category,
+                    "package": p.package,
+                    "footprint": p.footprint,
+                    "needed_qty": shortage_qty,
+                    "shortage_qty": shortage_qty,
+                    "current_stock": curr,
+                    "min_stock": min_s,
+                    "target_stock": target,
+                    "link": link_str,
+                    "raw_link": link_str,
+                    "status": "SHORTAGE",
+                    "is_stock_policy": True,
+                    "group_key": p.group_key,
+                    "component_id": p.id,
+                    "supplier_links": p.supplier_links,
+                })
+            else:
+                items.append({
+                    "part_name": p.mpn or f"{p.category} {p.value} {p.package}".strip(),
+                    "part_number": p.mpn or f"{p.category} {p.value} {p.package}".strip(),
+                    "manufacturer": p.manufacturer,
+                    "comment": p.description or f"{p.category} {p.type_technology}",
+                    "category": p.category,
+                    "package": p.package,
+                    "footprint": p.footprint,
+                    "needed_qty": shortage_qty,
+                    "shortage_qty": shortage_qty,
+                    "current_stock": curr,
+                    "min_stock": min_s,
+                    "target_stock": target,
+                    "link": "",
+                    "raw_link": "",
+                    "status": "UNMAPPABLE",
+                    "reason": "No stored supplier link for low-stock component",
+                    "is_stock_policy": True,
+                    "group_key": p.group_key,
+                    "component_id": p.id,
+                })
+
+        # Policy-only groups fallback (groups that have NO physical components in inventory)
+        groups = self.inventory_repo.get_all_groups()
+        for g in groups:
+            if not g.products and g.is_low_stock:
+                target = g.target_stock if (g.target_stock is not None and g.target_stock > 0) else g.min_stock
+                current = g.current_stock if g.current_stock is not None else 0
+                if target is None:
+                    continue
+                shortage_qty = max(0, target - current)
+                if shortage_qty <= 0:
+                    continue
+                items.append({
+                    "part_name": f"{g.category} {g.value} {g.package}".strip(),
+                    "part_number": f"{g.category} {g.value} {g.package}".strip(),
+                    "manufacturer": "",
+                    "comment": g.description or f"{g.category} {g.type_technology}",
+                    "category": g.category,
+                    "package": g.package,
+                    "footprint": g.footprint,
+                    "needed_qty": shortage_qty,
+                    "shortage_qty": shortage_qty,
+                    "current_stock": current,
+                    "min_stock": g.min_stock,
+                    "target_stock": g.target_stock,
+                    "link": "",
+                    "raw_link": "",
+                    "status": "UNMAPPABLE",
+                    "reason": "No physical products linked to stock policy group",
+                    "is_stock_policy": True,
+                    "group_key": g.group_key,
+                })
+
+        return items
+
     def _open_inventory_order_dialog(self):
         if self.inventory_repo.is_loaded:
             # Check if stock policy validation is enabled
@@ -1596,7 +1779,7 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            shortages = [g for g in self.inventory_repo.get_all_groups() if g.is_low_stock]
+            shortages = self._get_stock_policy_replenishment_items()
             if not shortages:
                 QMessageBox.information(
                     self,
@@ -1605,12 +1788,14 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            QMessageBox.information(
-                self,
-                "Stock Policy Shortages Detected",
-                f"{len(shortages)} Stock Policy group(s) are currently below minimum stock threshold.\n\n"
-                f"Mode A replenishment and ordering are planned for Phase 3."
+            dlg = OrderPreviewDialog(
+                all_shortages=shortages,
+                source_title=f"Stock Policy Shortage Replenishment ({len(shortages)} Groups)",
+                inventory_loader=None,
+                on_stock_updated=self._update_table_display,
+                parent=self,
             )
+            dlg.exec()
             return
 
         if self.excel.total_rows == 0:
@@ -1624,28 +1809,12 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Section 7: Automatic Link Validation for Excel items before OrderPreviewDialog
-        links_to_validate = []
-        for it in shortages:
-            link = (it.get("link") or "").strip()
-            if link and (link.startswith("http://") or link.startswith("https://")):
-                links_to_validate.append(LinkValidationItem(
-                    component_name=it.get("part_name", ""),
-                    manufacturer=it.get("manufacturer", ""),
-                    mpn=it.get("part_number", ""),
-                    url=link,
-                ))
-
-        if links_to_validate:
-            val_dlg = LinkValidationDialog(links_to_validate, parent=self)
-            val_dlg.exec()
-
         dlg = OrderPreviewDialog(
-            orderable_items=shortages,
+            all_shortages=shortages,
             source_title=f"Inventory Shortage Purchase ({len(shortages)} Low Stock Items)",
             inventory_loader=self.excel,
             on_stock_updated=self._on_stock_incremented_callback,
-            parent=self
+            parent=self,
         )
         dlg.exec()
 
@@ -1661,7 +1830,7 @@ class MainWindow(QMainWindow):
         self._is_updating_table = True
         headers = [
             "Category", "Type / Technology", "Value", "Package", "Footprint",
-            "Total In Stock", "Min Stock", "Target Stock", "Matched Products", "Status"
+            "Total In Stock", "Matched Products", "Status"
         ]
         col_count = len(headers)
 
@@ -1703,8 +1872,6 @@ class MainWindow(QMainWindow):
 
         for visual_row_idx, group in enumerate(groups):
             stock_str = f"{group.current_stock:g}" if group.current_stock is not None else "⚠️ Missing"
-            min_str = f"{group.min_stock:g}" if group.min_stock is not None else "⚠️ Missing"
-            tgt_str = f"{group.target_stock:g}" if group.target_stock is not None else "⚠️ Missing"
             prods_count_str = str(len(group.products))
 
             if not group.is_complete:
@@ -1721,8 +1888,6 @@ class MainWindow(QMainWindow):
                 group.package,
                 group.footprint,
                 stock_str,
-                min_str,
-                tgt_str,
                 prods_count_str,
                 status_str
             ]
@@ -1733,10 +1898,10 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole, visual_row_idx)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-                if col_idx in [5, 6, 7, 8]:
+                if col_idx in [5, 6]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     item.setFont(font_numbers)
-                elif col_idx == 9:
+                elif col_idx == 7:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     item.setFont(font_data)
                 else:
@@ -1755,20 +1920,10 @@ class MainWindow(QMainWindow):
                     else:
                         item.setForeground(QColor("#34d399"))
                         item.setToolTip(f"Current Stock: {group.current_stock}")
-                elif col_idx in [6, 7]:
-                    col_name = "Min Stock" if col_idx == 6 else "Target Stock"
-                    if "Missing" in cell_text:
-                        item.setForeground(QColor("#fbbf24"))
-                        item.setBackground(QColor(245, 158, 11, 35))
-                        item.setToolTip(f"{col_name}: Missing or unconfigured in Stock Policy sheet\nDouble-click to set policy thresholds")
-                    else:
-                        item.setForeground(QColor("#38bdf8"))
-                        item.setBackground(QColor(56, 189, 248, 25))
-                        item.setToolTip(f"Double-click to edit {col_name} & Target Stock policy thresholds (Current: {cell_text})")
-                elif col_idx == 8:
+                elif col_idx == 6:
                     item.setForeground(QColor("#38bdf8"))
                     item.setToolTip(f"Matched physical products in Inventory sheet: {len(group.products)}")
-                elif col_idx == 9:
+                elif col_idx == 7:
                     if "Incomplete" in cell_text:
                         item.setForeground(QColor("#fbbf24"))
                         item.setBackground(QColor(245, 158, 11, 40))
@@ -1796,19 +1951,13 @@ class MainWindow(QMainWindow):
             3: 85,   # Package
             4: 115,  # Footprint
             5: 105,  # Total In Stock
-            6: 115,  # Min Stock
-            7: 115,  # Target Stock
-            8: 140,  # Matched Products
-            9: 135,  # Status
+            6: 140,  # Matched Products
+            7: 135,  # Status
         }
-        # Stock policy column visibility toggling (Phase B)
-        show_stock_cols = settings.get("stock_policy_enabled", True) and settings.get("stock_policy_show_columns", True)
-        self.table.setColumnHidden(6, not show_stock_cols)  # Min Stock
-        self.table.setColumnHidden(7, not show_stock_cols)  # Target Stock
 
         # Match products column & panel visibility
         show_match_prods = settings.get("match_products_enabled", True)
-        self.table.setColumnHidden(8, not show_match_prods)  # Matched Products
+        self.table.setColumnHidden(6, not show_match_prods)  # Matched Products
         if hasattr(self, "products_footer_frame"):
             self.products_footer_frame.setVisible(show_match_prods)
         if not show_match_prods and hasattr(self, "products_frame"):
@@ -1863,10 +2012,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, "statusBar") and self.statusBar():
                 self.statusBar().showMessage(f"Copied database path: {db_path}", 1500)
 
+    def _apply_threshold_columns_visibility(self):
+        """Show or hide Min Stock (col 9) and Target Stock (col 10) in Component Inventory based on settings."""
+        if hasattr(self, "inventory_components_table") and self.inventory_components_table.columnCount() > 10:
+            show_thresholds = bool(
+                settings.get("stock_policy_enabled", True) and
+                settings.get("stock_policy_show_columns", True)
+            )
+            self.inventory_components_table.setColumnHidden(9, not show_thresholds)
+            self.inventory_components_table.setColumnHidden(10, not show_thresholds)
+
     def _apply_match_products_visibility(self, enabled: bool):
-        """Toggle column 8 and physical product panel based on match_products_enabled setting."""
-        if hasattr(self, "table") and self.table.columnCount() > 8:
-            self.table.setColumnHidden(8, not enabled)
+        """Toggle column 6 and physical product panel based on match_products_enabled setting."""
+        if hasattr(self, "table") and self.table.columnCount() > 6:
+            self.table.setColumnHidden(6, not enabled)
         if hasattr(self, "products_footer_frame"):
             self.products_footer_frame.setVisible(enabled)
         if not enabled and hasattr(self, "products_frame"):
@@ -2201,13 +2360,15 @@ class MainWindow(QMainWindow):
         if isinstance(self.inventory_repo, SqliteInventoryRepository):
             try:
                 db_path = self.inventory_repo.file_path or "omnix_inventory.db"
+                has_components = bool(group.products)
                 dlg = PolicyEditDialog(
                     group=group,
                     inventory_path=db_path,
                     parent=self,
                     repository=self.inventory_repo,
+                    read_only=has_components,
                 )
-                if dlg.exec() == QDialog.DialogCode.Accepted:
+                if dlg.exec() == QDialog.DialogCode.Accepted and not has_components:
                     self._filter_and_render()
                     for row in range(self.table.rowCount()):
                         it = self.table.item(row, 0)
@@ -2331,6 +2492,15 @@ class MainWindow(QMainWindow):
             else:
                 self.edit_component_btn.setToolTip(f"Edit component: {selected_comp.manufacturer} {selected_comp.mpn}")
 
+        if hasattr(self, "stock_mgmt_btn"):
+            self.stock_mgmt_btn.setEnabled(is_sqlite and has_sel)
+            if not is_sqlite:
+                self.stock_mgmt_btn.setToolTip("Stock management requires SQLite database mode.")
+            elif not has_sel:
+                self.stock_mgmt_btn.setToolTip("Select a physical component to adjust stock.")
+            else:
+                self.stock_mgmt_btn.setToolTip(f"Adjust on-hand stock for: {selected_comp.manufacturer} {selected_comp.mpn}")
+
         if hasattr(self, "delete_component_btn"):
             self.delete_component_btn.setEnabled(is_sqlite and has_sel)
             if not is_sqlite:
@@ -2354,6 +2524,9 @@ class MainWindow(QMainWindow):
         act_add.triggered.connect(self._open_add_component_dialog)
 
         if comp:
+            act_stock = menu.addAction("Stock Management...")
+            act_stock.triggered.connect(lambda: self._open_stock_adjustment_dialog(comp))
+
             act_edit = menu.addAction("Edit Component...")
             act_edit.triggered.connect(lambda: self._open_edit_component_dialog(comp))
 
@@ -2379,6 +2552,12 @@ class MainWindow(QMainWindow):
         act_add.triggered.connect(self._open_add_component_dialog)
 
         if comp:
+            act_thresh = menu.addAction("Edit Stock Thresholds...")
+            act_thresh.triggered.connect(lambda: self._open_component_threshold_dialog(comp))
+
+            act_stock = menu.addAction("Stock Management...")
+            act_stock.triggered.connect(lambda: self._open_stock_adjustment_dialog(comp))
+
             act_edit = menu.addAction("Edit Component...")
             act_edit.triggered.connect(lambda: self._open_edit_component_dialog(comp))
 
@@ -2422,9 +2601,6 @@ class MainWindow(QMainWindow):
                     self._mpn_copy_timer.timeout.connect(lambda: self._restore_mpn_status(seq))
                     self._mpn_copy_timer.start(1200)
 
-                if hasattr(self, "statusBar") and self.statusBar():
-                    self.statusBar().showMessage(f"Copied MPN: {mpn}", 1200)
-
     def _restore_mpn_status(self, seq: int):
         """Restores normal status-bar state after temporary MPN copy notification expires."""
         if getattr(self, "_mpn_copy_seq", 0) == seq:
@@ -2433,15 +2609,32 @@ class MainWindow(QMainWindow):
                 self.status_state_lbl.setStyleSheet("color: #38bdf8; font-weight: bold;")
 
     def _on_inventory_component_double_clicked(self, item: QTableWidgetItem):
-        """Deliberate editing: double-clicking does NOT open edit dialog."""
+        """Handle cell double click in the dedicated Component Inventory table."""
         if not item:
             return
-        # Column 10 is Purchase Link
-        if item.column() == 10:
+        col = item.column()
+        # Column 12 is Purchase Link
+        if col == 12:
             val = item.text().strip()
             if val.startswith("http://") or val.startswith("https://"):
                 webbrowser.open(val)
                 return
+
+        # Column 9 (Min Stock) or 10 (Target Stock): Open dedicated ComponentThresholdDialog
+        if col in (9, 10):
+            comp_id = item.data(Qt.ItemDataRole.UserRole)
+            comp = self.inventory_repo.get_component_by_id(comp_id) if comp_id and hasattr(self, "inventory_repo") and self.inventory_repo else self._get_selected_component()
+            if comp:
+                self._open_component_threshold_dialog(comp)
+            return
+
+        # Column 8 (Quantity in Stock): Open StockAdjustmentDialog
+        if col == 8:
+            comp_id = item.data(Qt.ItemDataRole.UserRole)
+            comp = self.inventory_repo.get_component_by_id(comp_id) if comp_id and hasattr(self, "inventory_repo") and self.inventory_repo else self._get_selected_component()
+            if comp:
+                self._open_stock_adjustment_dialog(comp)
+            return
 
     def _on_component_search_changed(self, text: str):
         self.component_search_query = text.strip()
@@ -2472,6 +2665,7 @@ class MainWindow(QMainWindow):
                 self.table.distribute_columns()
             if hasattr(self, "_on_group_selection_changed"):
                 self._on_group_selection_changed()
+            self._update_stats_ribbon()
         self._on_component_selection_changed()
 
     def _render_inventory_components_table(self):
@@ -2482,7 +2676,7 @@ class MainWindow(QMainWindow):
         headers = [
             "Row", "Manufacturer", "Part Number (MPN)", "Category",
             "Type / Technology", "Value", "Package", "Footprint",
-            "Quantity in Stock", "Description", "Purchase Link"
+            "Quantity in Stock", "Min Stock", "Target Stock", "Description", "Purchase Link"
         ]
         col_count = len(headers)
         self.inventory_components_table.setSortingEnabled(False)
@@ -2578,6 +2772,8 @@ class MainWindow(QMainWindow):
 
         for row_idx, comp in enumerate(components):
             qty_str = f"{comp.quantity_in_stock}" if comp.quantity_in_stock is not None else "0"
+            min_str = f"{comp.min_stock}" if getattr(comp, "min_stock", None) is not None else "0"
+            tgt_str = f"{comp.target_stock}" if getattr(comp, "target_stock", None) is not None else "0"
             cells = [
                 str(row_idx + 1),         # 0: Row
                 comp.manufacturer,        # 1: Manufacturer
@@ -2588,8 +2784,10 @@ class MainWindow(QMainWindow):
                 comp.package,             # 6: Package
                 comp.footprint,           # 7: Footprint
                 qty_str,                  # 8: Quantity in Stock
-                comp.description or "",   # 9: Description (moved right before Purchase Link)
-                comp.purchase_link or ""  # 10: Purchase Link
+                min_str,                  # 9: Min Stock
+                tgt_str,                  # 10: Target Stock
+                comp.description or "",   # 11: Description
+                comp.purchase_link or ""  # 12: Purchase Link
             ]
 
             for col_idx, cell_text in enumerate(cells):
@@ -2598,7 +2796,7 @@ class MainWindow(QMainWindow):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setData(Qt.ItemDataRole.UserRole, comp.id)
 
-                if col_idx in [0, 8]:
+                if col_idx in [0, 8, 9, 10]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     item.setFont(font_numbers)
                 elif col_idx in [2, 5, 6, 7]:
@@ -2613,11 +2811,18 @@ class MainWindow(QMainWindow):
                 elif col_idx == 2:
                     item.setForeground(QColor("#f8fafc"))
                 elif col_idx == 8:
-                    if comp.quantity_in_stock == 0:
+                    if comp.min_stock > 0 and comp.quantity_in_stock < comp.min_stock:
+                        item.setForeground(QColor("#f87171"))
+                        item.setToolTip(f"🔴 Low Stock: {comp.quantity_in_stock} on hand (Below Min Stock threshold: {comp.min_stock})")
+                    elif comp.quantity_in_stock == 0:
                         item.setForeground(QColor("#fbbf24"))
                     else:
                         item.setForeground(QColor("#34d399"))
-                elif col_idx == 10 and cell_text:
+                elif col_idx in [9, 10]:
+                    item.setForeground(QColor("#38bdf8"))
+                    lbl_name = "Min Stock" if col_idx == 9 else "Target Stock"
+                    item.setToolTip(f"{lbl_name}: {cell_text} (Double-click to edit thresholds)")
+                elif col_idx == 12 and cell_text:
                     item.setForeground(QColor("#38bdf8"))
                     item.setToolTip(f"Double-click to open purchase link: {cell_text}")
                 else:
@@ -2626,23 +2831,30 @@ class MainWindow(QMainWindow):
                 self.inventory_components_table.setItem(row_idx, col_idx, item)
 
         min_widths = {
-            0: 55,   # Row
-            1: 120,  # Manufacturer
-            2: 140,  # MPN
+            0: 50,   # Row
+            1: 130,  # Manufacturer
+            2: 150,  # Part Number (MPN)
             3: 110,  # Category
             4: 120,  # Type / Technology
             5: 90,   # Value
             6: 80,   # Package
             7: 90,   # Footprint
-            8: 135,  # Quantity in Stock (spacious for full 17-char header and values)
-            9: 180,  # Description (flexible)
-            10: 130, # Purchase Link (flexible)
+            8: 115,  # Quantity in Stock
+            9: 90,   # Min Stock
+            10: 95,  # Target Stock
+            11: 180, # Description (flexible)
+            12: 150, # Purchase Link (flexible)
         }
         if isinstance(self.inventory_components_table, InventoryTableWidget):
-            self.inventory_components_table.configure_column_distribution(min_widths, [9, 10])
+            self.inventory_components_table.configure_column_distribution(min_widths, [11, 12])
 
         self.inventory_components_table.setSortingEnabled(False)
         self.inventory_components_table.horizontalHeader().setSectionsClickable(False)
+        self.inventory_components_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self._apply_threshold_columns_visibility()
+        self._on_component_selection_changed()
+        self._update_stats_ribbon()
+        self._apply_threshold_columns_visibility()
         self._on_component_selection_changed()
 
     def _open_add_component_dialog(self, initial_group: Optional[Any] = None):
@@ -2705,6 +2917,79 @@ class MainWindow(QMainWindow):
             self._reload_and_select_group(target_key, select_comp_id=comp_id)
             mfr_mpn = f"{saved_comp.manufacturer} {saved_comp.mpn}" if saved_comp else f"{comp.manufacturer} {comp.mpn}"
             self.status_state_lbl.setText(f"● Component Updated (SQLite): {mfr_mpn}")
+            db_name = os.path.basename(self.inventory_database_path)
+            QTimer.singleShot(2500, lambda: self.status_state_lbl.setText(f"● Database: {db_name} (SQLite)"))
+
+    def _open_stock_adjustment_dialog(self, component: Optional[InventoryProduct] = None):
+        """Open the StockAdjustmentDialog for manual on-hand stock adjustment."""
+        if not isinstance(self.inventory_repo, SqliteInventoryRepository):
+            QMessageBox.information(
+                self,
+                "SQLite Mode Required",
+                "Manual stock management is supported when operating with the authoritative SQLite database."
+            )
+            return
+
+        comp = component or self._get_selected_component()
+        if not comp:
+            QMessageBox.warning(
+                self,
+                "No Component Selected",
+                "Please select a component from the table to adjust stock."
+            )
+            return
+
+        dlg = StockAdjustmentDialog(
+            component=comp,
+            repository=self.inventory_repo,
+            parent=self,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            saved_comp = getattr(dlg, "saved_component", None) or comp
+            target_key = saved_comp.group_key if hasattr(saved_comp, "group_key") else comp.group_key
+            comp_id = saved_comp.id if hasattr(saved_comp, "id") else comp.id
+            self._reload_and_select_group(target_key, select_comp_id=comp_id)
+            self._update_stats_ribbon()
+            mfr_mpn = f"{saved_comp.manufacturer} {saved_comp.mpn}" if hasattr(saved_comp, "mpn") else f"{comp.manufacturer} {comp.mpn}"
+            new_qty = saved_comp.quantity_in_stock if hasattr(saved_comp, "quantity_in_stock") else comp.quantity_in_stock
+            self.status_state_lbl.setText(f"● Stock Updated (SQLite): {mfr_mpn} ({new_qty} pcs)")
+            db_name = os.path.basename(self.inventory_database_path)
+            QTimer.singleShot(2500, lambda: self.status_state_lbl.setText(f"● Database: {db_name} (SQLite)"))
+
+    def _open_component_threshold_dialog(self, component: Optional[InventoryProduct] = None):
+        """Open the ComponentThresholdDialog for editing component min/target thresholds."""
+        if not isinstance(self.inventory_repo, SqliteInventoryRepository):
+            QMessageBox.information(
+                self,
+                "SQLite Mode Required",
+                "Component threshold editing is supported when operating with the authoritative SQLite database."
+            )
+            return
+
+        comp = component or self._get_selected_component()
+        if not comp:
+            QMessageBox.warning(
+                self,
+                "No Component Selected",
+                "Please select a component from the table to edit thresholds."
+            )
+            return
+
+        dlg = ComponentThresholdDialog(
+            component=comp,
+            repository=self.inventory_repo,
+            parent=self,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            saved_comp = getattr(dlg, "saved_component", None) or comp
+            target_key = saved_comp.group_key if hasattr(saved_comp, "group_key") else comp.group_key
+            comp_id = saved_comp.id if hasattr(saved_comp, "id") else comp.id
+            self._reload_and_select_group(target_key, select_comp_id=comp_id)
+            self._update_stats_ribbon()
+            mfr_mpn = f"{saved_comp.manufacturer} {saved_comp.mpn}" if hasattr(saved_comp, "mpn") else f"{comp.manufacturer} {comp.mpn}"
+            min_stk = saved_comp.min_stock if hasattr(saved_comp, "min_stock") else 0
+            tgt_stk = saved_comp.target_stock if hasattr(saved_comp, "target_stock") else 0
+            self.status_state_lbl.setText(f"● Thresholds Updated (SQLite): {mfr_mpn} (Min: {min_stk}, Target: {tgt_stk})")
             db_name = os.path.basename(self.inventory_database_path)
             QTimer.singleShot(2500, lambda: self.status_state_lbl.setText(f"● Database: {db_name} (SQLite)"))
 
@@ -2783,71 +3068,6 @@ class MainWindow(QMainWindow):
             return
 
         dlg = ProviderManagementDialog(repository=self.inventory_repo, parent=self)
-        dlg.exec()
-
-    def _open_link_validation_dialog(self):
-        """Extract all supplier links from components and open LinkValidationDialog."""
-        if not hasattr(self, "inventory_repo") or not self.inventory_repo or not self.inventory_repo.is_loaded:
-            QMessageBox.information(
-                self,
-                "No Inventory Database",
-                "Please load an inventory database before validating supplier links."
-            )
-            return
-
-        from core.procurement.link_validator import LinkValidationItem
-        from core.procurement.vendor_links import parse_vendor_links
-
-        all_products = self.inventory_repo.get_all_products()
-        items_to_validate = []
-
-        for p in all_products:
-            if p.supplier_links:
-                for sl in p.supplier_links:
-                    if sl.url:
-                        items_to_validate.append(LinkValidationItem(
-                            component_id=p.id,
-                            component_name=f"{p.manufacturer} {p.mpn}".strip(),
-                            manufacturer=p.manufacturer,
-                            mpn=p.mpn,
-                            url=sl.url,
-                            vendor_id=sl.vendor_id,
-                            vendor_label=sl.vendor_label,
-                        ))
-            elif p.purchase_link:
-                parsed = parse_vendor_links(p.purchase_link)
-                if parsed.is_valid:
-                    for vid, entry in parsed.links.items():
-                        items_to_validate.append(LinkValidationItem(
-                            component_id=p.id,
-                            component_name=f"{p.manufacturer} {p.mpn}".strip(),
-                            manufacturer=p.manufacturer,
-                            mpn=p.mpn,
-                            url=entry.url,
-                            vendor_id=vid,
-                            vendor_label=entry.label,
-                        ))
-                else:
-                    items_to_validate.append(LinkValidationItem(
-                        component_id=p.id,
-                        component_name=f"{p.manufacturer} {p.mpn}".strip(),
-                        manufacturer=p.manufacturer,
-                        mpn=p.mpn,
-                        url=p.purchase_link,
-                        vendor_id="",
-                        vendor_label="",
-                    ))
-
-        if not items_to_validate:
-            QMessageBox.information(
-                self,
-                "No Supplier Links Found",
-                "None of the components in inventory have configured purchase or supplier links."
-            )
-            return
-
-        from ui.dialogs.link_validation_dialog import LinkValidationDialog
-        dlg = LinkValidationDialog(items_to_validate, parent=self)
         dlg.exec()
 
     def _reload_and_select_group(self, target_group_key: Optional[str] = None, select_comp_id: Optional[int] = None):
@@ -2932,7 +3152,9 @@ class MainWindow(QMainWindow):
             if group_idx is None:
                 group_idx = row_idx
             menu.addSeparator()
-            edit_policy_act = menu.addAction("Edit Min / Target Stock Thresholds")
+            grp = self.current_filtered_groups[group_idx] if 0 <= group_idx < len(self.current_filtered_groups) else None
+            action_label = "View Stock Thresholds (Read-Only)" if (grp and grp.products) else "Edit Stock Policy Thresholds"
+            edit_policy_act = menu.addAction(action_label)
             edit_policy_act.triggered.connect(lambda: self._edit_stock_policy_thresholds(group_idx))
 
         if val.startswith("http://") or val.startswith("https://"):

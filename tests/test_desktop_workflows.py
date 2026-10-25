@@ -537,7 +537,7 @@ class TestGAP07MultiCandidateComparison:
 
         # 1. No-Op satisfied progress: displays neutral text without success checkmark, quantity, or green color
         dlg._on_mode_a_order_progress(1, 1, "NE555P", 0, "Already satisfied in cart (5/5 pcs)")
-        status_item = dlg.table.item(0, 5)
+        status_item = dlg.table.item(0, dlg.COL_STATUS)
         assert status_item is not None
         assert status_item.text() == "No new quantity added"
         assert "In Cart" not in status_item.text()
@@ -709,8 +709,8 @@ class TestGAP07MultiCandidateComparison:
             assert "Cart Unavailable" in mock_warn.call_args[0][1]
 
 
-    def test_confirm_payment_and_add_stock(self, qapp, sample_candidate_offers):
-        """Confirm payment prompts user and updates inventory stock via inventory_loader."""
+    def test_order_preview_dialog_does_not_mutate_inventory(self, qapp, sample_candidate_offers):
+        """OrderPreviewDialog conforms to strict immutability: does not expose stock mutation buttons or methods."""
         candidates, evaluations = sample_candidate_offers
         req = ProcurementRequest(part_number="NE555P", required_quantity=3)
         result = RequestProcurementResult(
@@ -721,31 +721,15 @@ class TestGAP07MultiCandidateComparison:
             selected_evaluation=evaluations[0],
         )
         mock_loader = MagicMock()
-        mock_loader.batch_increment_stock.return_value = (1, "Success")
-        callback_mock = MagicMock()
 
         dlg = OrderPreviewDialog(
             plan=BOMProcurementPlan(results=[result]),
             inventory_loader=mock_loader,
-            on_stock_updated=callback_mock,
         )
 
-        dlg._has_updated_inventory = False
-
-        def _mock_clicked(self_mb):
-            for b in self_mb.buttons():
-                if "Yes" in b.text():
-                    return b
-            return None
-
-        with patch.object(QMessageBox, "exec"), \
-             patch.object(QMessageBox, "clickedButton", _mock_clicked), \
-             patch.object(QMessageBox, "information"):
-            dlg._confirm_payment_and_add_stock()
-
-        assert mock_loader.batch_increment_stock.called
-        assert dlg._has_updated_inventory is True
-        assert callback_mock.called
+        assert not hasattr(dlg, "confirm_payment_btn")
+        assert not hasattr(dlg, "_confirm_payment_and_add_stock")
+        assert not mock_loader.batch_increment_stock.called
 
     def test_master_and_detail_double_click_opens_pdp_url(self, qapp, sample_candidate_offers):
         """Double clicking a master row or detail row opens the candidate's canonical PDP URL."""

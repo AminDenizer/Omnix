@@ -74,10 +74,11 @@ class PolicyEditDialog(QDialog):
     def __init__(
         self,
         group: StockPolicyGroup,
-        inventory_path: str,
+        inventory_path: str = "",
         parent: Optional[QWidget] = None,
         writer: Optional[StockPolicyWriter] = None,
         repository: Optional[Any] = None,
+        read_only: Optional[bool] = None,
     ):
         super().__init__(parent)
         self.group = group
@@ -85,7 +86,15 @@ class PolicyEditDialog(QDialog):
         self.writer = writer or StockPolicyWriter()
         self.repository = repository
 
-        self.setWindowTitle("Edit Stock Policy Thresholds")
+        # In Option B, if group contains physical components, individual components own thresholds;
+        # group-level threshold editing is disabled to prevent overwriting component thresholds.
+        if read_only is not None:
+            self.is_read_only = bool(read_only)
+        else:
+            self.is_read_only = bool(self.repository is not None and getattr(self.group, "products", None))
+
+        title = "Stock Policy Thresholds (Read-Only Aggregate)" if self.is_read_only else "Edit Stock Policy Thresholds"
+        self.setWindowTitle(title)
         self.setModal(True)
         self.setMinimumHeight(380)
 
@@ -162,7 +171,8 @@ class PolicyEditDialog(QDialog):
         hdr_layout.setContentsMargins(12, 10, 12, 10)
         hdr_layout.setSpacing(6)
 
-        title_lbl = QLabel("Stock Policy Thresholds")
+        title_text = "Stock Policy Thresholds (Component-Level Aggregate)" if self.is_read_only else "Stock Policy Thresholds"
+        title_lbl = QLabel(title_text)
         title_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #38bdf8;")
         hdr_layout.addWidget(title_lbl)
 
@@ -300,6 +310,30 @@ class PolicyEditDialog(QDialog):
 
         main_layout.addWidget(form_frame)
 
+        if self.is_read_only:
+            self.min_spin.setReadOnly(True)
+            self.min_spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.min_up_btn.setEnabled(False)
+            self.min_down_btn.setEnabled(False)
+            self.target_spin.setReadOnly(True)
+            self.target_spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.target_up_btn.setEnabled(False)
+            self.target_down_btn.setEnabled(False)
+
+            prod_cnt = len(self.group.products) if getattr(self.group, "products", None) else 0
+            readonly_notice = QLabel(
+                f"ℹ️ <b>Option B Component-Level Inventory:</b> Thresholds belong to individual physical components. "
+                f"The values shown above are the aggregate sum of all {prod_cnt} component(s) in this group.<br>"
+                "To edit stock thresholds, double-click a component in the <b>Component Inventory</b> tab."
+            )
+            readonly_notice.setTextFormat(Qt.TextFormat.RichText)
+            readonly_notice.setStyleSheet(
+                "font-size: 11px; color: #38bdf8; background-color: #0c2340; "
+                "border: 1px solid #1e3a8a; border-radius: 6px; padding: 10px;"
+            )
+            readonly_notice.setWordWrap(True)
+            main_layout.addWidget(readonly_notice)
+
         # 3. Dynamic Validation Feedback Area
         self.validation_lbl = QLabel("")
         self.validation_lbl.setWordWrap(True)
@@ -311,8 +345,8 @@ class PolicyEditDialog(QDialog):
         btn_layout.setSpacing(10)
         btn_layout.addStretch()
 
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setFixedSize(100, 36)
+        self.cancel_btn = QPushButton("Close" if self.is_read_only else "Cancel")
+        self.cancel_btn.setFixedSize(110 if self.is_read_only else 100, 36)
         self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cancel_btn.setStyleSheet("""
             QPushButton {
@@ -361,6 +395,8 @@ class PolicyEditDialog(QDialog):
         """)
         self.save_btn.clicked.connect(self._on_save_clicked)
         btn_layout.addWidget(self.save_btn)
+        if self.is_read_only:
+            self.save_btn.setVisible(False)
 
         main_layout.addLayout(btn_layout)
 
@@ -416,7 +452,7 @@ class PolicyEditDialog(QDialog):
 
     def _on_save_clicked(self):
         """Perform final validation and launch background Excel save with animated button state."""
-        if self._is_saving:
+        if self._is_saving or self.is_read_only:
             return
 
         min_val = self.min_spin.value()

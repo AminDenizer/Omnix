@@ -99,25 +99,18 @@ class TestExcelDataLoader:
 
         assert len(loader.filter_rows('')) == 6
 
-    def test_batch_increment_stock_strictly(self, temp_excel_file):
+    def test_excel_loader_does_not_mutate_inventory(self, temp_excel_file):
         loader = ExcelDataLoader()
         loader.load_file(temp_excel_file)
 
-        items_to_update = [
-            {'orig_row_idx': 2, 'part_name': 'NE555P', 'actual_ordered_qty': 50, 'needed_qty': 45},
-            {'orig_row_idx': 5, 'part_name': 'IRLR024NTRPBF', 'actual_ordered_qty': 0, 'needed_qty': 20},
-        ]
+        # Inventory quantities are strictly immutable reference data
+        assert not hasattr(loader, "batch_increment_stock")
+        assert not hasattr(loader, "save_cell_value")
 
-        count, msg = loader.batch_increment_stock(items_to_update)
-        assert count == 1
-
-        loader.load_file(temp_excel_file)
+        # Initial stock values remain completely unchanged
         ne555_row = next(r for idx, r in loader.rows if 'NE555P' in r)
-        irlr_row = next(r for idx, r in loader.rows if 'IRLR024NTRPBF' in r)
-
         stock_col = loader.get_column_index(['quantity in stock'])
-        assert ne555_row[stock_col] == '55'
-        assert irlr_row[stock_col] == '0'
+        assert ne555_row[stock_col] == '5'
 
     def test_load_multi_vendor_shortages(self, tmp_path):
         file_path = str(tmp_path / 'Inventory_Multi.xlsx')

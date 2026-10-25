@@ -30,9 +30,11 @@ class StatsRibbonWidget(QFrame):
         self.stat_filtered_rows.setProperty("class", "statPillSuccess")
         ribbon_layout.addWidget(self.stat_filtered_rows)
 
+        # Redundant 'Columns: X' indicator removed from upper ribbon layout per Phase 1 spec.
+        # Retained QLabel attribute and hide() for backward compatibility with callers/tests.
         self.stat_columns = QLabel("Columns: 0")
         self.stat_columns.setProperty("class", "statPill")
-        ribbon_layout.addWidget(self.stat_columns)
+        self.stat_columns.hide()
 
         # Incomplete Records Button
         self.stat_incomplete_btn = QPushButton("⚠️ Incomplete (0)")
@@ -84,10 +86,11 @@ class StatsRibbonWidget(QFrame):
         self.order_shortages_btn.setEnabled(False)
         ribbon_layout.addWidget(self.order_shortages_btn)
 
+        # Database name is displayed exclusively in the bottom status bar (statusDbPathLabel).
+        # We retain the QLabel attribute for API compatibility without showing it in the upper ribbon.
         self.stat_file = QLabel("Database: No File Found")
         self.stat_file.setProperty("class", "statPill")
-        self.stat_file.setToolTip("Active Excel Database")
-        ribbon_layout.addWidget(self.stat_file)
+        self.stat_file.hide()
 
     def set_incomplete_active(self, is_active: bool):
         self._is_incomplete_active = is_active

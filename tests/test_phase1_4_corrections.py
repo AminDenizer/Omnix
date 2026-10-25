@@ -20,6 +20,9 @@ from ui.widgets.sidebar import CollapsibleSidebar, render_outline_pixmap, Chevro
 from ui.widgets.assembly_preparation_widget import AssemblyTableWidget, AssemblyPreparationWidget
 from ui.printing.assembly_print_engine import AssemblyPrintEngine
 from ui.dialogs.assembly_preview_dialog import AssemblyPreviewDialog
+from ui.widgets.stats_ribbon import StatsRibbonWidget
+from ui.widgets.vendor_plugins_widget import VendorPluginsWidget
+from ui.main_window import MainWindow
 
 
 @pytest.fixture(scope="session")
@@ -259,19 +262,291 @@ class TestPreviewDialogNavigationAndControls:
 
         dialog.close()
 
-    def test_print_entry_points_dialog_safety_and_no_option_disable(self, qapp):
+    def test_preview_dialog_initial_all_pages_mode_synchronized(self, qapp):
+        items = create_sample_bom_items(10)
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
+        dialog.show()
+        qapp.processEvents()
+
+        # Both the combobox and the internal QPrintPreviewWidget must agree on AllPagesView
+        assert dialog.view_mode_combo.currentText() == "All Pages"
+        assert dialog.preview_widget.viewMode() == dialog.preview_widget.ViewMode.AllPagesView
+        dialog.close()
+
+    def test_preview_dialog_top_bar_clean_without_print_controls(self, qapp):
         items = create_sample_bom_items(10)
         dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
 
-        with patch("ui.dialogs.assembly_preview_dialog.QPrintDialog") as mock_dlg_cls:
-            mock_dlg = mock_dlg_cls.return_value
-            mock_dlg.exec.return_value = QDialog.DialogCode.Rejected
+        # Print button must be completely absent from dialog
+        assert not hasattr(dialog, "print_btn")
+        assert not hasattr(dialog, "_handle_print")
 
-            dialog._handle_print()
-            assert mock_dlg.exec.called
-            # Verify no arbitrary options like PrintCollateCopies were disabled
-            if mock_dlg.setOption.called:
-                for call in mock_dlg.setOption.call_args_list:
-                    assert call[0][1] is not False, "Print options must not be artificially disabled"
+        # PDF save button must remain active and functional
+        assert hasattr(dialog, "pdf_btn")
+        assert dialog.pdf_btn.text() == "📥 Save as PDF"
+        dialog.close()
+
+
+class TestFloatingPreviewControls:
+    """Tests that preview controls are docked in a floating dock at the bottom."""
+
+    def test_floating_control_dock_exists_and_contains_controls(self, qapp):
+        items = create_sample_bom_items(10)
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
+        dialog.show()
+        qapp.processEvents()
+
+        # Floating control bar must exist
+        assert hasattr(dialog, "floating_control_bar")
+        assert dialog.floating_control_bar.parent() == dialog
+
+        # Controls inside floating bar
+        assert hasattr(dialog, "prev_btn")
+        assert hasattr(dialog, "next_btn")
+        assert hasattr(dialog, "page_lbl")
+        assert hasattr(dialog, "fit_width_btn")
+        assert hasattr(dialog, "fit_page_btn")
+        assert hasattr(dialog, "zoom_in_btn")
+        assert hasattr(dialog, "zoom_out_btn")
 
         dialog.close()
+
+
+class TestDatabaseDisplaySeparation:
+    """Tests that upper stats ribbon does not display duplicate database path pill."""
+
+    def test_stats_ribbon_does_not_contain_file_path_pill_in_layout(self, qapp):
+        ribbon = StatsRibbonWidget()
+        # stat_file exists as an attribute for API compatibility, but is hidden / not in layout
+        assert hasattr(ribbon, "stat_file")
+        assert ribbon.stat_file.isHidden() is True
+
+        # Updating stats should preserve hidden state
+        ribbon.update_stats(total_rows=100, filtered_rows=50, total_cols=10, file_name="C:/path/to/db.xlsx")
+        assert ribbon.stat_file.isHidden() is True
+
+    def test_redundant_columns_indicator_absent_while_preserving_table_columns(self, qapp):
+        ribbon = StatsRibbonWidget()
+        # stat_columns exists for API compatibility but must be hidden/not shown in upper ribbon
+        assert hasattr(ribbon, "stat_columns")
+        assert ribbon.stat_columns.isHidden() is True
+
+        ribbon.update_stats(total_rows=100, filtered_rows=50, total_cols=10, file_name="C:/path/to/db.xlsx")
+        assert ribbon.stat_columns.isHidden() is True
+
+
+class TestMpnCopyNotificationDeduplication:
+    """Tests that copying MPN does not trigger duplicate statusBar message."""
+
+    def test_mpn_click_updates_status_indicator_without_duplicate_message(self, qapp):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        with patch.object(MainWindow, "_check_startup_shortages"):
+            win = MainWindow(default_file="")
+            win.statusBar().clearMessage()
+
+            # Prepare table item at column 2 (MPN)
+            win.table.setColumnCount(5)
+            win.table.setRowCount(1)
+            item = QTableWidgetItem("GRM188R71H104KA93D")
+            win.table.setItem(0, 2, item)
+
+            # Trigger MPN click handler
+            win._on_inventory_component_clicked(item)
+
+            # Dedicated status indicator updated
+            assert "GRM188R71H104KA93D" in win.status_state_lbl.text()
+            # Left status bar showMessage was NOT called with duplicate text
+            assert win.statusBar().currentMessage() == ""
+
+            win._is_force_closing = True
+            win.close()
+
+
+class TestVendorPluginsLayoutUnclipped:
+    """Tests that VendorPluginsWidget uses proper layout margins and unclipped card."""
+
+    def test_vendor_plugins_card_margins_and_no_css_padding_clipping(self, qapp):
+        from PyQt6.QtWidgets import QFrame
+        widget = VendorPluginsWidget()
+        widget.resize(1000, 700)
+        widget.show()
+        qapp.processEvents()
+
+        card = widget.findChild(QFrame, "cardFrame")
+        assert card is not None
+
+        # Card frame stylesheet must not have hardcoded CSS padding clipping text
+        assert "padding: 32px 24px" not in card.styleSheet()
+
+        # Content must have non-zero layout margins
+        margins = card.layout().contentsMargins()
+        assert margins.left() >= 24
+        assert margins.right() >= 24
+        assert margins.top() >= 24
+        assert margins.bottom() >= 24
+
+        widget.close()
+
+    def test_vendor_plugins_empty_state_rendered_exactly_once_after_multiple_refreshes(self, qapp):
+        from PyQt6.QtWidgets import QFrame
+        widget = VendorPluginsWidget()
+        assert len(widget.findChildren(QFrame, "cardFrame")) == 1
+
+        for _ in range(5):
+            widget.refresh_plugins()
+            assert len(widget.findChildren(QFrame, "cardFrame")) == 1
+
+        widget.close()
+
+
+class TestPhase1_5PrintRemovalAndWindowManagement:
+    """Tests for complete print removal, PDF export preservation, and smooth Min/Max behavior."""
+
+    def test_print_functionality_completely_removed_from_ui(self, qapp):
+        items = create_sample_bom_items(10)
+        prep = AssemblyPreparationWidget()
+        prep.bom_items = items
+        prep.project_name = "FC_IO_V1.3"
+
+        # Preparation widget must NOT have any print buttons or print methods
+        assert not hasattr(prep, "print_btn")
+        assert not hasattr(prep, "print_worksheet")
+        assert not hasattr(prep, "print_a5_sheet")
+
+        # Must retain preview and PDF export
+        assert hasattr(prep, "preview_btn")
+        assert hasattr(prep, "pdf_btn")
+        prep.close()
+
+        # Dialog must NOT have print button or _handle_print
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
+        assert not hasattr(dialog, "print_btn")
+        assert not hasattr(dialog, "_handle_print")
+        assert hasattr(dialog, "pdf_btn")
+        dialog.close()
+
+    def test_pdf_export_workflow_intact(self, qapp, tmp_path):
+        items = create_sample_bom_items(10)
+        prep = AssemblyPreparationWidget()
+        prep.bom_items = items
+        prep.project_name = "FC_IO_V1.3"
+
+        out_pdf = str(tmp_path / "test_export.pdf")
+        with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName", return_value=(out_pdf, "PDF Files (*.pdf)")), \
+             patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info:
+            prep.export_pdf()
+            assert os.path.exists(out_pdf)
+            assert os.path.getsize(out_pdf) > 0
+            mock_info.assert_called_once()
+        prep.close()
+
+    def test_preview_dialog_repeated_maximize_restore_cycles(self, qapp):
+        items = create_sample_bom_items(10)
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
+        dialog.resize(1120, 780)
+        dialog.show()
+        qapp.processEvents()
+
+        orig_size = dialog.size()
+        init_dock_pos = dialog.floating_control_bar.pos()
+
+        for cycle in range(3):
+            # Maximize
+            dialog.showMaximized()
+            qapp.processEvents()
+            assert dialog.isMaximized() is True
+            max_dock_pos = dialog.floating_control_bar.pos()
+            assert max_dock_pos.y() > init_dock_pos.y()
+
+            # Restore
+            dialog.showNormal()
+            qapp.processEvents()
+            assert dialog.isMaximized() is False
+            assert dialog.size() == orig_size
+            assert dialog.floating_control_bar.pos() == init_dock_pos
+
+        dialog.close()
+
+    def test_printer_orientation_preservation_in_render_to_printer(self, qapp):
+        items = create_sample_bom_items(5)
+        printer = QPrinter()
+        printer.setOutputFileName("scratch/orient_test.pdf")
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setPageOrientation(QPageLayout.Orientation.Portrait)
+        assert printer.pageLayout().orientation() == QPageLayout.Orientation.Portrait
+
+        doc = AssemblyPrintEngine.render_to_printer(
+            printer=printer,
+            bom_items=items,
+            project_name="ORIENT_TEST",
+            total_qty=5
+        )
+        assert printer.pageLayout().orientation() == QPageLayout.Orientation.Landscape
+        assert doc is not None
+
+    def test_assembly_preview_dialog_has_min_max_window_flags(self, qapp):
+        items = create_sample_bom_items(5)
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=10)
+        flags = dialog.windowFlags()
+        assert bool(flags & Qt.WindowType.WindowMinMaxButtonsHint) is True
+        dialog.close()
+
+    def test_preview_dialog_floating_dock_repositions_on_maximize_and_restore(self, qapp):
+        items = create_sample_bom_items(10)
+        dialog = AssemblyPreviewDialog(items, "FC_IO_V1.3", total_qty=20)
+        dialog.resize(1120, 780)
+        dialog.show()
+        qapp.processEvents()
+
+        init_pos = dialog.floating_control_bar.pos()
+        dialog.showMaximized()
+        qapp.processEvents()
+        max_pos = dialog.floating_control_bar.pos()
+
+        assert max_pos.y() > init_pos.y()
+
+        dialog.showNormal()
+        qapp.processEvents()
+        restore_pos = dialog.floating_control_bar.pos()
+        assert restore_pos == init_pos
+
+        dialog.close()
+
+    def test_main_window_minimize_maximize_and_state_sync(self, qapp):
+        with patch.object(MainWindow, "_check_startup_shortages"):
+            win = MainWindow(default_file="")
+            win.show()
+            qapp.processEvents()
+
+            assert win.isMaximized() is False
+            assert win.isMinimized() is False
+            assert win.title_bar.btn_maximize.toolTip() == "Maximize"
+
+            # Maximize click
+            win.title_bar.btn_maximize.click()
+            qapp.processEvents()
+            assert win.isMaximized() is True
+            assert win.title_bar.btn_maximize.toolTip() == "Restore Down"
+
+            # Restore click
+            win.title_bar.btn_maximize.click()
+            qapp.processEvents()
+            assert win.isMaximized() is False
+            assert win.title_bar.btn_maximize.toolTip() == "Maximize"
+
+            # Minimize click
+            win.title_bar.btn_minimize.click()
+            qapp.processEvents()
+            assert win.isMinimized() is True
+
+            # External state change via changeEvent
+            win.showNormal()
+            qapp.processEvents()
+            assert win.isMinimized() is False
+
+            win.setWindowState(win.windowState() | Qt.WindowState.WindowMaximized)
+            qapp.processEvents()
+            assert win.title_bar.btn_maximize.toolTip() == "Restore Down"
+
+            win._is_force_closing = True
+            win.close()

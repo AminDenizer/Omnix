@@ -14,7 +14,10 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from core.models import AdapterConfig
 from core.procurement.challenge_handler import SessionContinuityMode, SessionPromotionResult
-from vendors.lion.selectors import LionSelectors
+try:
+    from .selectors import LionSelectors
+except ImportError:
+    from vendors.lion.selectors import LionSelectors
 
 
 class LionSessionManager:

@@ -24,6 +24,7 @@ class LionSelectors:
 
     # Product Detail Page (PDP)
     PDP_CONTAINER = ".product-detail, .product-main, .container"
+    PDP_TITLE = "h1.font-weight-bold, h1, .product-title"
     SPEC_TABLE_ROWS = "table.table.table-bordered.table-striped tr, table tr"
     STOCK_AMOUNT_SPAN = "span.stock-amount"
     STOCK_CONTAINER = ".product-stock, .stock-status"
