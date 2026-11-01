@@ -44,10 +44,11 @@ jobs:
           pip install pyinstaller pyinstaller-hooks-contrib pytest pytest-qt
 
       - name: Run Core & Procurement PyTest Suite
+        shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest tests/test_plugin_*.py tests/test_procurement_*.py tests/test_versioned_registry.py tests/test_database_backup_restore.py tests/test_bom_auditor.py -v
+          python -m pytest tests/test_plugin_contract.py tests/test_plugin_manifest_validator.py tests/test_procurement_models.py tests/test_procurement_bridge.py tests/test_versioned_registry.py tests/test_database_backup_restore.py tests/test_bom_auditor.py -v
 
       - name: Build Standalone Executable (PyInstaller)
         run: |
