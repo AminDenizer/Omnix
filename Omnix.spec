@@ -11,7 +11,7 @@ datas = [
     ('vendors/javan.xpl', 'vendors'),
     ('core/plugins/trust_store', 'core/plugins/trust_store'),
     ('core/plugins/manifest.schema.json', 'core/plugins'),
-]
+] + collect_data_files('selenium')
 
 hiddenimports = [
     'PyQt6.sip',
@@ -19,12 +19,11 @@ hiddenimports = [
     'reportlab',
     'reportlab.graphics.barcode',
     'reportlab.lib.pagesizes',
-    'selenium',
     'sqlite3',
     'bidi',
     'arabic_reshaper',
     'jsonschema',
-] + collect_submodules('core') + collect_submodules('ui') + collect_submodules('vendors')
+] + collect_submodules('selenium') + collect_submodules('core') + collect_submodules('ui') + collect_submodules('vendors')
 
 a = Analysis(
     ['main.py'],
