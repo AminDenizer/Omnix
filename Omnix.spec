@@ -10,6 +10,7 @@ datas = [
     ('vendors/lion.xpl', 'vendors'),
     ('vendors/javan.xpl', 'vendors'),
     ('core/plugins/trust_store', 'core/plugins/trust_store'),
+    ('core/plugins/manifest.schema.json', 'core/plugins'),
 ]
 
 hiddenimports = [
@@ -22,6 +23,7 @@ hiddenimports = [
     'sqlite3',
     'bidi',
     'arabic_reshaper',
+    'jsonschema',
 ] + collect_submodules('core') + collect_submodules('ui') + collect_submodules('vendors')
 
 a = Analysis(
