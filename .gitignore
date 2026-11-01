@@ -21,7 +21,7 @@ BOM_Shortages_Report_*.pdf
 *.exe
 build/
 dist/
-*.spec
+!Omnix.spec
 _internal/
 
 # Excel database files & Excel lock files
