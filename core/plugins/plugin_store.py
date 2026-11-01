@@ -193,7 +193,11 @@ class PluginStore:
         if plugins_root:
             self.plugins_root = Path(plugins_root).resolve()
         else:
-            base_dir = Path(__file__).resolve().parent.parent.parent
+            try:
+                from config import get_app_dir
+                base_dir = Path(get_app_dir()).resolve()
+            except Exception:
+                base_dir = Path(__file__).resolve().parent.parent.parent
             self.plugins_root = (base_dir / "data" / "plugins").resolve()
 
         self.staging_root = self.plugins_root / ".staging"

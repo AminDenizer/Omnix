@@ -1,4 +1,4 @@
-"""
+﻿"""
 Omnix Vendor Plugin System — Cryptographic Trust Engine (Milestone 1)
 Governing Specification: OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 27.2
 
@@ -111,7 +111,12 @@ class TrustEngine:
     ):
         base_dir = Path(__file__).resolve().parent
         self.prod_trust_store = Path(prod_trust_store) if prod_trust_store else (base_dir / "trust_store")
-        self.dev_trust_store = Path(dev_trust_store) if dev_trust_store else (base_dir.parent.parent / "data" / "plugins" / "dev_trust_store")
+        try:
+            from config import get_app_dir
+            persistent_base = Path(get_app_dir()).resolve()
+        except Exception:
+            persistent_base = base_dir.parent.parent
+        self.dev_trust_store = Path(dev_trust_store) if dev_trust_store else (persistent_base / 'data' / 'plugins' / 'dev_trust_store')
 
         if env is not None:
             self.env = env.strip().lower()
