@@ -1,0 +1,17 @@
+File: manifest.json
+SHA-256-Digest: 71fcc347f769ef6d4cc3afccfa9270af9b0a6d952c4f7aad906dd5150331d5e6
+
+File: vendors/lion/__init__.py
+SHA-256-Digest: e604702d781499c0b78721bddc9a86e15d316ba7de78c7ff3f395b3d9b04403a
+
+File: vendors/lion/adapter.py
+SHA-256-Digest: bb082bbbf0dbf3b19b90b0514508ccf120f8876e767d101a4fca7a478ed66bd9
+
+File: vendors/lion/errors.py
+SHA-256-Digest: 2390387f10f39a936b3c38aebc3ee6da645729c7a35ef2fdecc955067ca93e67
+
+File: vendors/lion/selectors.py
+SHA-256-Digest: 1e2d1660c5ff6b585bb7e290e6cecf706f963175671ef223802f1c6f94fe114d
+
+File: vendors/lion/session.py
+SHA-256-Digest: 126c5f958c3ee3e90ccb5ca6ac2e4ade54434878adca4dab97a0320ee97b1125

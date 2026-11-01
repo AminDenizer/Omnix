@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-002",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:30:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Extract stock level from DOM",
+  "expected_observation": "Locate element containing numerical stock count",
+  "actual_observation": "Stock count is present in span.stock-amount (e.g. '2,900', '11', '500') within parent container .product-stock.",
+  "selector": "span.stock-amount, .product-stock, .stock-status",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-002.png",
+  "har_reference": "evidence/har/EV-LION-PDP-002.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite & LionAutomator",
+  "notes": "Stock text may contain commas (e.g. 2,900) and Persian numerals requiring sanitization."
+}

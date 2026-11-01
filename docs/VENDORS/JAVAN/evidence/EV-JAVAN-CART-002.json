@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-CART-002",
+  "vendor_id": "vendor_javan",
+  "workflow": "CART_WORKFLOW",
+  "timestamp": "2026-09-16T14:26:39.522669+00:00",
+  "url": "https://www.javanelec.com/shoppingcarts",
+  "action": "Deep inspection of cart endpoint https://www.javanelec.com/shoppingcarts",
+  "expected_observation": "Active cart structure or empty cart container observed",
+  "actual_observation": "Observed cart container at https://www.javanelec.com/shoppingcarts. Forms: 1, Tables: 0.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_cart_active.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Direct cart endpoint discovery."
+}

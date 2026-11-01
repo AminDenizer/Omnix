@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-CART-001",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "cart_navigation",
+  "timestamp": "2026-09-16T15:17:17.874130+00:00",
+  "url": "https://roboeq.ir/error/404/?referer=%2Fcart%2F",
+  "action": "GET /cart/",
+  "expected_observation": "Cart overview loads or redirects to active cart drawer",
+  "actual_observation": "Cart URL settled at 'https://roboeq.ir/error/404/?referer=%2Fcart%2F' with title 'خطا | روبوایکیو'",
+  "entry_state": "CART_VIEW",
+  "selector": ".cart-container, body",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

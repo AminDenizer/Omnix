@@ -1,0 +1,77 @@
+{
+  "manifest_version": "1.0.0",
+  "plugin_id": "com.javanelec.adapter",
+  "vendor_id": "vendor_javan",
+  "display_name": "Javan Electronic",
+  "description": "Javan Electronic Components & Kits Automation Plugin",
+  "version": "1.0.0",
+  "min_omnix_version": "1.0.0",
+  "omnix_contract_version": "1.0.0",
+  "entry_point": "vendors.javan.adapter:JavanVendorAdapter",
+  "publisher": {
+    "name": "Omnix Core Engineering",
+    "type": "OFFICIAL",
+    "key_id": "core-official-key-01"
+  },
+  "capabilities": [
+    "PRODUCT_URL_RECOGNITION",
+    "PRODUCT_INSPECTION",
+    "CART_URL_RESOLUTION",
+    "MPN_SEARCH",
+    "LIVE_STOCK_PROBE",
+    "TIERED_PRICING",
+    "MODE_A_STAGING"
+  ],
+  "supported_modes": [
+    "MODE_A"
+  ],
+  "routes": {
+    "base_url": "https://www.javanelec.com",
+    "cart_url": "https://www.javanelec.com/shoppingcarts",
+    "domains": [
+      "javanelec.com"
+    ],
+    "pdp_patterns": [
+      "^https?://(?:www\\.)?javanelec\\.com/shop/product/\\d+(?:/[^/]+(?:/[^/?#]+)?)?(?:/.*)?$"
+    ]
+  },
+  "config_schema": {
+    "fields": [
+      {
+        "key": "username",
+        "label": "Username / Phone / Email",
+        "type": "string",
+        "required": true,
+        "is_secret": false,
+        "default": "",
+        "description": "Javan Electronic account username, mobile number, or email address."
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "type": "password",
+        "required": true,
+        "is_secret": true,
+        "description": "Javan Electronic account password (stored encrypted)."
+      },
+      {
+        "key": "timeout_seconds",
+        "label": "Page Load Timeout (s)",
+        "type": "integer",
+        "required": false,
+        "is_secret": false,
+        "default": 30,
+        "description": "Maximum wait time in seconds for page navigation and DOM elements."
+      },
+      {
+        "key": "headless",
+        "label": "Run Browser in Headless Mode",
+        "type": "boolean",
+        "required": false,
+        "is_secret": false,
+        "default": false,
+        "description": "Run browser in the background unless interactive login or challenge resolution is required."
+      }
+    ]
+  }
+}

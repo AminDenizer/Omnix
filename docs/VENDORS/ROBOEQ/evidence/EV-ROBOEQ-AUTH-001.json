@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-AUTH-001",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "authentication_login_route",
+  "timestamp": "2026-09-16T15:17:21.252307+00:00",
+  "url": "https://auth.roboeq.ir/cas/login?service=https%3A%2F%2Froboeq.ir%2Flogin%2F",
+  "action": "GET /login/",
+  "expected_observation": "Login route redirects to centralized CAS authentication service",
+  "actual_observation": "Navigated to 'https://auth.roboeq.ir/cas/login?service=https%3A%2F%2Froboeq.ir%2Flogin%2F' with title 'ورود | روبوایکیو', username input and execution tokens",
+  "entry_state": "AUTH_CAS_LOGIN",
+  "selector": "input#username, input[name='username']",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

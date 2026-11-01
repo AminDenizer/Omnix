@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-PDP-002",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "pdp_title_header",
+  "timestamp": "2026-09-16T15:17:13.640427+00:00",
+  "url": "https://roboeq.ir/products/detail/0315001/%D8%A2%DB%8C-%D8%B3%DB%8C-%D8%AA%D8%A7%DB%8C%D9%85%D8%B1-NE555/",
+  "action": "Extract H1 product title",
+  "expected_observation": "H1 header contains part name and description",
+  "actual_observation": "Extracted H1 text 'آی سی تایمر NE555' matching selector 'h1'",
+  "entry_state": "PDP_LOADED",
+  "selector": "h1",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

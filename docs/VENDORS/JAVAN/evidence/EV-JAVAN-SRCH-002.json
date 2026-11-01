@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-SRCH-002",
+  "vendor_id": "vendor_javan",
+  "workflow": "SEARCH_WORKFLOW",
+  "timestamp": "2026-09-16T14:25:23.175446+00:00",
+  "url": "https://www.javanelec.com/shop?searchfilter=STM32F103C8T6",
+  "action": "Search for specific manufacturer part number 'STM32F103C8T6'",
+  "expected_observation": "Results return exact match or related STM32 microcontrollers",
+  "actual_observation": "Search returned product links: ['https://www.javanelec.com/shop?searchfilter=STM32F103C8T6#filter_items_-1', 'https://www.javanelec.com/shop?searchfilter=STM32F103C8T6#filter_items_-2', 'https://www.javanelec.com/shop/product/8649/stmicroelectronics/stm32f103c8t6']",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_search_stm32.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Specific MPN query observation."
+}

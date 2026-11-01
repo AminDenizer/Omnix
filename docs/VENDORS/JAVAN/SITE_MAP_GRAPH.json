@@ -1,0 +1,819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "vendor_id": "vendor_javan",
+    "vendor_name": "Javan Electronic",
+    "base_url": "https://www.javanelec.com",
+    "schema_version": "1.0.0",
+    "discovery_version": "1.0.0",
+    "created_at": "2026-09-16T14:29:37.349273+00:00",
+    "updated_at": "2026-09-16T14:29:37.349273+00:00",
+    "last_verified": "2026-09-16T14:29:37.349273+00:00",
+    "verification_status": "VERIFIED"
+  },
+  "nodes": [
+    {
+      "id": "javan_page_landing",
+      "type": "PAGE",
+      "label": "Landing Page",
+      "description": "Javan Electronic homepage entry point.",
+      "selectors": [
+        "sel_javan_header_logo",
+        "sel_javan_main_nav"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-001"
+      ]
+    },
+    {
+      "id": "javan_input_search",
+      "type": "INPUT",
+      "label": "Global Search Input",
+      "description": "Main search input box for part numbers and keywords.",
+      "selectors": [
+        "sel_javan_search_input"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "name": "searchAll",
+        "id": "searchAll",
+        "type": "text"
+      },
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-001"
+      ]
+    },
+    {
+      "id": "javan_page_search_results",
+      "type": "PAGE",
+      "label": "Search Results Page",
+      "description": "Product search listing page with faceted filter sidebar.",
+      "selectors": [
+        "sel_javan_search_results_container"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/shop\\?searchfilter=.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-001",
+        "EV-JAVAN-SRCH-002"
+      ]
+    },
+    {
+      "id": "javan_result_product_card",
+      "type": "RESULT",
+      "label": "Search Result Product Card",
+      "description": "Individual product match card within search results.",
+      "selectors": [
+        "sel_javan_product_card"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-004"
+      ]
+    },
+    {
+      "id": "javan_state_empty_search",
+      "type": "STATE",
+      "label": "Empty Search State",
+      "description": "State displayed when query yields 0 matching products.",
+      "selectors": [
+        "sel_javan_empty_search_badge"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "empty_text_marker": "0 محصول"
+      },
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-003"
+      ]
+    },
+    {
+      "id": "javan_page_category",
+      "type": "PAGE",
+      "label": "Category Catalog Page",
+      "description": "Category product catalog listing with faceted attributes.",
+      "selectors": [
+        "sel_javan_category_filter_sidebar"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/shop/category/.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-005"
+      ]
+    },
+    {
+      "id": "javan_page_pdp",
+      "type": "PAGE",
+      "label": "Product Detail Page",
+      "description": "Product Detail Page containing technical specs, tiered pricing, and cart controls.",
+      "selectors": [
+        "sel_javan_pdp_title",
+        "sel_javan_pdp_specs_table",
+        "sel_javan_pdp_pricing_table"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/shop/product/\\d+/.*$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-PDP-001",
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-PDP-003",
+        "EV-JAVAN-PDP-004",
+        "EV-JAVAN-QTY-001"
+      ]
+    },
+    {
+      "id": "javan_comp_pdp_specs",
+      "type": "COMPONENT",
+      "label": "Technical Specifications Table",
+      "description": "Table of product specifications: Brand, Package, Mounting, Voltage, Operating Temp.",
+      "selectors": [
+        "sel_javan_pdp_specs_table"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-PDP-004"
+      ]
+    },
+    {
+      "id": "javan_comp_pdp_pricing",
+      "type": "COMPONENT",
+      "label": "Tiered Pricing Table",
+      "description": "Volume tier table specifying quantity breaks and corresponding unit prices.",
+      "selectors": [
+        "sel_javan_pdp_pricing_table"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-QTY-001"
+      ]
+    },
+    {
+      "id": "javan_form_add_to_cart",
+      "type": "FORM",
+      "label": "Add to Cart Form",
+      "description": "Order form on PDP submitting to shopping cart endpoint.",
+      "selectors": [
+        "sel_javan_add_to_cart_form"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "action": "https://www.javanelec.com/shoppingcarts/createindex",
+        "method": "post"
+      },
+      "evidence_ids": [
+        "EV-JAVAN-PDP-003",
+        "EV-JAVAN-CART-003"
+      ]
+    },
+    {
+      "id": "javan_btn_add_to_cart",
+      "type": "BUTTON",
+      "label": "Add to Cart Submit Button",
+      "description": "Submit button triggering cart addition.",
+      "selectors": [
+        "sel_javan_add_to_cart_btn"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-PDP-003"
+      ]
+    },
+    {
+      "id": "javan_page_cart",
+      "type": "PAGE",
+      "label": "Shopping Cart Page",
+      "description": "Shopping cart page displaying staged cart items and order tabs.",
+      "selectors": [
+        "sel_javan_cart_container"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/shoppingcarts/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-CART-001",
+        "EV-JAVAN-CART-002"
+      ]
+    },
+    {
+      "id": "javan_state_empty_cart",
+      "type": "STATE",
+      "label": "Empty Cart State",
+      "description": "State rendered when shopping cart has no items.",
+      "selectors": [
+        "sel_javan_empty_cart_text"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "empty_text": "سبد خرید شما خالی است"
+      },
+      "evidence_ids": [
+        "EV-JAVAN-CART-002"
+      ]
+    },
+    {
+      "id": "javan_page_login",
+      "type": "PAGE",
+      "label": "Login Page",
+      "description": "User account authentication page.",
+      "selectors": [
+        "sel_javan_login_form"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/account/login/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "javan_form_login",
+      "type": "FORM",
+      "label": "Login Form",
+      "description": "Authentication credentials form.",
+      "selectors": [
+        "sel_javan_login_form"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "action": "https://www.javanelec.com/shoppingcarts/createindex",
+        "method": "post"
+      },
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "javan_input_username",
+      "type": "INPUT",
+      "label": "Username Field",
+      "description": "Login username or mobile number input.",
+      "selectors": [
+        "sel_javan_login_username"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "javan_input_password",
+      "type": "INPUT",
+      "label": "Password Field",
+      "description": "Login password input.",
+      "selectors": [
+        "sel_javan_login_password"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "javan_btn_login_submit",
+      "type": "BUTTON",
+      "label": "Login Submit Button",
+      "description": "Button triggering login authentication POST.",
+      "selectors": [
+        "sel_javan_login_submit"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "javan_page_error_404",
+      "type": "PAGE",
+      "label": "404 Not Found Page",
+      "description": "HTTP 404 error page.",
+      "selectors": [
+        "sel_javan_error_404_heading"
+      ],
+      "url_pattern": "^https://www\\.javanelec\\.com/home/notfound/?$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-ERR-001"
+      ]
+    },
+    {
+      "id": "javan_state_error_404",
+      "type": "STATE",
+      "label": "404 Not Found State",
+      "description": "Error state when requested route or product is missing.",
+      "selectors": [
+        "sel_javan_error_404_heading"
+      ],
+      "url_pattern": null,
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-ERR-001"
+      ]
+    },
+    {
+      "id": "javan_api_cart_create",
+      "type": "API_ENDPOINT",
+      "label": "Cart Create Endpoint",
+      "description": "Backend endpoint handling cart creation and staging via POST.",
+      "selectors": [],
+      "url_pattern": "^https://www\\.javanelec\\.com/shoppingcarts/createindex$",
+      "properties": {},
+      "evidence_ids": [
+        "EV-JAVAN-CART-003"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_landing_contains_search",
+      "source_node_id": "javan_page_landing",
+      "target_node_id": "javan_input_search",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_search_triggers_results",
+      "source_node_id": "javan_input_search",
+      "target_node_id": "javan_page_search_results",
+      "relationship_type": "TRIGGERS",
+      "condition": "Enter query and press Enter",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-001"
+      ]
+    },
+    {
+      "id": "edge_results_contains_card",
+      "source_node_id": "javan_page_search_results",
+      "target_node_id": "javan_result_product_card",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-004"
+      ]
+    },
+    {
+      "id": "edge_search_fails_empty",
+      "source_node_id": "javan_page_search_results",
+      "target_node_id": "javan_state_empty_search",
+      "relationship_type": "FAILS_WITH",
+      "condition": "Query matches 0 products",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-003"
+      ]
+    },
+    {
+      "id": "edge_card_navigates_pdp",
+      "source_node_id": "javan_result_product_card",
+      "target_node_id": "javan_page_pdp",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "Click product card link",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-004"
+      ]
+    },
+    {
+      "id": "edge_landing_navigates_cat",
+      "source_node_id": "javan_page_landing",
+      "target_node_id": "javan_page_category",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "Click category navigation link",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-005"
+      ]
+    },
+    {
+      "id": "edge_cat_navigates_pdp",
+      "source_node_id": "javan_page_category",
+      "target_node_id": "javan_page_pdp",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "Click item from category grid",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-005"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_specs",
+      "source_node_id": "javan_page_pdp",
+      "target_node_id": "javan_comp_pdp_specs",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_pricing",
+      "source_node_id": "javan_page_pdp",
+      "target_node_id": "javan_comp_pdp_pricing",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-QTY-001"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_form",
+      "source_node_id": "javan_page_pdp",
+      "target_node_id": "javan_form_add_to_cart",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-003"
+      ]
+    },
+    {
+      "id": "edge_form_contains_btn",
+      "source_node_id": "javan_form_add_to_cart",
+      "target_node_id": "javan_btn_add_to_cart",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-003"
+      ]
+    },
+    {
+      "id": "edge_btn_triggers_cart_api",
+      "source_node_id": "javan_btn_add_to_cart",
+      "target_node_id": "javan_api_cart_create",
+      "relationship_type": "TRIGGERS",
+      "condition": "Submit form with quantity",
+      "evidence_ids": [
+        "EV-JAVAN-CART-003"
+      ]
+    },
+    {
+      "id": "edge_cart_api_updates_cart",
+      "source_node_id": "javan_api_cart_create",
+      "target_node_id": "javan_page_cart",
+      "relationship_type": "UPDATES",
+      "condition": "Successful cart POST submission",
+      "evidence_ids": [
+        "EV-JAVAN-CART-003"
+      ]
+    },
+    {
+      "id": "edge_cart_contains_empty",
+      "source_node_id": "javan_page_cart",
+      "target_node_id": "javan_state_empty_cart",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-CART-002"
+      ]
+    },
+    {
+      "id": "edge_landing_navigates_login",
+      "source_node_id": "javan_page_landing",
+      "target_node_id": "javan_page_login",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "Click Login link",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_login_contains_form",
+      "source_node_id": "javan_page_login",
+      "target_node_id": "javan_form_login",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_form_contains_user",
+      "source_node_id": "javan_form_login",
+      "target_node_id": "javan_input_username",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_form_contains_pass",
+      "source_node_id": "javan_form_login",
+      "target_node_id": "javan_input_password",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_form_contains_submit",
+      "source_node_id": "javan_form_login",
+      "target_node_id": "javan_btn_login_submit",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_landing_fails_404",
+      "source_node_id": "javan_page_landing",
+      "target_node_id": "javan_page_error_404",
+      "relationship_type": "FAILS_WITH",
+      "condition": "Invalid URL path",
+      "evidence_ids": [
+        "EV-JAVAN-ERR-001"
+      ]
+    },
+    {
+      "id": "edge_404_contains_state",
+      "source_node_id": "javan_page_error_404",
+      "target_node_id": "javan_state_error_404",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-JAVAN-ERR-001"
+      ]
+    }
+  ],
+  "selectors": {
+    "sel_javan_header_logo": {
+      "id": "sel_javan_header_logo",
+      "type": "css",
+      "value": "a[href='https://www.javanelec.com/'], a.navbar-brand",
+      "priority": 1,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-001"
+      ]
+    },
+    "sel_javan_main_nav": {
+      "id": "sel_javan_main_nav",
+      "type": "css",
+      "value": "nav, .navbar, .menu",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-001"
+      ]
+    },
+    "sel_javan_search_input": {
+      "id": "sel_javan_search_input",
+      "type": "css",
+      "value": "input#searchAll, input[name='searchAll']",
+      "priority": 1,
+      "stability": "STABLE_ID",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-001"
+      ]
+    },
+    "sel_javan_search_results_container": {
+      "id": "sel_javan_search_results_container",
+      "type": "css",
+      "value": "#filter_items_-1, [class*='product-list'], .card",
+      "priority": 1,
+      "stability": "STABLE_ID",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-001"
+      ]
+    },
+    "sel_javan_product_card": {
+      "id": "sel_javan_product_card",
+      "type": "css",
+      "value": "a[href*='/shop/product/']",
+      "priority": 1,
+      "stability": "URL_PATTERN",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-004"
+      ]
+    },
+    "sel_javan_empty_search_badge": {
+      "id": "sel_javan_empty_search_badge",
+      "type": "css",
+      "value": ".alert, [class*='empty'], .no-product",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-003"
+      ]
+    },
+    "sel_javan_category_filter_sidebar": {
+      "id": "sel_javan_category_filter_sidebar",
+      "type": "css",
+      "value": "[class*='filter'], .side-filter",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-SRCH-005"
+      ]
+    },
+    "sel_javan_pdp_title": {
+      "id": "sel_javan_pdp_title",
+      "type": "css",
+      "value": "h1.font-weight-bold, h1, .product-name",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    "sel_javan_pdp_specs_table": {
+      "id": "sel_javan_pdp_specs_table",
+      "type": "css",
+      "value": "table",
+      "priority": 1,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    "sel_javan_pdp_pricing_table": {
+      "id": "sel_javan_pdp_pricing_table",
+      "type": "css",
+      "value": "table",
+      "priority": 2,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-QTY-001"
+      ]
+    },
+    "sel_javan_add_to_cart_form": {
+      "id": "sel_javan_add_to_cart_form",
+      "type": "css",
+      "value": "form[action*='shoppingcarts'], form.form-horizontal",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-PDP-003"
+      ]
+    },
+    "sel_javan_add_to_cart_btn": {
+      "id": "sel_javan_add_to_cart_btn",
+      "type": "css",
+      "value": "button.btn-success-outline[type='submit'], button[type='submit']",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002",
+        "EV-JAVAN-PDP-003"
+      ]
+    },
+    "sel_javan_cart_container": {
+      "id": "sel_javan_cart_container",
+      "type": "css",
+      "value": "[class*='cart'], .basket",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-CART-002"
+      ]
+    },
+    "sel_javan_empty_cart_text": {
+      "id": "sel_javan_empty_cart_text",
+      "type": "css",
+      "value": "div, p, span",
+      "priority": 1,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-CART-002"
+      ]
+    },
+    "sel_javan_login_form": {
+      "id": "sel_javan_login_form",
+      "type": "css",
+      "value": "form[action*='login'], form[action*='shoppingcarts']",
+      "priority": 1,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    "sel_javan_login_username": {
+      "id": "sel_javan_login_username",
+      "type": "css",
+      "value": "input#UserName, input[name='UserName']",
+      "priority": 1,
+      "stability": "STABLE_ID",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    "sel_javan_login_password": {
+      "id": "sel_javan_login_password",
+      "type": "css",
+      "value": "input#Password, input[name='Password']",
+      "priority": 1,
+      "stability": "STABLE_ID",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    "sel_javan_login_submit": {
+      "id": "sel_javan_login_submit",
+      "type": "css",
+      "value": "input[type='submit'][value='ورود'], input.btn-info-outline",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-JAVAN-AUTH-002"
+      ]
+    },
+    "sel_javan_error_404_heading": {
+      "id": "sel_javan_error_404_heading",
+      "type": "css",
+      "value": "h1, h2, h3, .not-found",
+      "priority": 1,
+      "stability": "STABLE_TAG",
+      "evidence_ids": [
+        "EV-JAVAN-ERR-001"
+      ]
+    }
+  },
+  "extractions": [
+    {
+      "id": "ext_javan_product_title",
+      "field_name": "product_title",
+      "source_node_id": "javan_page_pdp",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_javan_pdp_title",
+      "attribute": null,
+      "regex": null,
+      "transform": "TRIM",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    {
+      "id": "ext_javan_part_number",
+      "field_name": "mpn",
+      "source_node_id": "javan_page_pdp",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_javan_pdp_title",
+      "attribute": null,
+      "regex": null,
+      "transform": "TRIM",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    {
+      "id": "ext_javan_specs_table",
+      "field_name": "specifications",
+      "source_node_id": "javan_comp_pdp_specs",
+      "source_type": "DOM_TABLE",
+      "selector_id": "sel_javan_pdp_specs_table",
+      "attribute": null,
+      "regex": null,
+      "transform": "KEY_VALUE_MAP",
+      "normalization_rule": null,
+      "required": false,
+      "evidence_ids": [
+        "EV-JAVAN-PDP-002"
+      ]
+    },
+    {
+      "id": "ext_javan_pricing_tiers",
+      "field_name": "price_tiers",
+      "source_node_id": "javan_comp_pdp_pricing",
+      "source_type": "DOM_TABLE",
+      "selector_id": "sel_javan_pdp_pricing_table",
+      "attribute": null,
+      "regex": null,
+      "transform": "TIER_LIST",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-JAVAN-QTY-001"
+      ]
+    },
+    {
+      "id": "ext_javan_empty_cart_msg",
+      "field_name": "empty_cart_message",
+      "source_node_id": "javan_state_empty_cart",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_javan_empty_cart_text",
+      "attribute": null,
+      "regex": null,
+      "transform": "TRIM",
+      "normalization_rule": null,
+      "required": false,
+      "evidence_ids": [
+        "EV-JAVAN-CART-002"
+      ]
+    }
+  ]
+}

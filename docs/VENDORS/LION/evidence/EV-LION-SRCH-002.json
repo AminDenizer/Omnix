@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-SRCH-002",
+  "vendor_id": "vendor_lion",
+  "workflow": "SEARCH",
+  "timestamp": "2026-09-16T15:05:00Z",
+  "entry_state": "SEARCH_SUBMITTED",
+  "url": "https://lionelectronic.ir/products?search=NE555P",
+  "action": "Execute search query for exact MPN 'NE555P'",
+  "expected_observation": "Receive search result page with candidate products or exact match",
+  "actual_observation": "HTTP 200 OK returned for endpoint https://lionelectronic.ir/products?search=NE555P. Results list contains candidate items matching NE555P.",
+  "selector": "a[href*='/products/2070-NE555P'], .product-item, .card-product",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products?search=NE555P",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-SRCH-002.png",
+  "har_reference": "evidence/har/EV-LION-SRCH-002.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Exact MPN queries return HTTP 200 on /products?search={query}."
+}

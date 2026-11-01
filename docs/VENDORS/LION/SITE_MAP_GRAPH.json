@@ -1,0 +1,1380 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "vendor_id": "vendor_lion",
+    "vendor_name": "Lion Electronic",
+    "base_url": "https://lionelectronic.ir",
+    "schema_version": "1.0.0",
+    "discovery_version": "1.0.0",
+    "created_at": "2026-09-16T15:00:00Z",
+    "updated_at": "2026-09-16T16:45:00Z",
+    "last_verified": "2026-09-16T16:45:00Z",
+    "verification_status": "VERIFIED"
+  },
+  "nodes": [
+    {
+      "id": "node_page_home",
+      "type": "PAGE",
+      "label": "Lion Electronic Storefront Homepage",
+      "description": "Primary landing page containing global header search bar and catalog navigation",
+      "selectors": [
+        "sel_page_home_body"
+      ],
+      "url_pattern": "^https://lionelectronic\\.ir/?$",
+      "properties": {
+        "requires_auth": false,
+        "is_cacheable": true
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    {
+      "id": "node_comp_header_search",
+      "type": "COMPONENT",
+      "label": "Global Header Search Bar Component",
+      "description": "Header search widget present across all pages",
+      "selectors": [
+        "sel_form_search_box"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "position": "header",
+        "form_action": "/products"
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    {
+      "id": "node_input_search_query",
+      "type": "INPUT",
+      "label": "Catalog Search Query Input",
+      "description": "Main text input field for submitting Part Numbers, MPNs, and keywords",
+      "selectors": [
+        "sel_input_search_primary",
+        "sel_input_search_name"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "input_type": "text",
+        "name": "search",
+        "placeholder": "Part Number ...",
+        "id": "w0"
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-001",
+        "EV-LION-SRCH-002"
+      ]
+    },
+    {
+      "id": "node_page_search_results",
+      "type": "PAGE",
+      "label": "Search Results View",
+      "description": "Catalog search results grid listing candidate matching products",
+      "selectors": [
+        "sel_results_grid_container"
+      ],
+      "url_pattern": "^https://lionelectronic\\.ir/products\\?search=.*$",
+      "properties": {
+        "query_param": "search",
+        "items_per_page": 40
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-002",
+        "EV-LION-SRCH-003",
+        "EV-LION-SRCH-004"
+      ]
+    },
+    {
+      "id": "node_res_product_grid",
+      "type": "RESULT",
+      "label": "Search Product Grid Results",
+      "description": "Collection of candidate product item cards matching search query",
+      "selectors": [
+        "sel_results_product_links",
+        "sel_results_card"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "has_pagination": true
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-003"
+      ]
+    },
+    {
+      "id": "node_res_empty_search",
+      "type": "RESULT",
+      "label": "Zero Results Empty State",
+      "description": "Visual container and message rendered when no products match query",
+      "selectors": [
+        "sel_results_empty_container"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "product_count": 0
+      },
+      "evidence_ids": [
+        "EV-LION-SRCH-004"
+      ]
+    },
+    {
+      "id": "node_page_pdp",
+      "type": "PAGE",
+      "label": "Product Detail Page (PDP)",
+      "description": "Single product view with specifications, live stock, pricing, and purchase controls",
+      "selectors": [
+        "sel_pdp_container"
+      ],
+      "url_pattern": "^https://lionelectronic\\.ir/products/\\d+-[a-zA-Z0-9_.-]+$",
+      "properties": {
+        "requires_auth": false
+      },
+      "evidence_ids": [
+        "EV-LION-PDP-001",
+        "EV-LION-PDP-002"
+      ]
+    },
+    {
+      "id": "node_comp_spec_table",
+      "type": "COMPONENT",
+      "label": "Technical Specifications Table",
+      "description": "HTML table containing technical attributes, package code, MPN, and manufacturer",
+      "selectors": [
+        "sel_spec_table_rows"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "tag": "table",
+        "table_class": "table table-bordered table-striped"
+      },
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    },
+    {
+      "id": "node_data_stock_amount",
+      "type": "DATA_SOURCE",
+      "label": "Live Stock Count Data Element",
+      "description": "DOM element containing available warehouse stock integer or status string",
+      "selectors": [
+        "sel_stock_amount_span",
+        "sel_stock_container"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "value_type": "integer_or_persian_status"
+      },
+      "evidence_ids": [
+        "EV-LION-PDP-002",
+        "EV-LION-PDP-007",
+        "EV-LION-PDP-008"
+      ]
+    },
+    {
+      "id": "node_input_quantity",
+      "type": "INPUT",
+      "label": "Order Quantity Input Field",
+      "description": "Input spinbox for entering desired purchase quantity respecting packaging multiple",
+      "selectors": [
+        "sel_input_quantity_cell"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "id": "quantity-cell",
+        "class": "counter quantity-cell"
+      },
+      "evidence_ids": [
+        "EV-LION-QTY-001",
+        "EV-LION-QTY-002",
+        "EV-LION-QTY-003"
+      ]
+    },
+    {
+      "id": "node_btn_add_to_cart",
+      "type": "BUTTON",
+      "label": "Add to Cart Primary Action Button",
+      "description": "Button to trigger cart addition and AJAX submission to server",
+      "selectors": [
+        "sel_btn_buy_primary",
+        "sel_btn_buy_fallback"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "action_type": "add_to_cart",
+        "disabled_class": "disabled"
+      },
+      "evidence_ids": [
+        "EV-LION-PDP-004",
+        "EV-LION-CART-002"
+      ]
+    },
+    {
+      "id": "node_btn_add_inquiry",
+      "type": "BUTTON",
+      "label": "Add to Inquiry Button",
+      "description": "Button to submit commercial quote request for out-of-stock or inquiry-only items",
+      "selectors": [
+        "sel_btn_inquiry_primary"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "action_type": "add_to_inquiry"
+      },
+      "evidence_ids": [
+        "EV-LION-PDP-006"
+      ]
+    },
+    {
+      "id": "node_page_cart",
+      "type": "CART",
+      "label": "Shopping Cart Page",
+      "description": "Staged items summary table with quantities, prices, and checkout entry point",
+      "selectors": [
+        "sel_cart_container",
+        "sel_cart_items_table"
+      ],
+      "url_pattern": "^https://lionelectronic\\.ir/orders/cart$",
+      "properties": {
+        "is_staged_cart": true
+      },
+      "evidence_ids": [
+        "EV-LION-CART-001",
+        "EV-LION-CART-003"
+      ]
+    },
+    {
+      "id": "node_page_login",
+      "type": "PAGE",
+      "label": "User Authentication Login Page",
+      "description": "Authentication form page for username and password submission",
+      "selectors": [
+        "sel_login_form_container"
+      ],
+      "url_pattern": "^https://lionelectronic\\.ir/login$",
+      "properties": {
+        "is_auth_endpoint": true
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-001",
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "node_input_login_username",
+      "type": "INPUT",
+      "label": "Login Username / Email Field",
+      "description": "Text input field for user account identifier",
+      "selectors": [
+        "sel_login_username_input"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "id": "loginform-username"
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_input_login_password",
+      "type": "INPUT",
+      "label": "Login Password Field",
+      "description": "Password input field for user authentication secret",
+      "selectors": [
+        "sel_login_password_input"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "id": "loginform-password",
+        "type": "password"
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_btn_login_submit",
+      "type": "BUTTON",
+      "label": "Login Form Submit Button",
+      "description": "Button to submit credentials to authentication backend",
+      "selectors": [
+        "sel_login_submit_btn"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "type": "submit"
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-001",
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "node_modal_swal_alert",
+      "type": "MODAL",
+      "label": "SweetAlert2 Feedback & Error Modal",
+      "description": "Floating overlay dialog displaying packaging violations, stock alerts, or operation status",
+      "selectors": [
+        "sel_swal_container",
+        "sel_swal_modal",
+        "sel_swal_html_container"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "library": "SweetAlert2",
+        "confirm_button_selector": "button.swal2-confirm"
+      },
+      "evidence_ids": [
+        "EV-LION-ERR-001",
+        "EV-LION-ERR-003",
+        "EV-LION-ERR-004"
+      ]
+    },
+    {
+      "id": "node_state_logged_in",
+      "type": "STATE",
+      "label": "Authenticated User Session State",
+      "description": "Session condition where user credentials are valid and active",
+      "selectors": [
+        "sel_auth_logout_indicator",
+        "sel_auth_profile_indicator"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "authenticated": true
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "node_state_logged_out",
+      "type": "STATE",
+      "label": "Guest / Unauthenticated Session State",
+      "description": "Session condition where actions execute as anonymous visitor",
+      "selectors": [
+        "sel_guest_login_link"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "authenticated": false
+      },
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "node_api_cart_add",
+      "type": "API_ENDPOINT",
+      "label": "Cart Addition Internal AJAX Endpoint",
+      "description": "Internal frontend AJAX route triggered by UI button to stage items in cart session (Not a public REST API)",
+      "selectors": [
+        "sel_api_cart_add_url"
+      ],
+      "url_pattern": null,
+      "properties": {
+        "endpoint_type": "INTERNAL_BROWSER_AJAX",
+        "method": "POST",
+        "path": "/orders/cart/add",
+        "requires_session_csrf": true
+      },
+      "evidence_ids": [
+        "EV-LION-CART-002"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_home_contains_search_comp",
+      "source_node_id": "node_page_home",
+      "target_node_id": "node_comp_header_search",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    {
+      "id": "edge_search_comp_contains_input",
+      "source_node_id": "node_comp_header_search",
+      "target_node_id": "node_input_search_query",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    {
+      "id": "edge_search_input_triggers_results_page",
+      "source_node_id": "node_input_search_query",
+      "target_node_id": "node_page_search_results",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "query.length > 0",
+      "evidence_ids": [
+        "EV-LION-SRCH-002",
+        "EV-LION-SRCH-003"
+      ]
+    },
+    {
+      "id": "edge_search_results_returns_grid",
+      "source_node_id": "node_page_search_results",
+      "target_node_id": "node_res_product_grid",
+      "relationship_type": "RETURNS",
+      "condition": "match_count > 0",
+      "evidence_ids": [
+        "EV-LION-SRCH-003"
+      ]
+    },
+    {
+      "id": "edge_search_results_returns_empty",
+      "source_node_id": "node_page_search_results",
+      "target_node_id": "node_res_empty_search",
+      "relationship_type": "RETURNS",
+      "condition": "match_count == 0",
+      "evidence_ids": [
+        "EV-LION-SRCH-004"
+      ]
+    },
+    {
+      "id": "edge_product_grid_navigates_pdp",
+      "source_node_id": "node_res_product_grid",
+      "target_node_id": "node_page_pdp",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "click_card_link",
+      "evidence_ids": [
+        "EV-LION-SRCH-003",
+        "EV-LION-PDP-001"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_spec_table",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_comp_spec_table",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_stock_data",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_data_stock_amount",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-PDP-002"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_qty_input",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_input_quantity",
+      "relationship_type": "CONTAINS",
+      "condition": "window.productCanOrder == true",
+      "evidence_ids": [
+        "EV-LION-QTY-001",
+        "EV-LION-PDP-003"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_buy_btn",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_btn_add_to_cart",
+      "relationship_type": "CONTAINS",
+      "condition": "window.productCanOrder == true",
+      "evidence_ids": [
+        "EV-LION-PDP-004"
+      ]
+    },
+    {
+      "id": "edge_pdp_contains_inquiry_btn",
+      "source_node_id": "node_page_pdp",
+      "target_node_id": "node_btn_add_inquiry",
+      "relationship_type": "CONTAINS",
+      "condition": "window.productCanOrder == false || stock == 0",
+      "evidence_ids": [
+        "EV-LION-PDP-006"
+      ]
+    },
+    {
+      "id": "edge_buy_triggers_cart_api",
+      "source_node_id": "node_btn_add_to_cart",
+      "target_node_id": "node_api_cart_add",
+      "relationship_type": "TRIGGERS",
+      "condition": "!button.has_class('disabled') && quantity_valid",
+      "evidence_ids": [
+        "EV-LION-CART-002"
+      ]
+    },
+    {
+      "id": "edge_cart_api_updates_cart_page",
+      "source_node_id": "node_api_cart_add",
+      "target_node_id": "node_page_cart",
+      "relationship_type": "UPDATES",
+      "condition": "http_status == 200",
+      "evidence_ids": [
+        "EV-LION-CART-002",
+        "EV-LION-CART-003"
+      ]
+    },
+    {
+      "id": "edge_buy_fails_with_swal_modal",
+      "source_node_id": "node_btn_add_to_cart",
+      "target_node_id": "node_modal_swal_alert",
+      "relationship_type": "FAILS_WITH",
+      "condition": "quantity_invalid || stock_insufficient",
+      "evidence_ids": [
+        "EV-LION-ERR-001",
+        "EV-LION-ERR-003",
+        "EV-LION-ERR-004"
+      ]
+    },
+    {
+      "id": "edge_swal_recovers_to_pdp",
+      "source_node_id": "node_modal_swal_alert",
+      "target_node_id": "node_page_pdp",
+      "relationship_type": "RECOVERS_TO",
+      "condition": "click_swal_confirm",
+      "evidence_ids": [
+        "EV-LION-ERR-001"
+      ]
+    },
+    {
+      "id": "edge_login_page_contains_username",
+      "source_node_id": "node_page_login",
+      "target_node_id": "node_input_login_username",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_login_page_contains_password",
+      "source_node_id": "node_page_login",
+      "target_node_id": "node_input_login_password",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_login_page_contains_submit",
+      "source_node_id": "node_page_login",
+      "target_node_id": "node_btn_login_submit",
+      "relationship_type": "CONTAINS",
+      "condition": null,
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "edge_login_submit_triggers_logged_in_state",
+      "source_node_id": "node_btn_login_submit",
+      "target_node_id": "node_state_logged_in",
+      "relationship_type": "UPDATES",
+      "condition": "credentials_valid == true",
+      "evidence_ids": [
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "edge_logged_out_state_requires_login",
+      "source_node_id": "node_state_logged_out",
+      "target_node_id": "node_page_login",
+      "relationship_type": "NAVIGATES_TO",
+      "condition": "user_initiates_login",
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    }
+  ],
+  "selectors": {
+    "sel_page_home_body": {
+      "id": "sel_page_home_body",
+      "type": "css",
+      "value": "body",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    "sel_form_search_box": {
+      "id": "sel_form_search_box",
+      "type": "css",
+      "value": "form.searchBox[action='/products']",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    "sel_input_search_primary": {
+      "id": "sel_input_search_primary",
+      "type": "css",
+      "value": "input#w0.header-search-input.form-control[name='search']",
+      "priority": 1,
+      "stability": "SEMANTIC_ID",
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    "sel_input_search_name": {
+      "id": "sel_input_search_name",
+      "type": "attribute",
+      "value": "input[name='search']",
+      "priority": 2,
+      "stability": "ATTRIBUTE_MATCH",
+      "evidence_ids": [
+        "EV-LION-SRCH-001"
+      ]
+    },
+    "sel_results_grid_container": {
+      "id": "sel_results_grid_container",
+      "type": "css",
+      "value": ".products-list, .product-grid, .container",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-SRCH-003"
+      ]
+    },
+    "sel_results_product_links": {
+      "id": "sel_results_product_links",
+      "type": "css",
+      "value": "a[href^='/products/']",
+      "priority": 1,
+      "stability": "ATTRIBUTE_MATCH",
+      "evidence_ids": [
+        "EV-LION-SRCH-003"
+      ]
+    },
+    "sel_results_card": {
+      "id": "sel_results_card",
+      "type": "css",
+      "value": ".product-item, .card-product, .product-box",
+      "priority": 2,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-SRCH-002",
+        "EV-LION-SRCH-003"
+      ]
+    },
+    "sel_results_empty_container": {
+      "id": "sel_results_empty_container",
+      "type": "css",
+      "value": ".empty-result, .no-products, .alert-info",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-SRCH-004"
+      ]
+    },
+    "sel_pdp_container": {
+      "id": "sel_pdp_container",
+      "type": "css",
+      "value": ".product-detail, .product-main, .container",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-001"
+      ]
+    },
+    "sel_spec_table_rows": {
+      "id": "sel_spec_table_rows",
+      "type": "css",
+      "value": "table.table.table-bordered.table-striped tr",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    },
+    "sel_stock_amount_span": {
+      "id": "sel_stock_amount_span",
+      "type": "css",
+      "value": "span.stock-amount",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-002"
+      ]
+    },
+    "sel_stock_container": {
+      "id": "sel_stock_container",
+      "type": "css",
+      "value": ".product-stock, .stock-status",
+      "priority": 2,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-002",
+        "EV-LION-PDP-007"
+      ]
+    },
+    "sel_input_quantity_cell": {
+      "id": "sel_input_quantity_cell",
+      "type": "id",
+      "value": "quantity-cell",
+      "priority": 1,
+      "stability": "SEMANTIC_ID",
+      "evidence_ids": [
+        "EV-LION-QTY-001",
+        "EV-LION-QTY-003"
+      ]
+    },
+    "sel_btn_buy_primary": {
+      "id": "sel_btn_buy_primary",
+      "type": "css",
+      "value": "button.btn-buy, button.add-btn",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-004",
+        "EV-LION-CART-002"
+      ]
+    },
+    "sel_btn_buy_fallback": {
+      "id": "sel_btn_buy_fallback",
+      "type": "css",
+      "value": ".btn-buy",
+      "priority": 2,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-004"
+      ]
+    },
+    "sel_btn_inquiry_primary": {
+      "id": "sel_btn_inquiry_primary",
+      "type": "css",
+      "value": "button.add-inquiry, button.save-btn",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-PDP-006"
+      ]
+    },
+    "sel_cart_container": {
+      "id": "sel_cart_container",
+      "type": "css",
+      "value": ".order-cart-view, .cart-items",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-CART-001"
+      ]
+    },
+    "sel_cart_items_table": {
+      "id": "sel_cart_items_table",
+      "type": "css",
+      "value": "table.table, .cart-table",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-CART-001",
+        "EV-LION-CART-003"
+      ]
+    },
+    "sel_login_form_container": {
+      "id": "sel_login_form_container",
+      "type": "id",
+      "value": "login-form",
+      "priority": 1,
+      "stability": "SEMANTIC_ID",
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    "sel_login_username_input": {
+      "id": "sel_login_username_input",
+      "type": "id",
+      "value": "loginform-username",
+      "priority": 1,
+      "stability": "SEMANTIC_ID",
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    "sel_login_password_input": {
+      "id": "sel_login_password_input",
+      "type": "id",
+      "value": "loginform-password",
+      "priority": 1,
+      "stability": "SEMANTIC_ID",
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    "sel_login_submit_btn": {
+      "id": "sel_login_submit_btn",
+      "type": "css",
+      "value": "button[name='signup-button'], #login-form button[type='submit'], button.blue-btn",
+      "priority": 1,
+      "stability": "ATTRIBUTE_MATCH",
+      "evidence_ids": [
+        "EV-LION-AUTH-001",
+        "EV-LION-AUTH-002"
+      ]
+    },
+    "sel_swal_container": {
+      "id": "sel_swal_container",
+      "type": "css",
+      "value": ".swal2-container",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-ERR-001"
+      ]
+    },
+    "sel_swal_modal": {
+      "id": "sel_swal_modal",
+      "type": "css",
+      "value": ".swal2-modal",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-ERR-001"
+      ]
+    },
+    "sel_swal_html_container": {
+      "id": "sel_swal_html_container",
+      "type": "css",
+      "value": ".swal2-html-container, .swal2-title",
+      "priority": 1,
+      "stability": "STABLE_CLASS",
+      "evidence_ids": [
+        "EV-LION-ERR-001",
+        "EV-LION-ERR-003",
+        "EV-LION-ERR-004"
+      ]
+    },
+    "sel_auth_logout_indicator": {
+      "id": "sel_auth_logout_indicator",
+      "type": "text",
+      "value": "خروج",
+      "priority": 1,
+      "stability": "TEXT_MATCH",
+      "evidence_ids": [
+        "EV-LION-AUTH-002"
+      ]
+    },
+    "sel_auth_profile_indicator": {
+      "id": "sel_auth_profile_indicator",
+      "type": "text",
+      "value": "حساب کاربری",
+      "priority": 2,
+      "stability": "TEXT_MATCH",
+      "evidence_ids": [
+        "EV-LION-AUTH-002"
+      ]
+    },
+    "sel_guest_login_link": {
+      "id": "sel_guest_login_link",
+      "type": "css",
+      "value": "a[href*='/login']",
+      "priority": 1,
+      "stability": "ATTRIBUTE_MATCH",
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    "sel_api_cart_add_url": {
+      "id": "sel_api_cart_add_url",
+      "type": "url_pattern",
+      "value": "^https://lionelectronic\\.ir/orders/cart/add$",
+      "priority": 1,
+      "stability": "ATTRIBUTE_MATCH",
+      "evidence_ids": [
+        "EV-LION-CART-002"
+      ]
+    }
+  },
+  "extractions": [
+    {
+      "id": "ext_lion_stock_amount",
+      "field_name": "stock_quantity",
+      "source_node_id": "node_data_stock_amount",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_stock_amount_span",
+      "attribute": null,
+      "regex": "([\\d,]+)",
+      "transform": "EXTRACT_INTEGER",
+      "normalization_rule": "CLEAN_COMMAS_AND_PERSIAN_DIGITS",
+      "required": true,
+      "evidence_ids": [
+        "EV-LION-PDP-002"
+      ]
+    },
+    {
+      "id": "ext_lion_initial_step",
+      "field_name": "packaging_step_raw",
+      "source_node_id": "node_input_quantity",
+      "source_type": "DOM_ATTRIBUTE",
+      "selector_id": "sel_input_quantity_cell",
+      "attribute": "value",
+      "regex": "(\\d+)",
+      "transform": "EXTRACT_INTEGER",
+      "normalization_rule": null,
+      "required": true,
+      "evidence_ids": [
+        "EV-LION-QTY-001",
+        "EV-LION-QTY-002"
+      ]
+    },
+    {
+      "id": "ext_lion_can_order",
+      "field_name": "can_order",
+      "source_node_id": "node_page_pdp",
+      "source_type": "JS_PROPERTY",
+      "selector_id": "sel_pdp_container",
+      "attribute": "window.productCanOrder",
+      "regex": "true|false",
+      "transform": "TRIM_UPPERCASE",
+      "normalization_rule": "BOOLEAN_FLAG",
+      "required": true,
+      "evidence_ids": [
+        "EV-LION-PDP-003"
+      ]
+    },
+    {
+      "id": "ext_lion_spec_package",
+      "field_name": "package",
+      "source_node_id": "node_comp_spec_table",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_spec_table_rows",
+      "attribute": null,
+      "regex": "پکیج\\s*[:\\s]+\\s*([A-Za-z0-9_-]+)",
+      "transform": "TRIM_UPPERCASE",
+      "normalization_rule": "CANONICAL_PACKAGE_MAP",
+      "required": false,
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    },
+    {
+      "id": "ext_lion_spec_mpn",
+      "field_name": "mpn",
+      "source_node_id": "node_comp_spec_table",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_spec_table_rows",
+      "attribute": null,
+      "regex": "شماره فنی\\s*[:\\s]+\\s*([A-Za-z0-9_.-]+)",
+      "transform": "TRIM_UPPERCASE",
+      "normalization_rule": null,
+      "required": false,
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    },
+    {
+      "id": "ext_lion_spec_manufacturer",
+      "field_name": "manufacturer",
+      "source_node_id": "node_comp_spec_table",
+      "source_type": "DOM_TEXT",
+      "selector_id": "sel_spec_table_rows",
+      "attribute": null,
+      "regex": "سازنده\\s*[:\\s]+\\s*([^\\n\\r\\t]+)",
+      "transform": "TRIM_UPPERCASE",
+      "normalization_rule": null,
+      "required": false,
+      "evidence_ids": [
+        "EV-LION-PDP-005"
+      ]
+    }
+  ],
+  "states": {
+    "STATE_LOGGED_OUT": {
+      "label": "Guest Session (Unauthenticated)",
+      "indicator_selectors": [
+        "sel_guest_login_link"
+      ],
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    "STATE_LOGGED_IN": {
+      "label": "Authenticated User Session",
+      "indicator_selectors": [
+        "sel_auth_logout_indicator",
+        "sel_auth_profile_indicator"
+      ],
+      "evidence_ids": [
+        "EV-LION-AUTH-002"
+      ]
+    },
+    "STATE_CAN_ORDER_TRUE": {
+      "label": "Product Available for Direct Web Purchase",
+      "indicator_selectors": [
+        "sel_btn_buy_primary"
+      ],
+      "evidence_ids": [
+        "EV-LION-PDP-003",
+        "EV-LION-PDP-004"
+      ]
+    },
+    "STATE_CAN_ORDER_FALSE": {
+      "label": "Product Direct Purchase Disabled / Restricted",
+      "indicator_selectors": [
+        "sel_btn_inquiry_primary",
+        "sel_stock_container"
+      ],
+      "evidence_ids": [
+        "EV-LION-PDP-003",
+        "EV-LION-PDP-007",
+        "EV-LION-PDP-008"
+      ]
+    },
+    "STATE_INQUIRY_ONLY": {
+      "label": "Product Requires Commercial Inquiry (No Direct Cart)",
+      "indicator_selectors": [
+        "sel_btn_inquiry_primary"
+      ],
+      "evidence_ids": [
+        "EV-LION-PDP-006"
+      ]
+    },
+    "STATE_CART_UPDATED": {
+      "label": "Shopping Cart Session Updated Successfully",
+      "indicator_selectors": [
+        "sel_cart_items_table"
+      ],
+      "evidence_ids": [
+        "EV-LION-CART-002",
+        "EV-LION-CART-003"
+      ]
+    }
+  },
+  "actions": [
+    {
+      "id": "action_search_catalog",
+      "label": "Enter Query and Submit Catalog Search",
+      "action_type": "search",
+      "target_input_node_id": "node_input_search_query",
+      "target_button_node_id": null,
+      "preconditions": [
+        "node_input_search_query.is_visible()",
+        "query.length > 0"
+      ],
+      "postconditions": [
+        "PAGE_NAVIGATED_TO_SEARCH_RESULTS"
+      ],
+      "timeout_ms": 10000,
+      "evidence_ids": [
+        "EV-LION-SRCH-001",
+        "EV-LION-SRCH-002",
+        "EV-LION-SRCH-003"
+      ]
+    },
+    {
+      "id": "action_add_quantity_to_cart",
+      "label": "Enter Quantity and Click Add to Cart",
+      "action_type": "add_to_cart",
+      "target_input_node_id": "node_input_quantity",
+      "target_button_node_id": "node_btn_add_to_cart",
+      "preconditions": [
+        "STATE_CAN_ORDER_TRUE",
+        "node_input_quantity.is_visible()",
+        "quantity >= order_constraints.moq",
+        "quantity % order_constraints.order_multiple == 0"
+      ],
+      "postconditions": [
+        "STATE_CART_UPDATED",
+        "no_swal_error_modal"
+      ],
+      "timeout_ms": 10000,
+      "evidence_ids": [
+        "EV-LION-QTY-003",
+        "EV-LION-CART-002",
+        "EV-LION-CART-003"
+      ]
+    },
+    {
+      "id": "action_login_user",
+      "label": "Submit Login Credentials",
+      "action_type": "login",
+      "target_input_node_id": "node_input_login_username",
+      "target_button_node_id": "node_btn_login_submit",
+      "preconditions": [
+        "username.length > 0",
+        "password.length > 0"
+      ],
+      "postconditions": [
+        "STATE_LOGGED_IN",
+        "current_url != /login"
+      ],
+      "timeout_ms": 12000,
+      "evidence_ids": [
+        "EV-LION-AUTH-001",
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "action_dismiss_swal_alert",
+      "label": "Click SweetAlert Confirm to Dismiss Modal",
+      "action_type": "dismiss_modal",
+      "target_input_node_id": null,
+      "target_button_node_id": "node_modal_swal_alert",
+      "preconditions": [
+        "node_modal_swal_alert.is_visible()"
+      ],
+      "postconditions": [
+        "!node_modal_swal_alert.is_visible()"
+      ],
+      "timeout_ms": 5000,
+      "evidence_ids": [
+        "EV-LION-ERR-001"
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "id": "err_lion_not_found",
+      "error_type": "NOT_FOUND",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_page_pdp",
+      "signature_type": "HTTP_STATUS",
+      "observable_signature": {
+        "http_status": 404,
+        "text_keywords": [
+          "404",
+          "صفحه‌ای یافت نشد"
+        ]
+      },
+      "recovery_action": "action_flag_item_unfulfillable",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-ERR-002",
+        "EV-LION-SRCH-005"
+      ]
+    },
+    {
+      "id": "err_lion_zero_results",
+      "error_type": "ZERO_RESULTS",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_page_search_results",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_results_empty_container",
+        "text_keywords": [
+          "یافت نشد",
+          "موردی پیدا نشد"
+        ]
+      },
+      "recovery_action": "action_try_base_mpn_or_fuzzy",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-SRCH-004"
+      ]
+    },
+    {
+      "id": "err_lion_out_of_stock",
+      "error_type": "OUT_OF_STOCK",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_btn_add_to_cart",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_stock_container",
+        "text_keywords": [
+          "اتمام موجودی",
+          "ناموجود",
+          "تمام شد",
+          "به زودی"
+        ]
+      },
+      "recovery_action": "action_flag_item_unfulfillable",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-PDP-007",
+        "EV-LION-PDP-008",
+        "EV-LION-ERR-003"
+      ]
+    },
+    {
+      "id": "err_lion_moq_violation",
+      "error_type": "MOQ_VIOLATION",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_btn_add_to_cart",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_swal_html_container",
+        "text_keywords": [
+          "حداقل",
+          "حداقل تعداد سفارش"
+        ]
+      },
+      "recovery_action": "action_dismiss_swal_and_clamp_moq",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-ERR-004"
+      ]
+    },
+    {
+      "id": "err_lion_order_multiple_violation",
+      "error_type": "ORDER_MULTIPLE_VIOLATION",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_btn_add_to_cart",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_swal_html_container",
+        "text_keywords": [
+          "ضریب",
+          "مضرب",
+          "بسته بندی",
+          "بسته"
+        ]
+      },
+      "recovery_action": "action_dismiss_swal_and_round_quantity",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-ERR-001",
+        "EV-LION-QTY-002"
+      ]
+    },
+    {
+      "id": "err_lion_max_quantity_exceeded",
+      "error_type": "MAX_QUANTITY_EXCEEDED",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_btn_add_to_cart",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_swal_html_container",
+        "text_keywords": [
+          "موجودی کافی نیست",
+          "بیشتر از موجودی"
+        ]
+      },
+      "recovery_action": "action_cap_quantity_to_site_stock",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-ERR-003"
+      ]
+    },
+    {
+      "id": "err_lion_auth_required",
+      "error_type": "AUTH_REQUIRED",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_page_cart",
+      "signature_type": "HTTP_STATUS",
+      "observable_signature": {
+        "http_status": 302,
+        "url_redirect_pattern": "/login"
+      },
+      "recovery_action": "action_login_user",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-AUTH-001"
+      ]
+    },
+    {
+      "id": "err_lion_session_expired",
+      "error_type": "SESSION_EXPIRED",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_btn_add_to_cart",
+      "signature_type": "HTTP_STATUS",
+      "observable_signature": {
+        "http_status": 401,
+        "url_redirect_pattern": "/login"
+      },
+      "recovery_action": "action_login_user",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-AUTH-001",
+        "EV-LION-AUTH-002"
+      ]
+    },
+    {
+      "id": "err_lion_captcha_triggered",
+      "error_type": "CAPTCHA_TRIGGERED",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_page_home",
+      "signature_type": "SECURITY_CHALLENGE",
+      "observable_signature": {
+        "text_keywords": [
+          "Turnstile",
+          "reCAPTCHA",
+          "Security Check"
+        ]
+      },
+      "recovery_action": "action_pause_for_human_intervention",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-ERR-006"
+      ]
+    },
+    {
+      "id": "err_lion_waf_block",
+      "error_type": "WAF_BLOCK",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_page_home",
+      "signature_type": "HTTP_STATUS",
+      "observable_signature": {
+        "http_status": 403,
+        "text_keywords": [
+          "Access Denied",
+          "Cloudflare",
+          "ArvanCloud",
+          "Forbidden"
+        ]
+      },
+      "recovery_action": "action_pause_and_backoff",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-ERR-006"
+      ]
+    },
+    {
+      "id": "err_lion_network_error",
+      "error_type": "NETWORK_ERROR",
+      "verification_level": "VERIFIED",
+      "trigger_node_id": "node_page_home",
+      "signature_type": "NETWORK",
+      "observable_signature": {
+        "error_name": "SSL_HANDSHAKE_TIMEOUT",
+        "http_status": 0
+      },
+      "recovery_action": "action_retry_with_exponential_backoff",
+      "terminal": false,
+      "evidence_ids": [
+        "EV-LION-ERR-006"
+      ]
+    },
+    {
+      "id": "err_lion_dom_drift",
+      "error_type": "DOM_DRIFT",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_page_pdp",
+      "signature_type": "JS_EXCEPTION",
+      "observable_signature": {
+        "selector_missing": "sel_input_quantity_cell"
+      },
+      "recovery_action": "action_flag_dom_drift_and_fallback",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-QTY-001"
+      ]
+    },
+    {
+      "id": "err_lion_unknown_vendor_error",
+      "error_type": "UNKNOWN_VENDOR_ERROR",
+      "verification_level": "OBSERVED",
+      "trigger_node_id": "node_page_pdp",
+      "signature_type": "DOM_MODAL",
+      "observable_signature": {
+        "modal_selector_id": "sel_swal_container",
+        "text_keywords": [
+          "خطای ناشناخته",
+          "امکان پردازش وجود ندارد"
+        ]
+      },
+      "recovery_action": "action_log_and_abort",
+      "terminal": true,
+      "evidence_ids": [
+        "EV-LION-ERR-001"
+      ]
+    }
+  ]
+}

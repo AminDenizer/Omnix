@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-SRCH-004",
+  "vendor_id": "vendor_lion",
+  "workflow": "SEARCH",
+  "timestamp": "2026-09-16T15:15:00Z",
+  "entry_state": "SEARCH_SUBMITTED",
+  "url": "https://lionelectronic.ir/products?search=XYZ999NONEXISTENT",
+  "action": "Execute search for non-existent part number",
+  "expected_observation": "Identify zero results empty state container and zero candidate links",
+  "actual_observation": "HTTP 200 OK returned with zero product card links (product_links_count = 0). Catalog empty state message rendered.",
+  "selector": ".empty-result, .no-products, .alert-info, div:contains('یافت نشد')",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products?search=XYZ999NONEXISTENT",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-SRCH-004.png",
+  "har_reference": "evidence/har/EV-LION-SRCH-004.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Empty search does not return 404; it returns 200 with 0 product cards."
+}

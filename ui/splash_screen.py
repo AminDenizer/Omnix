@@ -1,41 +1,41 @@
 import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
-    QGraphicsDropShadowEffect, QFrame, QGraphicsOpacityEffect
+    QGraphicsDropShadowEffect, QFrame
 )
 from PyQt6.QtGui import QPixmap, QColor, QIcon
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPropertyAnimation, QEasingCurve
-from config import APP_NAME, APP_SUBTITLE, DEVELOPER_CREDIT_HTML
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from config import APP_NAME, APP_SUBTITLE, DEVELOPER_CREDIT_HTML, get_bundle_dir
 
 
 class SplashScreen(QWidget):
     """
-    Startup splash screen with glowing IC logo, developer credit (AminDenizer from DOT),
-    dynamic status updates, and smooth animated neon progress bar.
+    Startup splash screen with glowing IC logo, developer credit,
+    and smooth animated progress bar.
     """
 
     finished = pyqtSignal()
 
-    def __init__(self, total_duration_ms: int = 1800):
+    def __init__(self, total_duration_ms: int = 1000):
         super().__init__()
         self.total_duration = total_duration_ms
         self.current_progress = 0
         self.tick_interval = 20  # 20ms update interval for 50fps smooth motion
         self.step_increment = 100.0 / (self.total_duration / self.tick_interval)
 
-        # Window properties: frameless, transparent background, stays on top, centered
         self.setWindowFlags(
             Qt.WindowType.SplashScreen |
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.resize(540, 360)
+        self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.resize(520, 340)
         self._init_ui()
         self._center_on_screen()
 
         # Set window icon
-        icons_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+        icons_dir = os.path.join(get_bundle_dir(), "ui", "icons")
         ico_path = os.path.join(icons_dir, "app_logo.ico")
         png_path = os.path.join(icons_dir, "app_logo.png")
         if os.path.exists(ico_path):
@@ -43,7 +43,6 @@ class SplashScreen(QWidget):
         elif os.path.exists(png_path):
             self.setWindowIcon(QIcon(png_path))
 
-        # Progress update timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_progress)
 
@@ -90,9 +89,9 @@ class SplashScreen(QWidget):
         # Glowing IC Microchip Logo
         logo_lbl = QLabel()
         logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_path = os.path.join(os.path.dirname(__file__), "icons", "app_logo.png")
+        logo_path = os.path.join(get_bundle_dir(), "ui", "icons", "app_logo.png")
         if os.path.exists(logo_path):
-            pix = QPixmap(logo_path).scaled(74, 74, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            pix = QPixmap(logo_path).scaled(68, 68, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             logo_lbl.setPixmap(pix)
         header_layout.addWidget(logo_lbl)
 
@@ -109,10 +108,9 @@ class SplashScreen(QWidget):
         header_layout.addWidget(sub_lbl)
 
         card_layout.addLayout(header_layout)
-
         card_layout.addSpacing(4)
 
-        # 2. Developer Credit Box (AminDenizer from DOT)
+        # 2. Developer Credit Box
         dev_badge = QFrame()
         dev_badge.setObjectName("devBadge")
         dev_badge.setStyleSheet("""
@@ -120,43 +118,40 @@ class SplashScreen(QWidget):
                 background-color: rgba(15, 23, 42, 0.85);
                 border: 1px solid #1e293b;
                 border-radius: 8px;
-                padding: 8px 16px;
+                padding: 6px 14px;
             }
         """)
         dev_layout = QVBoxLayout(dev_badge)
-        dev_layout.setContentsMargins(12, 8, 12, 8)
+        dev_layout.setContentsMargins(10, 6, 10, 6)
         dev_layout.setSpacing(0)
 
         dev_title = QLabel(DEVELOPER_CREDIT_HTML)
         dev_title.setTextFormat(Qt.TextFormat.RichText)
         dev_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        dev_title.setStyleSheet("font-size: 12.5px; color: #f1f5f9; font-weight: 600;")
+        dev_title.setStyleSheet("font-size: 12px; color: #f1f5f9; font-weight: 600;")
         dev_layout.addWidget(dev_title)
 
         card_layout.addWidget(dev_badge)
-
         card_layout.addStretch()
 
-        # 3. Dynamic Status Label & Percentage (RTL layout)
+        # 3. Dynamic Status Label & Percentage (LTR layout)
         status_row = QHBoxLayout()
         status_row.setContentsMargins(2, 0, 2, 0)
         status_row.setSpacing(8)
 
-        # Percent counter (Left side)
+        self.status_lbl = QLabel("Initializing application...")
+        self.status_lbl.setStyleSheet("font-size: 11.5px; color: #7dd3fc; font-weight: 500;")
+        status_row.addWidget(self.status_lbl)
+
+        status_row.addStretch()
+
         self.percent_lbl = QLabel("0%")
         self.percent_lbl.setStyleSheet("font-size: 11.5px; font-weight: 700; color: #34d399; font-family: Consolas, monospace;")
         status_row.addWidget(self.percent_lbl)
 
-        status_row.addStretch()
-
-        # Status stage message (Right side)
-        self.status_lbl = QLabel("در حال راه‌اندازی سامانه...")
-        self.status_lbl.setStyleSheet("font-size: 11.5px; color: #7dd3fc; font-weight: 500;")
-        status_row.addWidget(self.status_lbl)
-
         card_layout.addLayout(status_row)
 
-        # 4. Neon Progress Bar (fills LTR 0% -> 100%)
+        # 4. Neon Progress Bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -190,33 +185,16 @@ class SplashScreen(QWidget):
         self.progress_bar.setValue(int_val)
         self.percent_lbl.setText(f"{int_val}%")
 
-        # Dynamic loading stage text (clean, concise and clear)
-        if int_val < 25:
-            self.status_lbl.setText("در حال آماده‌سازی پایگاه داده...")
-        elif int_val < 55:
-            self.status_lbl.setText("بارگذاری دسته‌بندی‌ها و کشوها...")
+        if int_val < 30:
+            self.status_lbl.setText("Detecting local Excel database...")
+        elif int_val < 65:
+            self.status_lbl.setText("Reading table schema & records...")
         elif int_val < 85:
-            self.status_lbl.setText("آماده‌سازی رابط کاربری...")
+            self.status_lbl.setText("Preparing high-speed search index...")
         else:
-            self.status_lbl.setText("راه‌اندازی کامل سامانه...")
+            self.status_lbl.setText("Ready.")
 
         if self.current_progress >= 100:
             self.timer.stop()
-            self._fade_out_and_finish()
-
-    def _fade_out_and_finish(self):
-        """Smooth fade-out transition effect."""
-        self.opacity_effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(self.opacity_effect)
-
-        self.anim = QPropertyAnimation(self.opacity_effect, b"opacity")
-        self.anim.setDuration(240)
-        self.anim.setStartValue(1.0)
-        self.anim.setEndValue(0.0)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-        self.anim.finished.connect(self._on_animation_finished)
-        self.anim.start()
-
-    def _on_animation_finished(self):
-        self.close()
-        self.finished.emit()
+            self.close()
+            self.finished.emit()

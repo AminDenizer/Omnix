@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-PDP-003",
+  "vendor_id": "vendor_javan",
+  "workflow": "PDP_WORKFLOW",
+  "timestamp": "2026-09-16T14:27:15.659553+00:00",
+  "url": "https://www.javanelec.com/shop/product/17930/texas-instruments/ne555p",
+  "action": "Inspect PDP order form, inputs, badges, and submission endpoints",
+  "expected_observation": "Form contains product ID, quantity inputs, and submit button targeting shopping cart",
+  "actual_observation": "Found 1 forms. Form inputs: ['Cart', 'ViewBasketType']",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_pdp_ne555.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "PDP Form elements analysis."
+}

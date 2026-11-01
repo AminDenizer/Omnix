@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-ROBOEQ-SRCH-001",
+  "vendor_id": "vendor_roboeq",
+  "workflow": "search_input",
+  "timestamp": "2026-09-16T15:16:56.486606+00:00",
+  "url": "https://roboeq.ir/",
+  "action": "Inspect search input element on homepage",
+  "expected_observation": "Global search input located with placeholder text",
+  "actual_observation": "Search input found matching selector 'input.req-field, input[placeholder*='نام محصول'], input[placeholder*='جستجو']' with placeholder 'نام محصول، شناسه، دسته و ...'",
+  "entry_state": "LANDING_PAGE",
+  "selector": "input.req-field, input[placeholder*='نام محصول'], input[placeholder*='جستجو']",
+  "network_request": null,
+  "network_response": null,
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector"
+}

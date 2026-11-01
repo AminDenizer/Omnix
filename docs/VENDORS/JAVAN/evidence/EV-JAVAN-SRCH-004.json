@@ -1,0 +1,16 @@
+{
+  "evidence_id": "EV-JAVAN-SRCH-004",
+  "vendor_id": "vendor_javan",
+  "workflow": "SEARCH_WORKFLOW",
+  "timestamp": "2026-09-16T14:27:08.040504+00:00",
+  "url": "https://www.javanelec.com/shop?searchfilter=NE555",
+  "action": "Inspect DOM layout of search results and product links",
+  "expected_observation": "Product cards or table rows contain product title links with pattern /shop/product/{id}/{brand}/{part}",
+  "actual_observation": "Found 6 product anchor links with pattern /shop/product/{id}/{brand}/{part}.",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_search_ne555.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Search result anchor layout verification."
+}

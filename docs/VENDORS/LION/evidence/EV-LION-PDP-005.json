@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-005",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:45:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Inspect technical specifications table",
+  "expected_observation": "Identify table containing MPN, Manufacturer, Package, and Description",
+  "actual_observation": "Technical specifications rendered in table.table.table-bordered.table-striped. Rows contain headers like 'موجودی محصول', 'وضعیت', 'پکیج', 'شماره فنی', 'سازنده'.",
+  "selector": "table.table.table-bordered.table-striped tr",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-005.png",
+  "har_reference": "evidence/har/EV-LION-PDP-005.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Probe Script & HTML Inspection",
+  "notes": "Cell index 0 is property label, cell index 1 is value."
+}

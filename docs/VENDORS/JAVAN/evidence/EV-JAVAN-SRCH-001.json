@@ -1,0 +1,17 @@
+{
+  "evidence_id": "EV-JAVAN-SRCH-001",
+  "vendor_id": "vendor_javan",
+  "workflow": "SEARCH_WORKFLOW",
+  "timestamp": "2026-09-16T14:25:19.143259+00:00",
+  "url": "https://www.javanelec.com/shop?searchfilter=NE555",
+  "action": "Submit search query 'NE555' via search input",
+  "expected_observation": "Search results page returns list of NE555 timer IC products with links, stock, and prices",
+  "actual_observation": "Observed search results page at https://www.javanelec.com/shop?searchfilter=NE555. Found 0 candidate items and 10 product links.",
+  "selector": "input[placeholder*=\"جستجو\"]",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "screenshots/javan_search_ne555.png",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools & DOM Inspector",
+  "notes": "Search query execution for common standard IC (NE555)."
+}

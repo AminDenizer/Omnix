@@ -1,0 +1,29 @@
+{
+  "evidence_id": "EV-LION-PDP-001",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:25:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/2070-NE555P",
+  "action": "Inspect Product Detail Page URL structure and main container",
+  "expected_observation": "Identify URL pattern and main PDP DOM wrapper",
+  "actual_observation": "PDP URLs follow ^https://lionelectronic\\.ir/products/\\d+-[a-zA-Z0-9_.-]+$. Main container contains title, stock, specs, and order widgets.",
+  "selector": ".product-detail, .product-main, .container",
+  "network_request": {
+    "method": "GET",
+    "url": "https://lionelectronic.ir/products/2070-NE555P",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "payload": null
+  },
+  "network_response": {
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8"
+  },
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-001.png",
+  "har_reference": "evidence/har/EV-LION-PDP-001.har",
+  "verification_status": "VERIFIED",
+  "verifier": "Empirical Probe Suite",
+  "notes": "Product ID is prefixed before hyphen in URL slug."
+}

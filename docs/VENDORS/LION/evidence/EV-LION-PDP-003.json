@@ -1,0 +1,19 @@
+{
+  "evidence_id": "EV-LION-PDP-003",
+  "vendor_id": "vendor_lion",
+  "workflow": "PDP_EXTRACT",
+  "timestamp": "2026-09-16T15:35:00Z",
+  "entry_state": "PAGE_LOADED",
+  "url": "https://lionelectronic.ir/products/1932-LM358N",
+  "action": "Inspect JavaScript runtime environment on PDP",
+  "expected_observation": "Check for JavaScript variables defining product purchase capability",
+  "actual_observation": "window.productCanOrder is declared in inline script tags (window.productCanOrder = true; or false).",
+  "selector": "script:contains('productCanOrder')",
+  "network_request": null,
+  "network_response": null,
+  "screenshot_reference": "evidence/screenshots/EV-LION-PDP-003.png",
+  "har_reference": "evidence/har/EV-LION-PDP-003.har",
+  "verification_status": "VERIFIED",
+  "verifier": "DevTools Inspector & Probe Script",
+  "notes": "When window.productCanOrder is false, direct purchase button is absent or disabled."
+}
