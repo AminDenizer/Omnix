@@ -488,8 +488,10 @@ class TestUserSuppliedValidationCases:
 
     def test_lion_moq_vs_stock_edge_case(self):
         """
-        Verifies rare scenario: MOQ=100, Stock=99 on Lion (0603WAJ0562T5E).
-        Orchestrator must flag INSUFFICIENT_STOCK because 99 available < 100 needed.
+        Verifies residual stock scenario: MOQ=100, Stock=99 on Lion (0603WAJ0562T5E).
+        When required_quantity (45) <= available stock (99) < MOQ/step (100),
+        the store allows purchasing all remaining stock (99). Orchestrator clamps
+        effective_quantity to 99 and marks the candidate ELIGIBLE.
         """
         orchestrator = UniversalProcurementOrchestrator()
         cand = VendorProcurementCandidate(
@@ -510,10 +512,10 @@ class TestUserSuppliedValidationCases:
         )
         eval_result = orchestrator.evaluate_candidate(cand, req)
 
-        assert eval_result.effective_quantity == 100
-        assert eval_result.state == EvaluationState.INSUFFICIENT_STOCK
-        assert eval_result.is_eligible is False
-        assert any("Insufficient stock" in r for r in eval_result.rejection_reasons)
+        assert eval_result.effective_quantity == 99
+        assert eval_result.state == EvaluationState.ELIGIBLE
+        assert eval_result.is_eligible is True
+        assert len(eval_result.rejection_reasons) == 0
 
     def test_lion_low_stock_shortage(self):
         """Verifies low-stock handling on 3296W-1-201 (Stock=11 vs Needed=23)."""

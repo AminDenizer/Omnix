@@ -363,7 +363,14 @@ class UniversalProcurementOrchestrator:
 
         # Check stock quantity sufficiency if site reported positive integer stock
         if candidate.stock_quantity > 0:
-            if effective_qty > candidate.stock_quantity:
+            if required_quantity <= candidate.stock_quantity < effective_qty:
+                # Residual Stock Rule:
+                # The supplier's available stock satisfies the required quantity, but is less
+                # than the standard packaging step / MOQ (e.g., needed=50, step=100, stock=99).
+                # Stores allow buying all remaining stock to clear inventory.
+                # Clamp effective_qty to available stock instead of rejecting.
+                effective_qty = candidate.stock_quantity
+            elif effective_qty > candidate.stock_quantity:
                 reasons.append(
                     f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} effective needed)."
                 )

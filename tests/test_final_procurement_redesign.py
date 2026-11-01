@@ -196,27 +196,27 @@ class TestOptionADirectLinkStaging:
 # ==============================================================================
 
 class TestQuantityMOQAndStockSafety:
-    def test_insufficient_stock_rule_shortage_14_step_10_target_20_stock_15(self):
+    def test_insufficient_stock_rule_shortage_30_step_50_target_50_stock_20(self):
         """
-        The 14/10/20/15 Rule:
-        Shortage = 14, Packaging Step = 10 -> Effective Required = 20.
-        Supplier Live Stock = 15.
+        Insufficient Stock Safety Rule:
+        Shortage = 30, Packaging Step = 50 -> Effective Required = 50.
+        Supplier Live Stock = 20.
+        Since needed_quantity (30) > available stock (20), it cannot be satisfied.
         Result:
         - Must be marked INSUFFICIENT_STOCK.
-        - Must NOT add 10 to cart (zero cart addition).
-        - Must NOT purchase or order.
+        - Must NOT add partial quantity to cart.
         - Status must be SKIPPED, status_code must be SupplierOutcomeStatus.INSUFFICIENT_STOCK.
         - Remaining independent items in batch must continue normally.
         """
-        class MockStep10Stock15Adapter(MockLionStagingAdapter):
-            stock_qty = 15
-            order_step = 10
+        class MockStep50Stock20Adapter(MockLionStagingAdapter):
+            stock_qty = 20
+            order_step = 50
             dispatched_items = []
 
         registry = VendorRegistry()
         registry.register_adapter(
             vendor_id="vendor_lion",
-            adapter_class=MockStep10Stock15Adapter,
+            adapter_class=MockStep50Stock20Adapter,
             domains=["lionelectronic.ir"],
             display_name="Lion Electronic",
             enabled=True,
@@ -227,7 +227,7 @@ class TestQuantityMOQAndStockSafety:
 
         req1 = ProcurementRequest(
             part_number="RES-10K",
-            required_quantity=14,  # Target will round up to 20 due to step=10
+            required_quantity=30,  # Target rounds to 50 due to step=50, stock is only 20
             explicit_vendor_url="https://lionelectronic.ir/res-10k",
             mode=ProcurementMode.DATABASE_AWARE,
         )
@@ -237,7 +237,7 @@ class TestQuantityMOQAndStockSafety:
         cand1 = cands[0]
         eval1 = orch.evaluate_candidate(cand1, request=req1)
 
-        # Candidate evaluation must flag INSUFFICIENT_STOCK because stock(15) < effective_qty(20)
+        # Candidate evaluation must flag INSUFFICIENT_STOCK because stock(20) < needed_qty(30)
         assert eval1.state == EvaluationState.INSUFFICIENT_STOCK
         assert eval1.is_eligible is False
         assert any("Insufficient stock" in r for r in eval1.rejection_reasons)
@@ -246,15 +246,15 @@ class TestQuantityMOQAndStockSafety:
         plan = orch.build_plan([req1], vendor_ids=["vendor_lion"])
         res1 = plan.results[0]
         assert res1.status == "INSUFFICIENT_STOCK"
-        assert "Insufficient stock: 20 units required by supplier package rules, but only 15 are available. No quantity was added." in res1.error_message
+        assert "Insufficient stock: 50 units required by supplier package rules, but only 20 are available. No quantity was added." in res1.error_message
 
         # Batch execution via bridge:
-        # Item 1 has shortage 14, step 10, stock 15 -> must be SKIPPED with 0 added
+        # Item 1 has shortage 30, step 50, stock 20 -> must be SKIPPED with 0 added
         batch_items = [
             {
                 "part_name": "RES-10K",
                 "part_number": "RES-10K",
-                "needed_qty": 14,
+                "needed_qty": 30,
                 "link": "https://lionelectronic.ir/res-10k",
                 "vendor_id": "vendor_lion",
             },
@@ -273,13 +273,13 @@ class TestQuantityMOQAndStockSafety:
         r1 = supplier_results[0]
         assert r1.status == SupplierOutcomeStatus.INSUFFICIENT_STOCK
         assert r1.staged_quantity == 0
-        assert r1.requested_quantity == 14
-        assert r1.effective_quantity == 20
-        assert r1.available_quantity == 15
+        assert r1.requested_quantity == 30
+        assert r1.effective_quantity == 50
+        assert r1.available_quantity == 20
 
-        # Verify adapter was never asked to add 10 or 15 or 20
-        assert ("https://lionelectronic.ir/res-10k", 10) not in MockStep10Stock15Adapter.dispatched_items
-        assert ("https://lionelectronic.ir/res-10k", 20) not in MockStep10Stock15Adapter.dispatched_items
+        # Verify adapter was never asked to add items
+        assert ("https://lionelectronic.ir/res-10k", 20) not in MockStep50Stock20Adapter.dispatched_items
+        assert ("https://lionelectronic.ir/res-10k", 50) not in MockStep50Stock20Adapter.dispatched_items
 
 
 # ==============================================================================
