@@ -1,5 +1,14 @@
 PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+PyQt6_sip>=13.6.0
 openpyxl>=3.1.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 selenium>=4.15.0
+reportlab>=4.0.0
+cryptography>=42.0.0
+arabic_reshaper>=3.0.0
+python-bidi>=0.4.2
+pytest-qt>=4.4.0
+pytest>=8.0.0
+jsonschema>=4.20.0
