@@ -643,11 +643,11 @@ class TestPhase3VersionedRegistry:
         # 3. Valid registration retains capabilities and supported_modes
         m_caps = make_manifest(
             capabilities=["PRODUCT_URL_RECOGNITION", "CART_URL_RESOLUTION"],
-            modes=["MODE_A", "MODE_B"],
+            modes=["MODE_A"],
         )
         reg_entry = reg.register_plugin_manifest(m_caps, MockVersionAdapter)
         assert reg_entry.capabilities == ["PRODUCT_URL_RECOGNITION", "CART_URL_RESOLUTION"]
-        assert reg_entry.modes == ["MODE_A", "MODE_B"]
+        assert reg_entry.modes == ["MODE_A"]
 
 
 class TestPhase3AtomicProcurementDispatch:

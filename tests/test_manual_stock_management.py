@@ -232,9 +232,12 @@ class TestManualStockManagement:
         with patch.object(MainWindow, "_check_startup_shortages"):
             window = MainWindow(default_file=db_path, repository=repo)
             window.show()
+            if hasattr(window, "inventory_subtabs"):
+                window.inventory_subtabs.setCurrentIndex(1)
             qapp.processEvents()
 
             window._reload_and_select_group(created_p.group_key, select_comp_id=created_p.id)
+            window._update_stats_ribbon()
             qapp.processEvents()
 
             # 1. Verify initial low stock state in stats ribbon
@@ -242,7 +245,7 @@ class TestManualStockManagement:
             assert len(groups) == 1
             assert groups[0].is_low_stock is True
             assert window.stats_ribbon.order_shortages_btn.isVisible() is True
-            assert "Order Low Stock (1)" in window.stats_ribbon.order_shortages_btn.text()
+            assert "(1)" in window.stats_ribbon.order_shortages_btn.text()
 
             # 2. Verify stock_mgmt_btn is enabled when component is selected
             assert hasattr(window, "stock_mgmt_btn")

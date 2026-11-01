@@ -28,16 +28,20 @@ class TestTab1InventoryView:
         assert win.inventory_repo.is_loaded is True
         assert len(win.inventory_repo.get_all_groups()) == 13
 
-        # Check top table (Stock Policy Groups)
+        # Check top table (Stock Policy Groups / Assembly & Stock)
         assert win.table.rowCount() == 13
-        assert win.table.columnCount() == 10
+        assert win.table.columnCount() == 7
 
         expected_headers = [
             "Category", "Type / Technology", "Value", "Package", "Footprint",
-            "Total In Stock", "Min Stock", "Target Stock", "Matched Products", "Status"
+            "Total In Stock", "Matched Products"
         ]
         actual_headers = [win.table.horizontalHeaderItem(c).text() for c in range(win.table.columnCount())]
         assert actual_headers == expected_headers
+
+        # Check dedicated Component Inventory table
+        assert hasattr(win, "inventory_components_table")
+        assert win.inventory_components_table.columnCount() == 14
 
     def test_group_selection_updates_associated_products(self, main_window):
         win = main_window
@@ -112,8 +116,11 @@ class TestTab1InventoryView:
                 if item:
                     assert not (item.flags() & Qt.ItemFlag.ItemIsEditable), f"Product cell ({r}, {c}) is editable"
 
-    def test_product_panel_collapsed_by_default(self, main_window):
+    def test_product_panel_collapsed_by_default(self, main_window, qapp):
         win = main_window
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
         assert win.products_frame.isVisible() is False
         assert win.products_footer_frame.isVisible() is True
         assert win.toggle_products_btn.isVisible() is True
@@ -139,6 +146,9 @@ class TestTab1InventoryView:
 
     def test_footer_toggle_expand_and_collapse(self, main_window, qapp):
         win = main_window
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
         assert win.products_frame.isVisible() is False
         assert win.toggle_products_btn.arrowType() == Qt.ArrowType.UpArrow
         assert win.toggle_products_btn.toolTip() == "Expand product details"
@@ -166,6 +176,9 @@ class TestTab1InventoryView:
 
     def test_selection_preserved_across_expand_and_collapse(self, main_window, qapp):
         win = main_window
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
 
         # Find 100nF group (which has 3 products)
         target_idx = None
@@ -201,6 +214,9 @@ class TestTab1InventoryView:
 
     def test_session_panel_height_preserved(self, main_window, qapp):
         win = main_window
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
         win._set_products_panel_expanded(True)
         qapp.processEvents()
         assert win.products_frame.isVisible() is True
@@ -224,31 +240,21 @@ class TestTab1InventoryView:
 
     def test_quick_order_button_not_in_visible_header(self, main_window):
         win = main_window
-        # Quick Order button must not be visible on the main window header
-        assert win.quick_order_btn.isVisible() is False
-        # Header layout should only contain the brand layout, stretch, and settings button
-        header_layout = win.centralWidget().layout().itemAt(0)
-        widgets_in_header = [
-            header_layout.itemAt(i).widget()
-            for i in range(header_layout.count())
-            if header_layout.itemAt(i).widget() is not None
-        ]
-        # Actions (Settings, Reference Data, Export Excel) have been relocated from in-content header to top window title bar
-        assert win.settings_btn not in widgets_in_header
-        assert win.manage_reference_btn not in widgets_in_header
-        assert win.export_excel_btn not in widgets_in_header
+        # Obsolete Quick Order and title bar settings are cleanly removed
+        assert not hasattr(win, "quick_order_btn")
         assert hasattr(win, "title_bar")
-        assert win.title_bar.settings_btn is win.settings_btn
-        assert win.title_bar.manage_reference_btn is win.manage_reference_btn
-        assert win.title_bar.export_excel_btn is win.export_excel_btn
+        assert not hasattr(win.title_bar, "settings_btn")
+        assert hasattr(win.title_bar, "btn_minimize")
 
     def test_stock_policy_table_column_widths_responsive_distribution(self, main_window, qapp):
         win = main_window
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
         table = win.table
 
         # At default size
         win.resize(1400, 800)
-        win.show()
         qapp.processEvents()
         table.distribute_columns()
         qapp.processEvents()
@@ -269,18 +275,21 @@ class TestTab1InventoryView:
         assert abs(total_col_w_large - vp_w_large) <= 2
         assert total_col_w_large > total_col_w
 
-    def test_min_and_target_stock_cell_tooltips_and_styling(self, main_window):
+    def test_min_and_target_stock_cell_tooltips_and_styling(self, main_window, qapp):
         win = main_window
-        assert win.table.rowCount() > 0
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(1)
+        qapp.processEvents()
+        assert win.inventory_components_table.rowCount() > 0
 
-        # Min Stock (col 6) and Target Stock (col 7)
-        min_item = win.table.item(0, 6)
-        tgt_item = win.table.item(0, 7)
+        # In the modern architecture, Min Stock (col 9) and Target Stock (col 10) are managed per physical component
+        min_item = win.inventory_components_table.item(0, 9)
+        tgt_item = win.inventory_components_table.item(0, 10)
 
         assert min_item is not None
         assert tgt_item is not None
-        assert "Double-click to edit Min Stock & Target Stock policy thresholds" in min_item.toolTip()
-        assert "Double-click to edit Target Stock & Target Stock policy thresholds" in tgt_item.toolTip()
+        assert "Double-click to edit thresholds" in min_item.toolTip()
+        assert "Double-click to edit thresholds" in tgt_item.toolTip()
 
     def test_inventory_database_path_property_exists_and_resolves(self, main_window):
         win = main_window
@@ -290,100 +299,87 @@ class TestTab1InventoryView:
         assert isinstance(path, str) and len(path) > 0
         assert os.path.exists(path)
 
-    def test_double_click_restricted_to_min_and_target_stock_columns(self, main_window, monkeypatch):
+    def test_double_click_restricted_to_min_and_target_stock_columns(self, main_window, qapp, monkeypatch):
         win = main_window
-        assert win.table.rowCount() > 0
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(1)
+        qapp.processEvents()
+        assert win.inventory_components_table.rowCount() > 0
 
-        called_indices = []
-        monkeypatch.setattr(win, "_edit_stock_policy_thresholds", lambda idx: called_indices.append(idx))
+        win.inventory_components_table.selectRow(0)
+        qapp.processEvents()
 
-        # 1. Non-threshold columns (0..5, 8, 9) must NOT trigger policy editing
-        non_editable_cols = [0, 1, 2, 3, 4, 5, 8, 9]
-        for col in non_editable_cols:
-            item = win.table.item(0, col)
-            assert item is not None
-            win._on_item_double_clicked(item)
-            assert len(called_indices) == 0, f"Column {col} ({win.table.horizontalHeaderItem(col).text()}) should not trigger edit dialog"
+        called_threshold_comps = []
+        monkeypatch.setattr(win, "_open_component_threshold_dialog", lambda comp: called_threshold_comps.append(comp))
 
-        # 2. Permitted threshold columns: Min Stock (col 6) and Target Stock (col 7)
-        item_min = win.table.item(0, 6)
-        win._on_item_double_clicked(item_min)
-        assert len(called_indices) == 1
-        assert called_indices[0] == 0
+        called_stock_adj = []
+        monkeypatch.setattr(win, "_open_stock_adjustment_dialog", lambda comp: called_stock_adj.append(comp))
 
-        item_tgt = win.table.item(0, 7)
-        win._on_item_double_clicked(item_tgt)
-        assert len(called_indices) == 2
-        assert called_indices[1] == 0
+        # 1. Non-threshold columns (e.g. Row 0, Manufacturer 1, MPN 2) must NOT trigger threshold editing
+        for col in [0, 1, 2, 3, 4, 5, 6, 7]:
+            item = win.inventory_components_table.item(0, col)
+            if item:
+                win._on_inventory_component_double_clicked(item)
+                assert len(called_threshold_comps) == 0
 
-        # 3. Single-click retains normal selection
-        win.table.selectRow(0)
-        assert win.table.currentRow() == 0
+        # 2. Permitted threshold columns: Min Stock (col 9) and Target Stock (col 10)
+        item_min = win.inventory_components_table.item(0, 9)
+        win._on_inventory_component_double_clicked(item_min)
+        assert len(called_threshold_comps) == 1
 
-    def test_context_menu_restricted_to_min_and_target_stock_columns(self, main_window, monkeypatch):
+        item_tgt = win.inventory_components_table.item(0, 10)
+        win._on_inventory_component_double_clicked(item_tgt)
+        assert len(called_threshold_comps) == 2
+
+        # 3. Column 8 (Quantity in Stock) triggers StockAdjustmentDialog
+        item_qty = win.inventory_components_table.item(0, 8)
+        win._on_inventory_component_double_clicked(item_qty)
+        assert len(called_stock_adj) == 1
+
+    def test_context_menu_restricted_to_min_and_target_stock_columns(self, main_window, qapp, monkeypatch):
+        from PyQt6.QtCore import QPoint
+        from core.inventory.repository import SqliteInventoryRepository
         win = main_window
-        assert win.table.rowCount() > 0
+        win.show()
+        win.inventory_subtabs.setCurrentIndex(1)
+        qapp.processEvents()
+        assert win.inventory_components_table.rowCount() > 0
+
+        win.inventory_components_table.selectRow(0)
+        qapp.processEvents()
 
         actions_created = []
-        orig_add_action = QMenu.addAction
+        with patch("ui.main_window.isinstance", side_effect=lambda obj, cls: True if cls == SqliteInventoryRepository else isinstance(obj, cls)):
+            with patch("ui.main_window.QMenu") as MockMenu:
+                instance = MockMenu.return_value
+                def fake_add(text):
+                    actions_created.append(text)
+                    return MagicMock()
+                instance.addAction.side_effect = fake_add
+                win._show_inventory_component_context_menu(QPoint(10, 10))
 
-        def mock_add_action(menu_self, text):
-            act = orig_add_action(menu_self, text)
-            actions_created.append(text)
-            return act
-
-        monkeypatch.setattr(QMenu, "addAction", mock_add_action)
-        monkeypatch.setattr(QMenu, "exec", lambda *args, **kwargs: None)
-
-        # Non-threshold columns must NOT have "Edit Min / Target Stock Thresholds"
-        non_editable_cols = [0, 1, 2, 3, 4, 5, 8, 9]
-        for col in non_editable_cols:
-            actions_created.clear()
-            item = win.table.item(0, col)
-            rect = win.table.visualItemRect(item)
-            win._show_context_menu(rect.center())
-            assert not any("Edit Min / Target Stock Thresholds" in a for a in actions_created), (
-                f"Column {col} ({win.table.horizontalHeaderItem(col).text()}) context menu must not offer policy editing"
-            )
-
-        # Threshold columns (6 and 7) MUST have "Edit Min / Target Stock Thresholds"
-        for col in [6, 7]:
-            actions_created.clear()
-            item = win.table.item(0, col)
-            rect = win.table.visualItemRect(item)
-            win._show_context_menu(rect.center())
-            assert any("Edit Min / Target Stock Thresholds" in a for a in actions_created), (
-                f"Column {col} ({win.table.horizontalHeaderItem(col).text()}) context menu must offer policy editing"
-            )
+        assert any("Edit Stock Thresholds..." in a for a in actions_created)
+        assert any("Stock Management..." in a for a in actions_created)
+        assert any("Add New Component..." in a for a in actions_created)
 
     def test_incomplete_status_badge_and_tooltip_visibility(self, main_window):
         win = main_window
         assert win.table.rowCount() > 0
 
-        # Find an incomplete group in the table or filter for incomplete
-        incomplete_rows = []
-        for r in range(win.table.rowCount()):
-            status_item = win.table.item(r, 9)
-            if status_item and "Incomplete" in status_item.text():
-                incomplete_rows.append(r)
-
-        if incomplete_rows:
-            r = incomplete_rows[0]
-            status_item = win.table.item(r, 9)
-            assert status_item.text() == "⚠️ Incomplete"
-            # Background should be styled with tinted color for contrast
-            assert status_item.background().color().isValid()
-            # Tooltip must explain what is missing
-            assert "Missing required fields" in status_item.toolTip()
-
-        # Check column minimum widths
+        # Check column minimum widths in Table 2
         table = win.table
         assert table._min_column_widths.get(5, 0) >= 105  # Total In Stock
-        assert table._min_column_widths.get(6, 0) >= 115  # Min Stock
-        assert table._min_column_widths.get(7, 0) >= 115  # Target Stock
-        assert table._min_column_widths.get(8, 0) >= 140  # Matched Products
-        assert table._min_column_widths.get(9, 0) >= 135  # Status
-        assert table.columnWidth(8) >= 140
+        assert table._min_column_widths.get(6, 0) >= 140  # Matched Products
+        assert table.columnWidth(6) >= 140
+
+        # Check Status column in Component Inventory table (Table 1, col 11)
+        comp_table = win.inventory_components_table
+        assert comp_table.columnCount() == 14
+        assert comp_table.horizontalHeaderItem(11).text() == "Status"
+        if comp_table.rowCount() > 0:
+            status_item = comp_table.item(0, 11)
+            assert status_item is not None
+            assert status_item.text() in ("🟢 Normal", "🔴 Low Stock", "⚠️ Out of Stock")
 
     def test_edit_stock_policy_thresholds_handles_missing_file_gracefully(self, main_window):
         win = main_window
@@ -399,32 +395,22 @@ class TestTab1InventoryView:
 
     def test_order_low_stock_informational_dialog(self, main_window):
         win = main_window
-        expected_shortages = [g for g in win.inventory_repo.get_all_groups() if g.is_low_stock]
-        expected_count = len(expected_shortages)
-        assert expected_count > 0
 
-        with patch("ui.main_window.QMessageBox.information") as mock_info:
-            win._open_inventory_order_dialog()
-            assert mock_info.called
-            title = mock_info.call_args[0][1]
-            message = mock_info.call_args[0][2]
-
-            assert title == "Stock Policy Shortages Detected"
-            assert f"{expected_count} Stock Policy group(s) are currently below minimum stock threshold." in message
-            assert "Mode A replenishment and ordering are planned for Phase 3." in message
-            assert "Phase 2" not in message
-
-        # Verify dynamic count behavior to ensure count is not hardcoded
-        mock_group_1 = MagicMock(is_low_stock=True)
-        mock_group_2 = MagicMock(is_low_stock=False)
-        with patch.object(win.inventory_repo, "get_all_groups", return_value=[mock_group_1, mock_group_2]):
+        # 1. When no shortages exist in current inventory repository
+        with patch.object(win, "_get_stock_policy_replenishment_items", return_value=[]):
             with patch("ui.main_window.QMessageBox.information") as mock_info:
                 win._open_inventory_order_dialog()
                 assert mock_info.called
                 title = mock_info.call_args[0][1]
+                assert title == "No Shortages Detected"
                 message = mock_info.call_args[0][2]
+                assert "meet or exceed their configured minimum stock thresholds" in message
 
-                assert title == "Stock Policy Shortages Detected"
-                assert "1 Stock Policy group(s) are currently below minimum stock threshold." in message
-                assert "Mode A replenishment and ordering are planned for Phase 3." in message
-                assert "Phase 2" not in message
+        # 2. When shortages exist, opens OrderPreviewDialog
+        fake_shortage = [
+            {"part_name": "R1", "needed_qty": 5, "shortage_qty": 5, "status": "SHORTAGE", "link": "https://lionelectronic.ir/p/1"}
+        ]
+        with patch.object(win, "_get_stock_policy_replenishment_items", return_value=fake_shortage):
+            with patch("ui.main_window.OrderPreviewDialog.exec") as mock_exec:
+                win._open_inventory_order_dialog()
+                assert mock_exec.called

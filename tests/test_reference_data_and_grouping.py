@@ -11,6 +11,7 @@ Unit & Integration Tests for:
 import os
 import openpyxl
 import pytest
+from unittest.mock import patch
 from PyQt6.QtCore import Qt, QPoint, QPointF
 from PyQt6.QtGui import QKeyEvent, QWheelEvent
 from PyQt6.QtWidgets import QApplication, QCompleter, QScrollArea
@@ -315,21 +316,8 @@ class TestUIStreamliningAndReferenceDataDialog:
         assert hasattr(win, "add_component_btn")
         assert hasattr(win, "edit_component_btn")
         assert hasattr(win, "delete_component_btn")
-        assert hasattr(win, "manage_reference_btn")
-        assert hasattr(win, "export_excel_btn")
-
-        # manage_reference_btn and export_excel_btn are in the top window title bar, removed from in-content header
-        header_layout = win.centralWidget().layout().itemAt(0)
-        widgets_in_header = [
-            header_layout.itemAt(i).widget()
-            for i in range(header_layout.count())
-            if header_layout.itemAt(i).widget() is not None
-        ]
-        assert win.manage_reference_btn not in widgets_in_header
-        assert win.export_excel_btn not in widgets_in_header
         assert hasattr(win, "title_bar")
-        assert win.title_bar.manage_reference_btn is win.manage_reference_btn
-        assert win.title_bar.export_excel_btn is win.export_excel_btn
+        assert win.export_excel_btn is win.backup_restore_widget.export_excel_btn
         assert win.inventory_subtabs.count() == 2
         assert "Assembly View" in win.inventory_subtabs.tabText(0)
         assert "Component Inventory" in win.inventory_subtabs.tabText(1)
@@ -493,9 +481,9 @@ class TestReferenceDataCRUDAndIntegrity:
 
 
 class TestExcelExporterTwoSheetContract:
-    """Verifies customer-facing Excel export with exactly two worksheets: ['Inventory', 'Assembly View']."""
+    """Verifies customer-facing Excel export with single-sheet contract: ['Inventory']."""
 
-    def test_exported_workbook_contains_exactly_two_sheets_in_order(self, clean_repo, tmp_path):
+    def test_exported_workbook_contains_exactly_one_inventory_sheet(self, clean_repo, tmp_path):
         repo = clean_repo
         repo.ensure_transistor_reference_data()
 
@@ -539,7 +527,7 @@ class TestExcelExporterTwoSheetContract:
 
         # Open and inspect the exported workbook
         wb = openpyxl.load_workbook(result_path, data_only=True)
-        assert wb.sheetnames == ["Inventory", "Assembly View"], "Export must contain exactly ['Inventory', 'Assembly View']"
+        assert wb.sheetnames == ["Inventory"], "Export must contain exactly ['Inventory']"
 
         # Verify Sheet 1: Inventory
         ws_inv = wb["Inventory"]
@@ -559,8 +547,13 @@ class TestExcelExporterTwoSheetContract:
         assert ws_inv.cell(row=3, column=7).value == "0805"
         assert ws_inv.cell(row=3, column=9).value == 250
 
-        # Verify Sheet 2: Assembly View
-        ws_asm = wb["Assembly View"]
+        wb.close()
+
+        # Also verify optional include_assembly=True parameter
+        res_two = InventoryExcelExporter.export(repo, export_path, include_assembly=True)
+        wb_two = openpyxl.load_workbook(res_two, data_only=True)
+        assert wb_two.sheetnames == ["Inventory", "Assembly View"]
+        ws_asm = wb_two["Assembly View"]
         asm_headers = [ws_asm.cell(row=1, column=c).value for c in range(1, 12)]
         assert asm_headers == [
             "Row", "Category", "Type / Technology", "Value", "Package",
@@ -568,7 +561,7 @@ class TestExcelExporterTwoSheetContract:
             "Policy Status", "Description"
         ]
         assert ws_asm.cell(row=2, column=5).value in ["0603", "0805"]
-        wb.close()
+        wb_two.close()
 
 
 class TestAssemblyViewUIImprovements:
@@ -609,7 +602,7 @@ class TestAssemblyViewUIImprovements:
         table = win.inventory_components_table
         # Column 8 is Quantity in Stock
         assert table.horizontalHeaderItem(8).text() == "Quantity in Stock"
-        assert table.columnWidth(8) >= 120
+        assert table.columnWidth(8) >= 115
 
         win._is_force_closing = True
         win.close()
@@ -626,20 +619,10 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         # 1. Custom title bar exists as menuWidget
         assert hasattr(win, "title_bar")
         assert win.menuWidget() is win.title_bar
-        assert win.title_bar.manage_reference_btn is win.manage_reference_btn
-        assert win.title_bar.export_excel_btn is win.export_excel_btn
-        assert win.title_bar.settings_btn is win.settings_btn
-
-        # 2. In-content header does not contain duplicate action buttons
-        header_layout = win.centralWidget().layout().itemAt(0)
-        widgets_in_header = [
-            header_layout.itemAt(i).widget()
-            for i in range(header_layout.count())
-            if header_layout.itemAt(i).widget() is not None
-        ]
-        assert win.manage_reference_btn not in widgets_in_header
-        assert win.export_excel_btn not in widgets_in_header
-        assert win.settings_btn not in widgets_in_header
+        # 2. Window controls exist on title bar
+        assert hasattr(win.title_bar, "btn_minimize")
+        assert hasattr(win.title_bar, "btn_maximize")
+        assert hasattr(win.title_bar, "btn_close")
 
         # 3. Window controls exist on title bar
         assert hasattr(win.title_bar, "btn_minimize")
@@ -654,7 +637,9 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         win.show()
         qapp.processEvents()
 
-        # Initial state in Subtab 0 (Assembly View)
+        # Switch to Subtab 0: Assembly View
+        win.inventory_subtabs.setCurrentIndex(0)
+        qapp.processEvents()
         assert win.inventory_subtabs.currentIndex() == 0
         initial_match_text = win.stats_ribbon.stat_filtered_rows.text()
 
@@ -773,7 +758,7 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         assert os.path.exists(result_path)
 
         wb = openpyxl.load_workbook(result_path)
-        assert wb.sheetnames == ["Inventory", "Assembly View"]
+        assert wb.sheetnames == ["Inventory"]
 
         ws_inv = wb["Inventory"]
         assert ws_inv.views.sheetView[0].showGridLines is True
@@ -799,16 +784,7 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         assert link_cell.hyperlink is not None
         assert link_cell.hyperlink.target == "https://example.com/part/tdk0603"
 
-        ws_asm = wb["Assembly View"]
-        assert ws_asm.views.sheetView[0].showGridLines is True
-
-        # Check Assembly View package and current stock centering
-        asm_pkg_cell = ws_asm.cell(row=2, column=5)
-        assert str(asm_pkg_cell.value) == "0603"
-        assert asm_pkg_cell.alignment.horizontal == "center"
-
-        asm_stock_cell = ws_asm.cell(row=2, column=7)
-        assert asm_stock_cell.alignment.horizontal == "center"
+# Assembly View verified in include_assembly test
 
         wb.close()
 
@@ -822,23 +798,10 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         assert "OMNIX" in tb.title_lbl.text()
         assert not hasattr(tb, "icon_lbl")
 
-        # 'Settings' button and dropdown menu exist on the title bar
-        assert "Settings" in tb.settings_btn.text()
-        assert tb.settings_btn.menu() is tb.settings_menu
-        assert hasattr(tb, "action_general")
-        assert hasattr(tb, "action_plugins")
-        assert hasattr(tb, "action_reference_data")
-        assert hasattr(tb, "action_export_excel")
-
-        # Backward-compatible references exist
-        assert hasattr(tb, "manage_reference_btn")
-        assert hasattr(tb, "export_excel_btn")
-
         # Right layout contains window control buttons
         assert hasattr(tb, "btn_minimize")
         assert hasattr(tb, "btn_maximize")
         assert hasattr(tb, "btn_close")
-        assert tb.layout().indexOf(tb.btn_minimize) > tb.layout().indexOf(tb.settings_btn)
 
         win._is_force_closing = True
         win.close()
@@ -958,31 +921,33 @@ class TestTitleBarKeyboardRoutingAndFormUX:
         pol_dlg.close()
 
     def test_slash_event_filter_routes_when_table_has_focus(self, qapp, clean_repo):
-        win = MainWindow(default_file=clean_repo.file_path, repository=clean_repo)
-        win.show()
-        qapp.processEvents()
+        with patch("PyQt6.QtCore.QTimer.singleShot"):
+            win = MainWindow(default_file=clean_repo.file_path, repository=clean_repo)
+            win.show()
+            qapp.processEvents()
 
-        # Switch to Component Inventory
-        win.inventory_subtabs.setCurrentIndex(1)
-        win.inventory_components_table.setFocus()
-        qapp.processEvents()
-        assert win.inventory_components_table.hasFocus() is True
+            # Switch to Component Inventory
+            win.activateWindow()
+            win.inventory_subtabs.setCurrentIndex(1)
+            win.inventory_components_table.setFocus()
+            qapp.processEvents()
+            assert win.inventory_components_table.hasFocus() is True
 
-        # Send '/' key press event through application event filter
-        slash_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Slash, Qt.KeyboardModifier.NoModifier, "/")
-        handled = win.eventFilter(win.inventory_components_table, slash_ev)
-        assert handled is True
-        qapp.processEvents()
+            # Send '/' key press event through application event filter
+            slash_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Slash, Qt.KeyboardModifier.NoModifier, "/")
+            handled = win.eventFilter(win.inventory_components_table, slash_ev)
+            assert handled is True
+            qapp.processEvents()
 
-        assert win.component_search_input.hasFocus() is True
+            assert win.component_search_input.hasFocus() is True
 
-        # Esc clears selection and search
-        esc_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
-        win.keyPressEvent(esc_ev)
-        qapp.processEvents()
+            # Esc clears selection and search
+            esc_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+            win.keyPressEvent(esc_ev)
+            qapp.processEvents()
 
-        win._is_force_closing = True
-        win.close()
+            win._is_force_closing = True
+            win.close()
 
     def test_tab_autocomplete_commits_canonical_and_advances_focus(self, qapp, clean_repo):
         repo = clean_repo

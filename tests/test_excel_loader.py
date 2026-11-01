@@ -155,9 +155,8 @@ class TestExcelDataLoader:
         assert s_javan['link_type'] == 'JAVAN'
 
         s_robo = next(s for s in shortages if s['part_name'] == 'ATmega328P')
-        assert s_robo['is_orderable'] is True
-        assert s_robo['vendor_id'] == 'vendor_roboeq'
-        assert s_robo['link_type'] == 'ROBOEQ'
+        assert s_robo['is_orderable'] is False  # roboeq plugin not installed
+        assert s_robo['link_type'] == 'INVALID'
 
         s_unsupported = next(s for s in shortages if s['part_name'] == 'CustomModule')
         assert s_unsupported['is_orderable'] is False

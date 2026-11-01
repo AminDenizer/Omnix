@@ -18,7 +18,7 @@ Step 8 serves as the final integration hardening, comprehensive end-to-end valid
 
 The objective is to verify that the universal procurement pipeline operates end-to-end across both input modes:
 - **Mode A (Inventory Shortages):** `Inventory.xlsx` $	o$ `ExcelDataLoader.get_shortage_items()` $	o$ `ProcurementBridge` $	o$ `UniversalProcurementOrchestrator` $	o$ Multi-Vendor Cart Staging $	o$ Payment Confirmation $	o$ `ExcelDataLoader.batch_increment_stock()`.
-- **Mode B (Altium BOM Assembly):** `Sample_BOM.xlsx` $	o$ `BOMAuditor.audit_bom()` $	o$ `ProcurementBridge` $	o$ `UniversalProcurementOrchestrator` $	o$ Multi-Vendor Cart Staging $	o$ Payment Confirmation $	o$ `ExcelDataLoader.batch_increment_stock()`.
+- **BOM Assembly Shortages:** `Sample_BOM.xlsx` $	o$ `BOMAuditor.audit_bom()` $	o$ `ProcurementBridge` $	o$ `UniversalProcurementOrchestrator` $	o$ Multi-Vendor Cart Staging $	o$ Payment Confirmation $	o$ `ExcelDataLoader.batch_increment_stock()`.
 
 This validation proves that multi-vendor procurement operates deterministically across all three onboarded vendors (`vendor_lion`, `vendor_javan`, `vendor_roboeq`) with zero single-vendor monolithic coupling and strict mathematical and financial safety boundaries.
 
@@ -49,7 +49,7 @@ When authorized, Step 8 execution will perform:
 
 1. **End-to-End Pipeline Integration Test Suite (`tests/test_phase9_e2e_procurement.py`):**
    - Test Mode A full lifecycle: Generate realistic inventory shortages across Lion, Javan, and RoboEq, execute batch staging, verify cart results, and assert exact stock increments in `Inventory.xlsx`.
-   - Test Mode B full lifecycle: Load Altium BOM spreadsheet with multi-board multipliers, audit stock against inventory database, translate shortages to procurement requests, execute multi-vendor staging, and update stock.
+   - Test BOM assembly full lifecycle: Load Altium BOM spreadsheet with multi-board multipliers, audit stock against inventory database, translate shortages to procurement requests, execute multi-vendor staging, and update stock.
    - Test edge cases:
      - All items in stock (0 shortages, order button disabled).
      - Mixed vendor items + unsupported external links + blank links.

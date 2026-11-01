@@ -746,17 +746,20 @@ class TestSharedModeAContracts:
         assert vid is None
         assert adapter is None
 
-    def test_shared_contract_direct_bom_mode_remains_distinct(self, dual_path_registry):
-        """Mode B (DIRECT_BOM) remains distinct from Mode A link-based resolution."""
-        item_mode_b = {
-            "mode": ProcurementMode.DIRECT_BOM,
+    def test_unsupported_procurement_mode_rejected(self, dual_path_registry):
+        """Unsupported modes are rejected and Mode A requires registered links."""
+        item_unsupported = {
+            "mode": "UNSUPPORTED_MODE",
             "part_number": "STM32F401RET6",
             "needed_qty": 5,
             "link": "",
         }
-        is_ord_b, vid_b = ProcurementBridge.is_item_orderable(item_mode_b, dual_path_registry)
-        assert is_ord_b is True
-        assert vid_b is None
+        is_ord, vid = ProcurementBridge.is_item_orderable(item_unsupported, dual_path_registry)
+        assert is_ord is False
+        assert vid is None
+
+        with pytest.raises(ValueError, match="sole supported procurement workflow"):
+            ProcurementBridge.item_to_request(item_unsupported)
 
         item_mode_a = {
             "mode": ProcurementMode.DATABASE_AWARE,

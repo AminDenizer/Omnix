@@ -338,7 +338,7 @@ class DatabaseBackupService:
                     if not db_valid:
                         return False, f"Embedded database validation failed: {db_msg}", {}
 
-                # 5. Check settings.json if present
+                # 5. Check settings.json if present in older archives (optional; ignored during restore)
                 has_settings = ARCHIVE_SETTINGS_FILENAME in namelist
                 if has_settings:
                     try:
@@ -455,15 +455,9 @@ class DatabaseBackupService:
                     tracker.fail(f"Snapshot integrity check failed: {val_msg}", level="ERROR")
                     return False, f"Snapshot integrity check failed: {val_msg}", {}
 
-                # 2. Export sanitized settings (passwords and secrets stripped)
+                # 2. Settings are deliberately excluded from Application Backups
+                # (Active application settings and user credentials remain independent)
                 has_settings = False
-                if settings_mgr is not None:
-                    raw_settings = getattr(settings_mgr, "settings", {})
-                    sanitized_settings = sanitize_settings_for_backup(raw_settings)
-                    temp_settings = os.path.join(temp_dir, ARCHIVE_SETTINGS_FILENAME)
-                    with open(temp_settings, "w", encoding="utf-8") as sf:
-                        json.dump(sanitized_settings, sf, indent=4, ensure_ascii=False)
-                    has_settings = True
 
                 # 3. Create manifest.json
                 now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -478,7 +472,7 @@ class DatabaseBackupService:
                         "schema_version": CURRENT_SCHEMA_VERSION,
                         "tables": REQUIRED_TABLES,
                     },
-                    "has_settings": has_settings,
+                    "has_settings": False,
                     "entity_counts": {
                         "components": db_counts.get("components", 0),
                         "supplier_links": db_counts.get("supplier_links", 0),
@@ -498,9 +492,6 @@ class DatabaseBackupService:
                 with zipfile.ZipFile(abs_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                     zf.write(temp_manifest, ARCHIVE_MANIFEST_FILENAME)
                     zf.write(temp_db, ARCHIVE_DATABASE_FILENAME)
-                    if has_settings:
-                        temp_settings = os.path.join(temp_dir, ARCHIVE_SETTINGS_FILENAME)
-                        zf.write(temp_settings, ARCHIVE_SETTINGS_FILENAME)
 
                 # 5. Validate the final generated archive
                 is_valid, msg, metadata = DatabaseBackupService.validate_backup_file(abs_target)
@@ -665,14 +656,14 @@ class DatabaseBackupService:
         backup_path: str,
         safety_dir: Optional[str] = None,
         settings_mgr: Optional[Any] = None,
-        restore_settings: bool = True,
+        restore_settings: bool = False,
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Safely restores a validated backup (.obk / .zip or legacy .db) into the active repository:
         1. Validates backup integrity, manifest, and schema version.
-        2. Creates an automatic pre-restore safety snapshot of the active database and settings.
+        2. Creates an automatic pre-restore safety snapshot of the active database.
         3. Transactionally replaces the active database using SQLite native backup.
-        4. Safely restores sanitized application settings if present and requested.
+        4. Leaves application settings completely independent and untouched.
         5. Deep validates restored database integrity.
         6. Automatically rolls back to safety snapshot if any error occurs.
         """
@@ -705,22 +696,12 @@ class DatabaseBackupService:
                     tracker.fail(msg, level="ERROR")
                     return False, msg, {}
 
-            # 2. Create Safety Copy of settings.json if present
-            safety_settings_path = None
-            if settings_mgr is not None and getattr(settings_mgr, "file_path", None) and os.path.exists(settings_mgr.file_path):
-                safety_settings_path = os.path.join(safety_dir, f"pre_restore_settings_{timestamp}.json")
-                try:
-                    shutil.copy2(settings_mgr.file_path, safety_settings_path)
-                except Exception:
-                    safety_settings_path = None
-
             temp_dir = None
             backup_conn = None
             target_conn = None
-            pending_settings_merge = None
 
             try:
-                # 3. Extract database and stage settings from archive or use raw DB file
+                # 2. Extract database from archive or use raw DB file (settings payloads are safely ignored)
                 if is_archive_file(abs_backup):
                     temp_dir = tempfile.mkdtemp(prefix="omnix_restore_")
                     with zipfile.ZipFile(abs_backup, "r") as zf:
@@ -728,19 +709,10 @@ class DatabaseBackupService:
                         with open(extracted_db, "wb") as f_out:
                             f_out.write(zf.read(ARCHIVE_DATABASE_FILENAME))
                         source_db_file = extracted_db
-
-                        # Stage settings merge in memory (applied only after database restore succeeds)
-                        if restore_settings and settings_mgr is not None and ARCHIVE_SETTINGS_FILENAME in zf.namelist():
-                            try:
-                                imported_settings = json.loads(zf.read(ARCHIVE_SETTINGS_FILENAME).decode("utf-8"))
-                                current_settings = getattr(settings_mgr, "settings", {})
-                                pending_settings_merge = merge_sanitized_settings(current_settings, imported_settings)
-                            except Exception as se:
-                                log_event("BackupRestore", "WARNING", f"Settings restore staging skipped due to error: {se}")
                 else:
                     source_db_file = abs_backup
 
-                # 4. Explicitly close active repository connection before applying backup
+                # 3. Explicitly close active repository connection before applying backup
                 repo.close()
 
                 # Transactionally apply backup into active database
@@ -755,13 +727,13 @@ class DatabaseBackupService:
                 backup_conn.close()
                 backup_conn = None
 
-                # 5. Reload Repository Connection & Schema
+                # 4. Reload Repository Connection & Schema
                 repo.load(current_db_path)
 
-                # 6. Deep Verify Active DB Integrity after Restore
+                # 5. Deep Verify Active DB Integrity after Restore
                 active_valid, active_msg, active_meta = DatabaseBackupService.validate_sqlite_database(current_db_path)
                 if not active_valid:
-                    # Rollback to safety snapshots
+                    # Rollback to safety snapshot
                     rollback_errors = []
                     if safety_db_created and os.path.exists(safety_db_path):
                         try:
@@ -776,13 +748,6 @@ class DatabaseBackupService:
                         except Exception as r_err:
                             rollback_errors.append(f"database rollback error: {r_err}")
 
-                    if safety_settings_path and os.path.exists(safety_settings_path) and settings_mgr:
-                        try:
-                            shutil.copy2(safety_settings_path, settings_mgr.file_path)
-                            settings_mgr.load()
-                        except Exception as s_err:
-                            rollback_errors.append(f"settings rollback error: {s_err}")
-
                     if rollback_errors:
                         msg = (
                             f"Restored database failed integrity check ({active_msg}). "
@@ -792,15 +757,6 @@ class DatabaseBackupService:
                         msg = f"Restored database failed integrity check ({active_msg}). Rolled back to safety snapshot."
                     tracker.fail(msg, level="ERROR")
                     return False, msg, {}
-
-                # 7. Apply staged settings now that database restore has succeeded
-                if pending_settings_merge is not None and settings_mgr is not None:
-                    try:
-                        settings_mgr.settings = pending_settings_merge
-                        settings_mgr.save()
-                        log_event("BackupRestore", "PROGRESS", "Merged application settings from backup package")
-                    except Exception as se:
-                        log_event("BackupRestore", "WARNING", f"Failed to save restored settings: {se}")
 
                 active_meta["safety_snapshot_path"] = safety_db_path
                 active_meta["restored_from"] = abs_backup
@@ -823,13 +779,6 @@ class DatabaseBackupService:
                         repo.load(current_db_path)
                     except Exception as r_err:
                         rollback_errors.append(f"database rollback error: {r_err}")
-
-                if safety_settings_path and os.path.exists(safety_settings_path) and settings_mgr:
-                    try:
-                        shutil.copy2(safety_settings_path, settings_mgr.file_path)
-                        settings_mgr.load()
-                    except Exception as s_err:
-                        rollback_errors.append(f"settings rollback error: {s_err}")
 
                 if rollback_errors:
                     err_msg = (

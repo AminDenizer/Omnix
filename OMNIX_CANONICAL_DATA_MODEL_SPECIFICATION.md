@@ -284,7 +284,7 @@ from dataclasses import dataclass, field
 
 class SourcingStrategy(Enum):
     EXACT_INVENTORY_LINK = "EXACT_INVENTORY_LINK"     # Mode A: Authoritative pinned link only
-    MULTI_VENDOR_DISCOVERY = "MULTI_VENDOR_DISCOVERY" # Mode B / GAP-02: Multi-vendor catalog discovery
+    MULTI_VENDOR_DISCOVERY = "MULTI_VENDOR_DISCOVERY" # GAP-02: Multi-vendor catalog discovery
 
 class PackageValidationPolicy(Enum):
     REQUIRED = "REQUIRED"                             # Vendor package MUST match; unknown is rejected
@@ -706,7 +706,7 @@ Future golden test fixture files (`OMNIX_SAMPLE_BOM.xlsx` and `OMNIX_SAMPLE_INVE
 - [x] **DM-15**: Inventory replenishment policy has zero silent coercion, float truncation, or fallbacks.
 - [x] **DM-16**: Exactly two canonical sourcing strategies exist (`EXACT_INVENTORY_LINK` and `MULTI_VENDOR_DISCOVERY`).
 - [x] **DM-17**: Mode A strictly uses authoritative inventory links with zero fallback or substitution.
-- [x] **DM-18**: Mode B strictly uses multi-vendor discovery across enabled plugins.
+- [x] **DM-18**: Multi-vendor discovery strictly searches across enabled plugins.
 - [x] **DM-19**: GAP-02 maps 100% to `MULTI_VENDOR_DISCOVERY`.
 - [x] **DM-20**: GAP-03 remains an open architectural decision (`OD-002`, `OD-003`) and is not silently promoted to Mode A.
 - [x] **DM-21**: Core domain owns all procurement business values and decisions.

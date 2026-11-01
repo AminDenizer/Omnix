@@ -7,7 +7,7 @@ Governing Documents:
 - docs/PROCUREMENT/PHASE9_STEP8_SCOPE_AUDIT.md
 
 Strictly offline: Zero Selenium, Zero live websites, Zero network dependencies.
-Validates Mode A (Inventory Shortages) and Mode B (Altium BOM Assembly) lifecycles,
+Validates Mode A (Inventory Shortages and Altium BOM Assembly) lifecycles,
 error handling, MOQ stepping, partial failure tolerance, and post-order inventory updates.
 """
 
@@ -431,7 +431,7 @@ class TestModeAInventoryShortagesEndToEnd:
         # 2. Load inventory data via ExcelDataLoader
         loader = ExcelDataLoader()
         loader.load_file(inv_path)
-        shortages = loader.get_shortage_items()
+        shortages = loader.get_shortage_items(registry=reg)
 
         # Assert mathematical shortage detection
         assert len(shortages) == 5
@@ -509,13 +509,13 @@ class TestModeAInventoryShortagesEndToEnd:
 
 
 # ============================================================================
-# Test Suite 2: Mode B — Altium BOM Assembly End-to-End Lifecycle
+# Test Suite 2: Mode A — Altium BOM Assembly End-to-End Lifecycle
 # ============================================================================
 
-class TestModeBAltiumBOMAssemblyEndToEnd:
-    """Validates Mode B: Altium BOM -> Multiplier Calculation -> Audit -> Multi-Vendor Staging -> Stock Update."""
+class TestModeAAltiumBOMAssemblyEndToEnd:
+    """Validates Mode A: Altium BOM -> Multiplier Calculation -> Audit -> Multi-Vendor Staging -> Stock Update."""
 
-    def test_mode_b_full_assembly_procurement_lifecycle(self, clean_registry, tmp_path):
+    def test_mode_a_full_assembly_procurement_lifecycle(self, clean_registry, tmp_path):
         reg = clean_registry["registry"]
         lion_cls = clean_registry["lion_cls"]
         javan_cls = clean_registry["javan_cls"]

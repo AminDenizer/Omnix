@@ -65,11 +65,9 @@ class RoboEqVendorAdapter(IVendorAdapter):
         PluginCapability.MPN_SEARCH,
         PluginCapability.LIVE_STOCK_PROBE,
         PluginCapability.MODE_A_STAGING,
-        PluginCapability.MODE_B_STAGING,
     })
     _SUPPORTED_MODES: frozenset = frozenset({
         PluginProcurementMode.MODE_A,
-        PluginProcurementMode.MODE_B,
     })
 
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -459,12 +457,7 @@ class RoboEqVendorAdapter(IVendorAdapter):
         credentials: Optional[AuthCredentials] = None,
         challenge_handler: Optional[Any] = None,
     ) -> AuthResult:
-        """
-        Authenticate browser session using provided credentials,
-        with optional interactive challenge handler for CAPTCHA/OTP resolution (GAP-09, GAP-17).
-        """
-        from core.procurement.challenge_handler import ChallengeType, ChallengeState, ChallengeContext
-
+        """Authenticate browser session using provided credentials."""
         if not credentials:
             try:
                 from settings_manager import settings
@@ -482,75 +475,23 @@ class RoboEqVendorAdapter(IVendorAdapter):
             driver.get(RoboEqSelectors.LOGIN_URL)
             self.session.wait_for_settle(1.5)
 
-            # Upfront challenge detection (Turnstile, reCAPTCHA, WAF, OTP)
-            challenge_type = self._detect_challenge_on_page(driver)
-            if challenge_type is not None:
-                ctx = ChallengeContext(
-                    vendor_id=self.VENDOR_ID,
-                    challenge_type=challenge_type,
-                    prompt_message=f"RoboEq Electronic requires security challenge resolution ({challenge_type.value}).",
-                    target_url=driver.current_url or RoboEqSelectors.LOGIN_URL,
-                )
-                if challenge_handler is not None:
-                    if challenge_type in (ChallengeType.TURNSTILE, ChallengeType.RECAPTCHA, ChallengeType.HCAPTCHA, ChallengeType.CUSTOM, ChallengeType.CAPTCHA):
-                        self.session.promote_to_headful()
+            phone_input = driver.find_element(By.CSS_SELECTOR, RoboEqSelectors.LOGIN_PHONE_INPUT)
+            phone_input.click()
+            phone_input.send_keys(Keys.CONTROL + "a")
+            phone_input.send_keys(Keys.BACKSPACE)
+            phone_input.send_keys(credentials.username)
 
-                    res = challenge_handler.handle_challenge(ctx)
-                    if res.state == ChallengeState.SOLVED:
-                        status = self.validate_session()
-                        if status.is_authenticated:
-                            self._is_authenticated = True
-                            self._current_user = credentials.username
-                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
-                    elif res.state == ChallengeState.CANCELLED:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
-                    else:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Challenge resolution failed: {res.message}")
-                else:
-                    return AuthResult(
-                        vendor_id=self.VENDOR_ID,
-                        success=False,
-                        message=f"Security challenge encountered ({challenge_type.value}) but no challenge handler configured.",
-                        requires_interactive=True,
-                        challenge_context=ctx,
-                    )
-
-            user_input = driver.find_element(By.ID, RoboEqSelectors.LOGIN_USERNAME_ID)
-            user_input.send_keys(credentials.username)
+            if credentials.password:
+                pass_input = driver.find_element(By.CSS_SELECTOR, RoboEqSelectors.LOGIN_PASSWORD_INPUT)
+                pass_input.click()
+                pass_input.send_keys(Keys.CONTROL + "a")
+                pass_input.send_keys(Keys.BACKSPACE)
+                pass_input.send_keys(credentials.password)
 
             submit_btn = driver.find_element(By.CSS_SELECTOR, RoboEqSelectors.LOGIN_SUBMIT_BTN)
-            submit_btn.click()
-            self.session.wait_for_settle(2.0)
+            driver.execute_script("arguments[0].click();", submit_btn)
 
-            # Check post-submit challenge
-            post_challenge = self._detect_challenge_on_page(driver)
-            if post_challenge is not None:
-                ctx = ChallengeContext(
-                    vendor_id=self.VENDOR_ID,
-                    challenge_type=post_challenge,
-                    prompt_message=f"RoboEq Electronic presented a post-login challenge ({post_challenge.value}).",
-                    target_url=driver.current_url or RoboEqSelectors.LOGIN_URL,
-                )
-                if challenge_handler is not None:
-                    self.session.promote_to_headful()
-                    res = challenge_handler.handle_challenge(ctx)
-                    if res.state == ChallengeState.SOLVED:
-                        status = self.validate_session()
-                        if status.is_authenticated:
-                            self._is_authenticated = True
-                            self._current_user = credentials.username
-                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
-                    elif res.state == ChallengeState.CANCELLED:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
-                    return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Post-login challenge not resolved: {res.state.value}")
-                else:
-                    return AuthResult(
-                        vendor_id=self.VENDOR_ID,
-                        success=False,
-                        message=f"Post-login challenge encountered ({post_challenge.value}) but no challenge handler configured.",
-                        requires_interactive=True,
-                        challenge_context=ctx,
-                    )
+            self.session.wait_for_settle(2.5)
 
             status = self.validate_session()
             if status.is_authenticated:
@@ -558,30 +499,12 @@ class RoboEqVendorAdapter(IVendorAdapter):
                 self._current_user = credentials.username
                 return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Login successful.")
 
-            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="CAS authentication staged.")
+            return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Login verification failed.")
+
         except Exception as e:
             err = RoboEqErrorTranslator.translate_transport_exception(e, {"operation": "authenticate"})
             return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Login error: {err.message}")
 
-    @staticmethod
-    def _detect_challenge_on_page(driver: Any) -> Optional[Any]:
-        """Detect whether the current browser DOM contains known security challenges."""
-        from core.procurement.challenge_handler import ChallengeType
-        try:
-            page_src = driver.page_source.lower()
-            if "cf-turnstile" in page_src or "challenges.cloudflare.com" in page_src:
-                return ChallengeType.TURNSTILE
-            if "g-recaptcha" in page_src or "recaptcha" in page_src:
-                return ChallengeType.RECAPTCHA
-            if "h-captcha" in page_src or "hcaptcha" in page_src:
-                return ChallengeType.HCAPTCHA
-            if "just a moment" in page_src or "ray id:" in page_src or "cf-challenge" in page_src:
-                return ChallengeType.CUSTOM
-            if "کد تایید" in page_src or "one-time password" in page_src or "enter otp" in page_src:
-                return ChallengeType.OTP
-        except Exception:
-            pass
-        return None
 
     def validate_session(self) -> SessionStatus:
         driver = self.session.get_driver()

@@ -36,7 +36,7 @@ The purpose of this audit is strictly observational and verification-focused: to
 
 * **Target Vendor:** Lion Electronic (`vendor_lion`) ONLY.
 * **Strict Vendor Isolation:** Zero cross-vendor comparisons or references to Javan Electronic.
-* **Strict Core Isolation:** Zero Mode A / Mode B BOM optimization rules, multi-vendor ranking, or purchase allocation logic inside vendor discovery artifacts.
+* **Strict Core Isolation:** Zero BOM optimization rules, multi-vendor ranking, or purchase allocation logic inside vendor discovery artifacts.
 * **Evidence Standard:** Every graph element must resolve to an existing, valid JSON evidence record in `docs/VENDORS/LION/evidence/`.
 
 ---
@@ -238,7 +238,7 @@ All 29 selectors in `docs/VENDORS/LION/SITE_MAP_GRAPH.json` were audited against
 ## 13. CORE / BUSINESS LOGIC LEAKAGE AUDIT
 
 The discovery artifacts were audited for prohibited Core concepts:
-- **Mode A / Mode B Procurement Logic:** 0 occurrences detected.
+- **Procurement Business Logic:** 0 occurrences detected.
 - **BOM Allocation / Math:** 0 occurrences detected.
 - **Vendor Ranking / Optimization:** 0 occurrences detected.
 - **Cross-Vendor Heuristics:** 0 occurrences detected.

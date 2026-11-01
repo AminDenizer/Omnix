@@ -117,8 +117,8 @@ class TestBOMAuditor:
         orderable = res.get_orderable_shortages()
         unsupported = res.get_unsupported_shortages()
 
-        assert len(orderable) == 3  # Lion, Javan, RoboEq
-        assert len(unsupported) == 1  # unknownstore.com
+        assert len(orderable) == 2  # Lion, Javan
+        assert len(unsupported) == 2  # RoboEq (not installed) and unknownstore.com
 
         ne555 = next(s for s in orderable if s['part_number'] == 'NE555P')
         assert ne555['link_type'] == 'LION'
@@ -127,10 +127,6 @@ class TestBOMAuditor:
         lm358 = next(s for s in orderable if s['part_number'] == 'LM358N')
         assert lm358['link_type'] == 'JAVAN'
         assert lm358['vendor_id'] == 'vendor_javan'
-
-        mcu = next(s for s in orderable if s['part_number'] == 'ATmega328P')
-        assert mcu['link_type'] == 'ROBOEQ'
-        assert mcu['vendor_id'] == 'vendor_roboeq'
 
         custom = unsupported[0]
         assert custom['link_type'] == 'INVALID'

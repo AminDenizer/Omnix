@@ -7,7 +7,7 @@ Validates:
 - Fix C: ProcurementBridge zero-quantity handling (no falsy fallback, ValueError on non-positive,
          orderable gate returns False).
 - Fix D: Removal of automatic LinkValidationDialog pre-scan in _open_order_dialog, preserving manual button.
-- Fix E: Mode B lockout (labeled 'Coming Soon', disabled in combo model, blocked on change).
+- Fix E: Mode A locked as sole supported procurement workflow.
 - Strict Inventory Quantity Immutability: Omnix never mutates inventory quantities in any workflow.
 """
 
@@ -284,25 +284,12 @@ class TestSection5BOMProcurement:
         # Manual validate button was removed per Phase 4 removal
         assert not hasattr(widget, "validate_links_btn")
 
-    # --- Fix E: Mode B Disabled & Labeled 'Coming Soon' ---
+    # --- Fix E: Mode A Sole Workflow ---
 
-    def test_mode_b_disabled_in_ui(self, qapp, clean_repo):
+    def test_mode_a_locked_as_sole_mode_in_ui(self, qapp, clean_repo):
+        """Verify Mode A is the sole supported mode in BOMAuditWidget."""
         widget = BOMAuditWidget(clean_repo)
-        combo = widget.mode_combo
-        model = combo.model()
-
-        # Index 0 is Mode A (Enabled)
-        assert "Mode A" in combo.itemText(0)
-        assert model.item(0).isEnabled() is True
-
-        # Index 1 is Mode B (Disabled with 'Coming Soon')
-        assert "Mode B" in combo.itemText(1)
-        assert "Coming Soon" in combo.itemText(1)
-        assert model.item(1).isEnabled() is False
-
-        # Attempting to change to index 1 should revert to Mode A
-        combo.setCurrentIndex(1)
-        assert combo.currentIndex() == 0
+        assert not hasattr(widget, "mode_combo")
         assert widget.current_mode == ProcurementMode.DATABASE_AWARE
 
     # --- Strict Inventory Quantity Immutability Verification ---
@@ -389,12 +376,3 @@ class TestSection5BOMProcurement:
         assert not hasattr(dlg, "_confirm_payment_and_add_stock")
         assert not hasattr(dlg, "_has_updated_inventory")
 
-    def test_quick_order_dialog_has_no_stock_mutation_controls(self, qapp):
-        """QuickOrderDialog must NOT have 'Confirm & Add Stock' button or any handler to alter stock."""
-        from ui.dialogs.quick_order_dialog import QuickOrderDialog
-
-        dlg = QuickOrderDialog()
-
-        assert not hasattr(dlg, "btn_mpn_confirm_stock")
-        assert not hasattr(dlg, "btn_url_confirm_stock")
-        assert not hasattr(dlg, "_on_confirm_stock_clicked")

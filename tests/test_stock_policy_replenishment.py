@@ -326,7 +326,6 @@ class TestStockPolicyReplenishment:
         )
 
         # Mode A confirmation preview
-        assert dlg.is_mode_b_preview is False
         assert len(dlg.all_shortages) == 3
         # Exactly 1 item has valid Lion link -> orderable
         assert len(dlg.orderable_items) == 1
@@ -406,27 +405,23 @@ class TestSettingsNavigation:
             try:
                 # 1. Routing to vendor plugins
                 win._open_settings("plugins")
-                assert win.content_stack.currentWidget() == win.settings_page
-                assert win.settings_tabs.currentIndex() == 1
-                assert win.sidebar.active_page() == "settings"
+                assert win.content_stack.currentWidget() == win.vendor_plugins_page
+                assert win.sidebar.active_page() == "vendor_plugins"
 
                 # 2. Routing to about
                 win._open_settings("about")
-                assert win.content_stack.currentWidget() == win.settings_page
-                assert win.settings_tabs.currentIndex() == 2
-                assert win.sidebar.active_page() == "settings"
+                assert win.content_stack.currentWidget() == win.about_page
+                assert win.sidebar.active_page() == "about"
 
                 # 3. Routing to general settings
                 win._open_settings("general")
                 assert win.content_stack.currentWidget() == win.settings_page
-                assert win.settings_tabs.currentIndex() == 0
-                assert win.sidebar.active_page() == "settings"
+                assert win.sidebar.active_page() == "general_settings"
 
                 # 4. Default routing
                 win._open_settings()
                 assert win.content_stack.currentWidget() == win.settings_page
-                assert win.settings_tabs.currentIndex() == 0
-                assert win.sidebar.active_page() == "settings"
+                assert win.sidebar.active_page() == "general_settings"
             finally:
                 win._is_force_closing = True
                 win.close()

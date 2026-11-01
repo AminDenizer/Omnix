@@ -10,7 +10,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QFrame, QTabWidget, QWidget,
-    QSpinBox, QMessageBox
+    QSpinBox, QMessageBox, QComboBox
 )
 from PyQt6.QtCore import Qt, QT_VERSION_STR
 from PyQt6.QtGui import QPixmap
@@ -274,6 +274,15 @@ class SettingsDialog(QDialog):
         self.startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
         sub_layout.addWidget(self.startup_chk)
 
+        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
+        self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
+        sub_layout.addWidget(self.stock_policy_show_columns_chk)
+
+        # Show Status column in Component Inventory
+        self.stock_policy_show_status_chk = QCheckBox("Show Status column in Component Inventory")
+        self.stock_policy_show_status_chk.setChecked(settings.get("stock_policy_show_status", True))
+        sub_layout.addWidget(self.stock_policy_show_status_chk)
+
         card_layout.addLayout(sub_layout)
 
         # Subtle horizontal divider
@@ -289,24 +298,36 @@ class SettingsDialog(QDialog):
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_layout.setSpacing(6)
 
-        self.stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
-        self.stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
-        display_layout.addWidget(self.stock_policy_show_columns_chk)
+        # Show Assembly View Checkbox (Parent)
+        self.assembly_view_enabled_chk = QCheckBox("Show Assembly View in Workspace navigation")
+        self.assembly_view_enabled_chk.setChecked(settings.get("assembly_view_enabled", True))
+        display_layout.addWidget(self.assembly_view_enabled_chk)
 
-        # Match Products Display Checkbox
+        # Child layout for Assembly View options
+        assembly_sub_layout = QVBoxLayout()
+        assembly_sub_layout.setContentsMargins(20, 0, 0, 0)
+        assembly_sub_layout.setSpacing(6)
+
+        # Match Products Display Checkbox (Child)
         self.match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.match_products_chk.setChecked(settings.get("match_products_enabled", True))
-        display_layout.addWidget(self.match_products_chk)
+        assembly_sub_layout.addWidget(self.match_products_chk)
+
+        display_layout.addLayout(assembly_sub_layout)
 
         card_layout.addLayout(display_layout)
 
         self._user_val_preference = bool(settings.get("stock_policy_validation_enabled", True))
         self._user_startup_preference = bool(settings.get("auto_check_startup_shortage", True))
+        self._user_columns_preference = bool(settings.get("stock_policy_show_columns", True))
+        self._user_status_preference = bool(settings.get("stock_policy_show_status", True))
+        self._user_match_products_preference = bool(settings.get("match_products_enabled", True))
 
         def _update_dialog_dependencies():
             master_on = self.stock_policy_enabled_chk.isChecked()
             self.stock_policy_validation_chk.setEnabled(master_on)
             self.stock_policy_show_columns_chk.setEnabled(master_on)
+            self.stock_policy_show_status_chk.setEnabled(master_on)
 
             if not master_on:
                 self.stock_policy_validation_chk.blockSignals(True)
@@ -317,6 +338,14 @@ class SettingsDialog(QDialog):
                 self.startup_chk.blockSignals(True)
                 self.startup_chk.setChecked(False)
                 self.startup_chk.blockSignals(False)
+
+                self.stock_policy_show_columns_chk.blockSignals(True)
+                self.stock_policy_show_columns_chk.setChecked(False)
+                self.stock_policy_show_columns_chk.blockSignals(False)
+
+                self.stock_policy_show_status_chk.blockSignals(True)
+                self.stock_policy_show_status_chk.setChecked(False)
+                self.stock_policy_show_status_chk.blockSignals(False)
             else:
                 self.stock_policy_validation_chk.blockSignals(True)
                 self.stock_policy_validation_chk.setChecked(self._user_val_preference)
@@ -331,6 +360,26 @@ class SettingsDialog(QDialog):
                     self.startup_chk.setChecked(False)
                 self.startup_chk.blockSignals(False)
 
+                self.stock_policy_show_columns_chk.blockSignals(True)
+                self.stock_policy_show_columns_chk.setChecked(self._user_columns_preference)
+                self.stock_policy_show_columns_chk.blockSignals(False)
+
+                self.stock_policy_show_status_chk.blockSignals(True)
+                self.stock_policy_show_status_chk.setChecked(self._user_status_preference)
+                self.stock_policy_show_status_chk.blockSignals(False)
+
+            # Assembly View Parent-Child Dependency
+            assembly_on = self.assembly_view_enabled_chk.isChecked()
+            self.match_products_chk.setEnabled(assembly_on)
+            if not assembly_on:
+                self.match_products_chk.blockSignals(True)
+                self.match_products_chk.setChecked(False)
+                self.match_products_chk.blockSignals(False)
+            else:
+                self.match_products_chk.blockSignals(True)
+                self.match_products_chk.setChecked(self._user_match_products_preference)
+                self.match_products_chk.blockSignals(False)
+
         def _on_val_toggled(checked: bool):
             if self.stock_policy_validation_chk.isEnabled():
                 self._user_val_preference = checked
@@ -340,9 +389,28 @@ class SettingsDialog(QDialog):
             if self.startup_chk.isEnabled():
                 self._user_startup_preference = checked
 
+        def _on_columns_toggled(checked: bool):
+            if self.stock_policy_show_columns_chk.isEnabled():
+                self._user_columns_preference = checked
+
+        def _on_status_toggled(checked: bool):
+            if self.stock_policy_show_status_chk.isEnabled():
+                self._user_status_preference = checked
+
+        def _on_assembly_toggled(checked: bool):
+            _update_dialog_dependencies()
+
+        def _on_match_products_toggled(checked: bool):
+            if self.match_products_chk.isEnabled():
+                self._user_match_products_preference = checked
+
         self.stock_policy_enabled_chk.toggled.connect(lambda _: _update_dialog_dependencies())
         self.stock_policy_validation_chk.toggled.connect(_on_val_toggled)
         self.startup_chk.toggled.connect(_on_startup_toggled)
+        self.stock_policy_show_columns_chk.toggled.connect(_on_columns_toggled)
+        self.stock_policy_show_status_chk.toggled.connect(_on_status_toggled)
+        self.assembly_view_enabled_chk.toggled.connect(_on_assembly_toggled)
+        self.match_products_chk.toggled.connect(_on_match_products_toggled)
         _update_dialog_dependencies()
 
         # Hidden/preserved spinboxes for backward compatibility
@@ -357,6 +425,81 @@ class SettingsDialog(QDialog):
         self.target_stock_spin.hide()
 
         v_layout.addWidget(card)
+
+        # Browser Automation Card
+        browser_card = QFrame()
+        browser_card.setObjectName("cardFrame")
+        b_layout = QVBoxLayout(browser_card)
+        b_layout.setSpacing(8)
+
+        b_title = QLabel("🌐 Browser Automation & Driver Configuration")
+        b_title.setStyleSheet("font-weight: bold; color: #38bdf8; font-size: 12px;")
+        b_layout.addWidget(b_title)
+
+        b_desc = QLabel("Select the preferred web browser and execution mode for automated supplier sessions:")
+        b_desc.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        b_layout.addWidget(b_desc)
+
+        b_row = QHBoxLayout()
+        b_row.addWidget(QLabel("Browser:"))
+        self.browser_combo = QComboBox()
+        self.browser_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                color: #f8fafc;
+                padding: 4px 10px;
+                font-size: 11px;
+                min-width: 140px;
+            }
+            QComboBox:hover {
+                border-color: #38bdf8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                color: #f8fafc;
+                selection-background-color: #1e293b;
+                selection-color: #38bdf8;
+            }
+        """)
+        self.browser_combo.addItem("Google Chrome", "chrome")
+        self.browser_combo.addItem("Mozilla Firefox", "firefox")
+
+        from core.browser_detection import BrowserDetectionService
+        detected = BrowserDetectionService.detect_all()
+        current_b = str(settings.get("browser_type", "chrome")).lower()
+        idx = self.browser_combo.findData(current_b)
+        if idx >= 0:
+            self.browser_combo.setCurrentIndex(idx)
+        b_row.addWidget(self.browser_combo)
+
+        self.browser_status_lbl = QLabel()
+        def _update_browser_status():
+            b_id = self.browser_combo.currentData()
+            info = detected.get(b_id)
+            if info and info.is_installed:
+                self.browser_status_lbl.setText(f"✅ {info.status_message}")
+                self.browser_status_lbl.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+            else:
+                self.browser_status_lbl.setText("⚠️ Not detected on host")
+                self.browser_status_lbl.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 600;")
+        self.browser_combo.currentIndexChanged.connect(lambda _: _update_browser_status())
+        _update_browser_status()
+        b_row.addWidget(self.browser_status_lbl)
+        b_row.addStretch()
+        b_layout.addLayout(b_row)
+
+        self.browser_headless_chk = QCheckBox("Run automation in background (headless) mode")
+        self.browser_headless_chk.setChecked(bool(settings.get("browser_headless", True)))
+        b_layout.addWidget(self.browser_headless_chk)
+
+        v_layout.addWidget(browser_card)
         v_layout.addStretch()
 
         return widget
@@ -440,8 +583,6 @@ class SettingsDialog(QDialog):
 
         add_meta_row("Developer:", f"{DEVELOPER_NAME} ({DEVELOPER_ORG})")
         add_meta_row("Contact:", DEVELOPER_EMAIL)
-        add_meta_row("Repository:", f'<a href="{REPOSITORY_URL}" style="color: #38bdf8; text-decoration: none;">{REPOSITORY_URL}</a>', is_link=True)
-        add_meta_row("License:", LICENSE_TYPE)
         add_meta_row("Execution Mode:", "Mode A (BOM & Inventory Reconciliation)")
         add_meta_row("Runtime:", f"Python {platform.python_version()} | PyQt6 / Qt {QT_VERSION_STR} | SQLite {sqlite3.sqlite_version}")
         add_meta_row("Platform:", f"{platform.system()} {platform.release()} ({platform.machine()})")
@@ -474,8 +615,14 @@ class SettingsDialog(QDialog):
         settings.set("stock_policy_enabled", self.stock_policy_enabled_chk.isChecked())
         settings.set("stock_policy_validation_enabled", val_pref)
         settings.set("stock_policy_show_columns", self.stock_policy_show_columns_chk.isChecked())
+        settings.set("stock_policy_show_status", self.stock_policy_show_status_chk.isChecked())
+        settings.set("assembly_view_enabled", self.assembly_view_enabled_chk.isChecked())
         settings.set("default_min_stock", self.min_stock_spin.value())
         settings.set("default_target_stock", self.target_stock_spin.value())
         settings.set("match_products_enabled", self.match_products_chk.isChecked())
+        if hasattr(self, "browser_combo"):
+            settings.set("browser_type", self.browser_combo.currentData())
+        if hasattr(self, "browser_headless_chk"):
+            settings.set("browser_headless", self.browser_headless_chk.isChecked())
 
         self.accept()

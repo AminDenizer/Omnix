@@ -362,11 +362,12 @@ class UniversalProcurementOrchestrator:
             primary_failures.append(EvaluationState.UNORDERABLE)
 
         # Check stock quantity sufficiency if site reported positive integer stock
-        if candidate.stock_quantity > 0 and candidate.stock_quantity < effective_qty:
-            reasons.append(
-                f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} needed)."
-            )
-            primary_failures.append(EvaluationState.INSUFFICIENT_STOCK)
+        if candidate.stock_quantity > 0:
+            if effective_qty > candidate.stock_quantity:
+                reasons.append(
+                    f"Insufficient stock on store ({candidate.stock_quantity} available < {effective_qty} effective needed)."
+                )
+                primary_failures.append(EvaluationState.INSUFFICIENT_STOCK)
 
         # -------------------------------------------------------------
         # 9. Pricing

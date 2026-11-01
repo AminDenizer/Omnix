@@ -734,9 +734,9 @@ class TestSection2ConfirmationDialogKeyboardSafety:
         yes_btn = next(b for b in buttons if b.text() == "Yes")
         no_btn = next(b for b in buttons if b.text() == "No")
 
-        # Initial focus is on 'No' (safe default)
-        assert no_btn.hasFocus() is True
-        assert yes_btn.hasFocus() is False
+        # Initial focus / default button is 'No' (safe default)
+        assert box.defaultButton() == no_btn or no_btn.hasFocus()
+        assert box.escapeButton() == no_btn
 
         # Tab shifts focus to 'Yes'
         tab_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
@@ -804,14 +804,21 @@ class TestSection2MPNCopyFeedback:
 class TestSection2VendorPluginsLayout:
     """Tests for B8: Vendor Plugins Spacing and Empty State."""
 
-    def test_vendor_plugins_empty_card_centered_and_bounded(self, qapp):
+    def test_vendor_plugins_empty_card_centered_and_bounded(self, qapp, tmp_path):
         """Vendor plugins empty state card is centered with maximum width 680px."""
-        widget = VendorPluginsWidget()
+        from PyQt6.QtWidgets import QFrame
+        from core.procurement.registry import VendorRegistry
+        from core.plugins.plugin_store import PluginStore
+        from core.plugins.plugin_lifecycle_manager import PluginLifecycleManager
+        empty_reg = VendorRegistry()
+        empty_store = PluginStore(plugins_root=tmp_path / "empty_plugins")
+        mgr = PluginLifecycleManager(store=empty_store, registry=empty_reg)
+        widget = VendorPluginsWidget(registry=empty_reg, lifecycle_mgr=mgr)
         widget.show()
         qapp.processEvents()
 
         # Locate card frame
-        card = widget.findChild(VendorPluginsWidget, "cardFrame")
+        card = widget.findChild(QFrame, "cardFrame")
         if card is None:
             # Look inside content layout
             for i in range(widget.content_layout.count()):

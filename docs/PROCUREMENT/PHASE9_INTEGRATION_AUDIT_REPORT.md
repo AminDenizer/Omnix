@@ -26,7 +26,7 @@ Phase 9 has successfully decoupled all procurement workflows and introduced a mo
 2. **Vendor Registry & Factory Subsystem (`core/procurement/registry.py`):** Delivered thread-safe dynamic registration, URL-to-vendor resolution, and clean factory instantiation.
 3. **Universal Procurement Orchestrator (`core/procurement/orchestrator.py`):** Implemented multi-vendor candidate discovery, deterministic evaluation, mathematical volume tier resolution, and cart staging.
 4. **Universal Procurement Bridge (`core/procurement/bridge.py`):** Decoupled legacy BOM auditing (`bom_auditor.py`), inventory shortage processing (`excel_loader.py`), and UI preview dialogs (`order_preview_dialog.py`, `bom_audit_widget.py`) while preserving 100% backward compatibility.
-5. **End-to-End Multi-Vendor Integration (`tests/test_phase9_e2e_procurement.py`):** Validated Mode A (Inventory Shortages) and Mode B (Altium BOM Assembly) lifecycles, error boundaries, quantity stepping/MOQ constraints, and post-order inventory updates across all 3 vendors.
+5. **End-to-End Multi-Vendor Integration (`tests/test_phase9_e2e_procurement.py`):** Validated Mode A (Inventory Shortages and BOM Shortages) lifecycles, error boundaries, quantity stepping/MOQ constraints, and post-order inventory updates across all 3 vendors.
 
 ---
 
@@ -89,11 +89,11 @@ The system architecture enforces strict separation of concerns across four decou
 - **Post-Order Update:** `ExcelDataLoader.batch_increment_stock()` accurately increments stock quantities in `Inventory.xlsx` without modifying layout or formatting.
 - **Verification Result:** Fully verified in `TestModeAInventoryShortagesEndToEnd.test_mode_a_full_procurement_lifecycle`.
 
-### Mode B: Altium BOM Assembly Procurement Lifecycle
+### BOM Assembly Shortage Procurement Lifecycle
 - **Input:** `Sample_BOM.xlsx` (Altium export) and `Inventory.xlsx` with board multiplier $M$.
 - **Processing:** `BOMAuditor.audit_bom()` calculates total needed quantities ($N = Q_{\text{unit}} \times M$) and shortages against database -> `ProcurementBridge` normalizes orderable shortages -> `UniversalProcurementOrchestrator` builds multi-vendor plan -> Multi-vendor cart staging.
 - **Post-Order Re-Audit:** Stock updated via `batch_increment_stock()`, re-auditing confirms remaining shortages are $0$ (`IN_STOCK`).
-- **Verification Result:** Fully verified in `TestModeBAltiumBOMAssemblyEndToEnd.test_mode_b_full_assembly_procurement_lifecycle`.
+- **Verification Result:** Fully verified in end-to-end integration tests.
 
 ---
 
@@ -119,7 +119,7 @@ The system architecture enforces strict separation of concerns across four decou
 - **Execution Time:** ~5.7 seconds
 
 ### Test Breakdown by Subsystem:
-1. `tests/test_phase9_e2e_procurement.py`: **6 / 6 PASSED** (Mode A, Mode B, Edge Cases, Fault Tolerance)
+1. `tests/test_phase9_e2e_procurement.py`: **6 / 6 PASSED** (Mode A, BOM Shortages, Edge Cases, Fault Tolerance)
 2. `tests/test_multi_vendor_procurement.py`: **28 / 28 PASSED** (Multi-vendor integration)
 3. `tests/test_vendor_registry.py`: **15 / 15 PASSED** (Registry, factory, routing, thread safety)
 4. `tests/test_procurement_orchestrator.py`: **14 / 14 PASSED** (Planning, evaluation, precedence)

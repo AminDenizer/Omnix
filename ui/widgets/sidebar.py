@@ -628,6 +628,12 @@ class CollapsibleSidebar(QFrame):
     def is_collapsed(self) -> bool:
         return self._is_collapsed
 
+    def set_button_visible(self, page_id: str, visible: bool):
+        """Show or hide a navigation button by page_id."""
+        canonical_id = self.PAGE_ALIAS_MAP.get(page_id, page_id)
+        if canonical_id in self._buttons:
+            self._buttons[canonical_id].setVisible(visible)
+
     def toggle_collapse(self):
         self.set_collapsed(not self._is_collapsed)
 

@@ -208,7 +208,7 @@ class TestVendorRegistryURLRouting:
 
 
 class TestVendorRegistryProductionAdapters:
-    """Verify registration and routing of the three production adapters: Lion, Javan, RoboEq."""
+    """Verify registration and routing of the active production adapters: Lion, Javan."""
 
     def test_register_default_production_adapters(self):
         registry = VendorRegistry()
@@ -217,8 +217,7 @@ class TestVendorRegistryProductionAdapters:
         registered = registry.list_vendors()
         assert "vendor_lion" in registered
         assert "vendor_javan" in registered
-        assert "vendor_roboeq" in registered
-        assert len(registered) == 3
+        assert len(registered) == 2
 
     def test_production_adapters_url_routing(self):
         registry = VendorRegistry()
@@ -232,25 +231,18 @@ class TestVendorRegistryProductionAdapters:
         assert registry.get_vendor_for_url("https://javanelec.com/shop/product/17930/ti/ne555p") == "vendor_javan"
         assert registry.get_vendor_for_url("https://www.javanelec.com/search?q=LM358") == "vendor_javan"
 
-        # RoboEq Electronic
-        assert registry.get_vendor_for_url("https://roboeq.ir/products/detail/0201016/") == "vendor_roboeq"
-        assert registry.get_vendor_for_url("https://auth.roboeq.ir/cas/login") == "vendor_roboeq"
-
     def test_production_adapter_instantiation_contract(self):
         registry = VendorRegistry()
         registry.register_default_adapters()
 
         lion = registry.get_adapter("vendor_lion")
         javan = registry.get_adapter("vendor_javan")
-        roboeq = registry.get_adapter("vendor_roboeq")
 
         assert isinstance(lion, IVendorAdapter)
         assert isinstance(javan, IVendorAdapter)
-        assert isinstance(roboeq, IVendorAdapter)
 
         assert lion.vendor_id == "vendor_lion"
         assert javan.vendor_id == "vendor_javan"
-        assert roboeq.vendor_id == "vendor_roboeq"
 
 
 class TestVendorRegistryThreadSafety:

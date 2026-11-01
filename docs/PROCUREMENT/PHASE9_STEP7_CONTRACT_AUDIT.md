@@ -17,7 +17,7 @@ The objective of Step 7 is to formally audit, validate, and harden the **Univers
 
 The Universal Procurement architecture coordinates two primary requirement sources:
 1. **Mode A (Inventory Shortages):** Evaluated from `Inventory.xlsx` thresholds (`needed_qty = max(target_stock - curr_stock, min_stock - curr_stock, 1)`).
-2. **Mode B (Altium BOM Shortages):** Evaluated from Altium spreadsheet components matched against local inventory database (`total_needed_qty = unit_qty * board_multiplier`, `shortage_qty = max(0, total_needed_qty - db_stock_qty)`).
+2. **BOM Shortages:** Evaluated from Altium spreadsheet components matched against local inventory database (`total_needed_qty = unit_qty * board_multiplier`, `shortage_qty = max(0, total_needed_qty - db_stock_qty)`).
 
 Both requirement sources are translated into immutable, vendor-neutral contracts, evaluated against registered distributor adapters (`vendor_lion`, `vendor_javan`, `vendor_roboeq`), and staged in shopping carts deterministically without autonomous checkout or financial execution.
 

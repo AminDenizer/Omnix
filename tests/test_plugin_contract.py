@@ -60,7 +60,7 @@ from vendors.roboeq.adapter import RoboEqVendorAdapter
 class TestCanonicalEnums:
     """Verify exact membership and string compatibility of all Phase 2 enums."""
 
-    def test_plugin_capability_exact_16_items(self):
+    def test_plugin_capability_exact_15_items(self):
         expected_layer_ab = {
             "PRODUCT_URL_RECOGNITION",
             "PRODUCT_INSPECTION",
@@ -69,7 +69,6 @@ class TestCanonicalEnums:
             "LIVE_STOCK_PROBE",
             "TIERED_PRICING",
             "MODE_A_STAGING",
-            "MODE_B_STAGING",
         }
         expected_layer_c = {
             "LIVE_CONNECTIVITY_TEST",
@@ -83,7 +82,7 @@ class TestCanonicalEnums:
         }
         all_expected = expected_layer_ab | expected_layer_c
 
-        assert len(PluginCapability) == 16
+        assert len(PluginCapability) == 15
         assert {c.value for c in PluginCapability} == all_expected
         assert {c.name for c in PluginCapability} == all_expected
 
@@ -106,7 +105,6 @@ class TestCanonicalEnums:
             PluginCapability.LIVE_STOCK_PROBE.value,
             PluginCapability.TIERED_PRICING.value,
             PluginCapability.MODE_A_STAGING.value,
-            PluginCapability.MODE_B_STAGING.value,
         }
         assert schema_caps == layer_ab_caps
 
@@ -134,9 +132,9 @@ class TestCanonicalEnums:
             assert isinstance(reason, str)
             assert reason == reason.value
 
-    def test_plugin_procurement_mode_exact_2_items(self):
-        expected_modes = {"MODE_A", "MODE_B"}
-        assert len(PluginProcurementMode) == 2
+    def test_plugin_procurement_mode_exact_1_item(self):
+        expected_modes = {"MODE_A"}
+        assert len(PluginProcurementMode) == 1
         assert {m.value for m in PluginProcurementMode} == expected_modes
         for mode in PluginProcurementMode:
             assert isinstance(mode, str)
@@ -402,8 +400,8 @@ class TestIVendorAdapterContract:
 class TestCapabilityMethodMap:
     """Verify the completeness and accuracy of the centralized capability-to-method map."""
 
-    def test_map_covers_all_16_capabilities_exactly_once(self):
-        assert len(CAPABILITY_METHOD_MAP) == 16
+    def test_map_covers_all_15_capabilities_exactly_once(self):
+        assert len(CAPABILITY_METHOD_MAP) == 15
         assert set(CAPABILITY_METHOD_MAP.keys()) == set(PluginCapability)
 
     def test_layer_ab_capabilities_map_to_real_adapter_methods(self):
@@ -415,7 +413,6 @@ class TestCapabilityMethodMap:
             PluginCapability.LIVE_STOCK_PROBE,
             PluginCapability.TIERED_PRICING,
             PluginCapability.MODE_A_STAGING,
-            PluginCapability.MODE_B_STAGING,
         ]
         for cap in layer_ab:
             methods = CAPABILITY_METHOD_MAP[cap]
@@ -447,9 +444,8 @@ class TestCapabilityMethodMap:
                 "representing deferred live-test runner boundaries."
             )
 
-    def test_mode_a_and_mode_b_staging_map_to_add_to_cart(self):
+    def test_mode_a_staging_maps_to_add_to_cart(self):
         assert CAPABILITY_METHOD_MAP[PluginCapability.MODE_A_STAGING] == ("add_to_cart",)
-        assert CAPABILITY_METHOD_MAP[PluginCapability.MODE_B_STAGING] == ("add_to_cart",)
 
 
 # ==============================================================================
@@ -468,15 +464,7 @@ class TestProcurementModeCapabilityConsistency:
         assert len(errors_a) == 1
         assert "MODE_A_STAGING requires MODE_A" in errors_a[0]
 
-        # Case 2: MODE_B_STAGING declared, but MODE_B not in modes
-        errors_b = validate_capability_mode_consistency(
-            capabilities={PluginCapability.MODE_B_STAGING},
-            modes={PluginProcurementMode.MODE_A},
-        )
-        assert len(errors_b) == 1
-        assert "MODE_B_STAGING requires MODE_B" in errors_b[0]
-
-    def test_single_mode_a_plugin_is_valid(self):
+    def test_mode_a_plugin_is_valid(self):
         errors = validate_capability_mode_consistency(
             capabilities={
                 PluginCapability.PRODUCT_URL_RECOGNITION,
@@ -485,30 +473,6 @@ class TestProcurementModeCapabilityConsistency:
                 PluginCapability.MODE_A_STAGING,
             },
             modes={PluginProcurementMode.MODE_A},
-        )
-        assert errors == []
-
-    def test_single_mode_b_plugin_is_valid(self):
-        errors = validate_capability_mode_consistency(
-            capabilities={
-                PluginCapability.PRODUCT_URL_RECOGNITION,
-                PluginCapability.PRODUCT_INSPECTION,
-                PluginCapability.MPN_SEARCH,
-                PluginCapability.MODE_B_STAGING,
-            },
-            modes={PluginProcurementMode.MODE_B},
-        )
-        assert errors == []
-
-    def test_dual_mode_plugin_is_valid(self):
-        errors = validate_capability_mode_consistency(
-            capabilities={
-                PluginCapability.PRODUCT_URL_RECOGNITION,
-                PluginCapability.PRODUCT_INSPECTION,
-                PluginCapability.MODE_A_STAGING,
-                PluginCapability.MODE_B_STAGING,
-            },
-            modes={PluginProcurementMode.MODE_A, PluginProcurementMode.MODE_B},
         )
         assert errors == []
 
@@ -553,10 +517,9 @@ class TestBuiltInAdaptersCompliance:
             PluginCapability.LIVE_STOCK_PROBE,
             PluginCapability.TIERED_PRICING,
             PluginCapability.MODE_A_STAGING,
-            PluginCapability.MODE_B_STAGING,
         }
         assert lion.get_supported_capabilities() == expected_caps
-        assert lion.get_supported_modes() == {PluginProcurementMode.MODE_A, PluginProcurementMode.MODE_B}
+        assert lion.get_supported_modes() == {PluginProcurementMode.MODE_A}
         assert lion.supports_capability(PluginCapability.TIERED_PRICING) is True
         assert lion.validate_capability_consistency() == []
 
@@ -576,10 +539,9 @@ class TestBuiltInAdaptersCompliance:
             PluginCapability.LIVE_STOCK_PROBE,
             PluginCapability.TIERED_PRICING,
             PluginCapability.MODE_A_STAGING,
-            PluginCapability.MODE_B_STAGING,
         }
         assert javan.get_supported_capabilities() == expected_caps
-        assert javan.get_supported_modes() == {PluginProcurementMode.MODE_A, PluginProcurementMode.MODE_B}
+        assert javan.get_supported_modes() == {PluginProcurementMode.MODE_A}
         assert javan.supports_capability(PluginCapability.TIERED_PRICING) is True
         assert javan.validate_capability_consistency() == []
 
@@ -599,10 +561,9 @@ class TestBuiltInAdaptersCompliance:
             PluginCapability.MPN_SEARCH,
             PluginCapability.LIVE_STOCK_PROBE,
             PluginCapability.MODE_A_STAGING,
-            PluginCapability.MODE_B_STAGING,
         }
         assert roboeq.get_supported_capabilities() == expected_caps
-        assert roboeq.get_supported_modes() == {PluginProcurementMode.MODE_A, PluginProcurementMode.MODE_B}
+        assert roboeq.get_supported_modes() == {PluginProcurementMode.MODE_A}
         assert roboeq.supports_capability(PluginCapability.TIERED_PRICING) is False
         assert roboeq.validate_capability_consistency() == []
 

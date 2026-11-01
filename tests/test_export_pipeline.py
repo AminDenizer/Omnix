@@ -286,12 +286,12 @@ class TestProcurementReportBuilder:
         assert it3.selected_vendor_name == "—"
         assert it3.total_price_irr is None
 
-    def test_builder_mode_b_turnkey(self):
-        """Verify Mode B sets db_stock_qty to 0 and sources full demand."""
+    def test_builder_database_aware_reconciliation(self):
+        """Verify Mode A builder includes db_stock_qty and sources shortage demand."""
         req = ProcurementRequest(
             part_number="STM32F407VGT6",
             required_quantity=20,
-            mode=ProcurementMode.DIRECT_BOM,
+            mode=ProcurementMode.DATABASE_AWARE,
             source="U1",
             metadata={"designator": "U1", "bom_raw_demand": 20, "db_stock_qty": 50},
         )
@@ -319,12 +319,12 @@ class TestProcurementReportBuilder:
 
         report = ProcurementReportBuilder.build(
             plan=plan,
-            source_title="Direct Turnkey BOM",
-            procurement_mode=ProcurementMode.DIRECT_BOM,
+            source_title="Reconciliation BOM",
+            procurement_mode=ProcurementMode.DATABASE_AWARE,
         )
 
-        assert report.procurement_mode == ProcurementMode.DIRECT_BOM
-        assert report.line_items[0].db_stock_qty == 0
+        assert report.procurement_mode == ProcurementMode.DATABASE_AWARE
+        assert report.line_items[0].db_stock_qty == 50
         assert report.line_items[0].bom_demand_qty == 20
         assert report.line_items[0].target_order_qty == 20
 

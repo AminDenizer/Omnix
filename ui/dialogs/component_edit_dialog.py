@@ -14,7 +14,8 @@ Provides:
 """
 
 import os
-from typing import List, Optional, Tuple, Any
+from urllib.parse import urlparse
+from typing import List, Optional, Tuple, Any, Set, Dict
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject, QEvent
 from PyQt6.QtGui import QFont, QColor, QPixmap, QPainter, QPen, QKeyEvent, QWheelEvent
@@ -61,7 +62,6 @@ from core.procurement.vendor_links import (
 VENDOR_CHOICES: List[Tuple[str, str, str]] = [
     ("vendor_lion", "LION", "Lion Electronic (LION)"),
     ("vendor_javan", "JAVAN", "Javan Electronic (JAVAN)"),
-    ("vendor_roboeq", "ROBOEQ", "RoboEq (ROBOEQ)"),
     ("generic", "OTHER", "Other / Generic"),
 ]
 
@@ -1141,6 +1141,26 @@ class ComponentEditDialog(QDialog):
         bg_color = "#180e14" if is_error else "#0b101b"
         focus_border = "#f87171" if is_error else "#38bdf8"
 
+        if isinstance(widget, QLineEdit):
+            widget.setStyleSheet(f"""
+                QLineEdit {{
+                    background-color: {bg_color};
+                    color: #f8fafc;
+                    border: 1px solid {border_color};
+                    border-radius: 5px;
+                    padding: 4px 8px;
+                    font-size: 11px;
+                }}
+                QLineEdit:hover {{
+                    border-color: {focus_border};
+                }}
+                QLineEdit:focus {{
+                    border-color: {focus_border};
+                    background-color: #090e18;
+                }}
+            """)
+            return
+
         style = f"""
             QComboBox {{
                 background-color: {bg_color};
@@ -1607,13 +1627,72 @@ class ComponentEditDialog(QDialog):
             self.validation_lbl.setText("")
             self._populate_from_component(existing)
 
-    def _collect_supplier_links(self) -> List[SupplierLink]:
+    def _validate_supplier_links(self) -> Tuple[Optional[List[SupplierLink]], Optional[str], Optional[QWidget]]:
+        """
+        Validates all user-entered supplier links before database persistence.
+
+        Enforces:
+        1. Valid URL syntax (http/https and non-empty valid host).
+        2. No duplicate vendors on the same component (each registered vendor may only appear once).
+        3. No duplicate URLs on the same component.
+        Note: The vendor tag is metadata only. The URL does not need to belong to the selected vendor.
+        """
         links: List[SupplierLink] = []
-        for r in self._link_rows:
-            l = r.get_link()
-            if l:
-                links.append(l)
-        return links
+        seen_vendors: Set[str] = set()
+        seen_urls: Set[str] = set()
+
+        for idx, row in enumerate(self._link_rows, 1):
+            url = row.url_input.text().strip()
+            if not url:
+                continue
+
+            if not (url.startswith("http://") or url.startswith("https://")):
+                return (
+                    None,
+                    f"Supplier Link #{idx}: URL must start with http:// or https:// (got '{url}').",
+                    row.url_input,
+                )
+
+            try:
+                parsed_url = urlparse(url)
+                netloc = parsed_url.netloc.lower().split(":")[0].strip()
+            except Exception as e:
+                return None, f"Supplier Link #{idx}: Malformed URL: {e}", row.url_input
+
+            if not netloc or "." not in netloc:
+                return (
+                    None,
+                    f"Supplier Link #{idx}: Invalid URL host or domain format.",
+                    row.url_input,
+                )
+
+            v_data = row.vendor_combo.currentData()
+            vendor_id, vendor_label = v_data if v_data else ("generic", "OTHER")
+            disp_name = DEFAULT_VENDOR_NAMES.get(vendor_id, vendor_label)
+
+            norm_url = url.rstrip("/").lower()
+            if norm_url in seen_urls:
+                return (
+                    None,
+                    f"Supplier Link #{idx}: Duplicate URL. Each supplier link must be unique.",
+                    row.url_input,
+                )
+            seen_urls.add(norm_url)
+
+            links.append(
+                SupplierLink(
+                    vendor_id=vendor_id,
+                    vendor_label=vendor_label,
+                    url=url,
+                    display_name=disp_name,
+                )
+            )
+
+        return links, None, None
+
+    def _collect_supplier_links(self) -> List[SupplierLink]:
+        links, _, _ = self._validate_supplier_links()
+        return links or []
 
     def _on_save_clicked(self):
         """Validates all inputs, enforces identity uniqueness, and persists via repository."""
@@ -1622,6 +1701,9 @@ class ComponentEditDialog(QDialog):
         self._set_field_error(self.mfr_input, False)
         self._set_field_error(self.category_combo, False)
         self._set_field_error(self.tech_combo, False)
+        for r in self._link_rows:
+            self._set_field_error(r.url_input, False)
+            self._set_field_error(r.vendor_combo, False)
 
         mfr = clean_display_string(self.mfr_input.currentText())
         mpn = clean_display_string(self.mpn_input.text())
@@ -1714,7 +1796,12 @@ class ComponentEditDialog(QDialog):
                 if type_rec:
                     tech = type_rec.name
 
-        supplier_links = self._collect_supplier_links()
+        supplier_links, link_err, err_widget = self._validate_supplier_links()
+        if link_err:
+            self.validation_lbl.setText(link_err)
+            if err_widget:
+                self._set_field_error(err_widget, True)
+            return
 
         # 2. Duplicate pre-check
         if self.repository:

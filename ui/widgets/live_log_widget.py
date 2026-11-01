@@ -14,6 +14,7 @@ Provides:
 import os
 import sys
 import subprocess
+import datetime
 from typing import Optional, List
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
@@ -59,6 +60,14 @@ class LiveLogWidget(QWidget):
         self._init_ui()
         self._connect_signals()
         self._load_initial_events()
+
+    def _format_timestamp(self, ts_str: str) -> str:
+        """Converts an ISO timestamp into local system time string (YYYY-MM-DD HH:MM:SS)."""
+        try:
+            dt = datetime.datetime.fromisoformat(ts_str)
+            return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ts_str.replace("T", " ")[:19]
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -230,7 +239,7 @@ class LiveLogWidget(QWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Timestamp (UTC)",
+            "Timestamp",
             "Severity",
             "Domain",
             "Phase",
@@ -317,9 +326,12 @@ class LiveLogWidget(QWidget):
         """
 
     def _connect_signals(self):
-        bridge = get_event_bridge()
-        if hasattr(bridge, "eventLogged"):
-            bridge.eventLogged.connect(self._on_event_received)
+        try:
+            bridge = get_event_bridge()
+            if hasattr(bridge, "eventLogged"):
+                bridge.eventLogged.connect(self._on_event_received)
+        except RuntimeError:
+            pass
 
     def _load_initial_events(self):
         records = get_event_buffer().get_all()
@@ -346,11 +358,11 @@ class LiveLogWidget(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # 0. Timestamp
-            t_str = record.timestamp.replace("T", " ")[:19]
+            # 0. Timestamp (formatted in local system time)
+            t_str = self._format_timestamp(record.timestamp)
             it_ts = QTableWidgetItem(t_str)
             it_ts.setForeground(QColor("#94a3b8"))
-            it_ts.setToolTip(record.timestamp)
+            it_ts.setToolTip(f"System: {t_str}\nUTC ISO: {record.timestamp}")
             self.table.setItem(row, 0, it_ts)
 
             # 1. Severity Badge
@@ -422,9 +434,10 @@ class LiveLogWidget(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            t_str = r.timestamp.replace("T", " ")[:19]
+            t_str = self._format_timestamp(r.timestamp)
             it_ts = QTableWidgetItem(t_str)
             it_ts.setForeground(QColor("#94a3b8"))
+            it_ts.setToolTip(f"System: {t_str}\nUTC ISO: {r.timestamp}")
             self.table.setItem(row, 0, it_ts)
 
             it_sev = QTableWidgetItem(r.level)
@@ -481,15 +494,17 @@ class LiveLogWidget(QWidget):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 if path.endswith(".csv"):
-                    f.write("Timestamp,Severity,Domain,Phase,OperationID,Message\n")
+                    f.write("Timestamp (System),Timestamp (UTC),Severity,Domain,Phase,OperationID,Message\n")
                     for r in self._all_records:
                         op = r.operation_id or ""
                         msg = r.message.replace('"', '""')
-                        f.write(f'"{r.timestamp}","{r.level}","{r.domain}","{r.event_type}","{op}","{msg}"\n')
+                        local_t = self._format_timestamp(r.timestamp)
+                        f.write(f'"{local_t}","{r.timestamp}","{r.level}","{r.domain}","{r.event_type}","{op}","{msg}"\n')
                 else:
                     for r in self._all_records:
                         op = f" [{r.operation_id}]" if r.operation_id else ""
-                        f.write(f"{r.timestamp} [{r.level}] [{r.domain}:{r.event_type}]{op} {r.message}\n")
+                        local_t = self._format_timestamp(r.timestamp)
+                        f.write(f"{local_t} (UTC: {r.timestamp}) [{r.level}] [{r.domain}:{r.event_type}]{op} {r.message}\n")
             log_event("Export", "COMPLETION", f"Exported diagnostic log view to {os.path.basename(path)}")
         except Exception as e:
             log_event("Export", "FAILURE", f"Failed to export diagnostic log view: {e}", level="ERROR")

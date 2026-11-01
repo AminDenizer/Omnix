@@ -14,7 +14,7 @@
 
 Phase 9 Step 6 successfully bridged and decoupled the existing procurement subsystem (Altium BOM Auditor, Excel Inventory Shortage Loader, and PyQt6 Order Preview UI) from legacy single-vendor assumptions.
 
-All procurement requests across Mode A (Inventory Shortages) and Mode B (Altium BOM Assembly) are now dynamically routed through `ProcurementBridge` and `UniversalProcurementOrchestrator` using the declarative `VendorRegistry`.
+All procurement requests across Mode A (Inventory Shortages and BOM Shortages) are now dynamically routed through `ProcurementBridge` and `UniversalProcurementOrchestrator` using the declarative `VendorRegistry`.
 
 ### Key Architectural Outcomes:
 1. **Zero Monolithic Couplings:** Removed hardcoded `"lionelectronic.ir"` conditionals from `bom_auditor.py`, `excel_loader.py`, `ui/dialogs/order_preview_dialog.py`, and `ui/widgets/bom_audit_widget.py`.
@@ -31,7 +31,7 @@ All procurement requests across Mode A (Inventory Shortages) and Mode B (Altium 
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Legacy Entry Points                             │
 │  • Mode A: ExcelDataLoader.get_shortage_items()                        │
-│  • Mode B: BOMAuditor.audit_bom() -> BOMAuditResult                    │
+│  • BOM Auditing: BOMAuditor.audit_bom() -> BOMAuditResult              │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼

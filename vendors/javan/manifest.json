@@ -20,12 +20,10 @@
     "MPN_SEARCH",
     "LIVE_STOCK_PROBE",
     "TIERED_PRICING",
-    "MODE_A_STAGING",
-    "MODE_B_STAGING"
+    "MODE_A_STAGING"
   ],
   "supported_modes": [
-    "MODE_A",
-    "MODE_B"
+    "MODE_A"
   ],
   "routes": {
     "base_url": "https://www.javanelec.com",

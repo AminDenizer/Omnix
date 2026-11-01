@@ -320,17 +320,29 @@ class TestVendorLinksParser:
         res3 = parse_vendor_links(raw3, registry=mock_registry)
         assert res3.is_valid is False
 
-    def test_duplicate_lion_key(self, mock_registry):
+    def test_duplicate_lion_key_different_urls_accepted(self, mock_registry):
         raw = "LION=https://lionelectronic.ir/p/1 || LION=https://lionelectronic.ir/p/2"
         res = parse_vendor_links(raw, registry=mock_registry)
-        assert res.is_valid is False
-        assert "Duplicate vendor key 'LION'" in str(res.error_message)
+        assert res.is_valid is True
+        assert res.count == 2
+        assert len(res.entries) == 2
+        assert res.entries[0].url == "https://lionelectronic.ir/p/1"
+        assert res.entries[1].url == "https://lionelectronic.ir/p/2"
 
-    def test_duplicate_javan_key(self, mock_registry):
+    def test_duplicate_javan_key_different_urls_accepted(self, mock_registry):
         raw = "JAVAN=https://www.javanelec.com/p/1 || JAVAN=https://www.javanelec.com/p/2"
         res = parse_vendor_links(raw, registry=mock_registry)
+        assert res.is_valid is True
+        assert res.count == 2
+        assert len(res.entries) == 2
+        assert res.entries[0].url == "https://www.javanelec.com/p/1"
+        assert res.entries[1].url == "https://www.javanelec.com/p/2"
+
+    def test_duplicate_exact_url_rejected(self, mock_registry):
+        raw = "LION=https://lionelectronic.ir/p/1 || LION=https://lionelectronic.ir/p/1"
+        res = parse_vendor_links(raw, registry=mock_registry)
         assert res.is_valid is False
-        assert "Duplicate vendor key 'JAVAN'" in str(res.error_message)
+        assert "Duplicate URL in vendor links" in str(res.error_message)
 
     def test_unsupported_vendor_key(self, mock_registry):
         raw = "UNKNOWN=https://some-store.com/product/123"
@@ -351,17 +363,18 @@ class TestVendorLinksParser:
         assert res2.is_valid is False
 
     def test_vendor_label_vs_url_host_mismatch(self, mock_registry):
-        # LION label paired with Javan URL
+        # Vendor tag is metadata only; URL domain is not restricted by vendor label
         raw1 = "LION=https://www.javanelec.com/shop/product/55407"
         res1 = parse_vendor_links(raw1, registry=mock_registry)
-        assert res1.is_valid is False
-        assert "contradicts URL host" in str(res1.error_message)
+        assert res1.is_valid is True
+        assert "vendor_lion" in res1.links
+        assert res1.links["vendor_lion"].url == "https://www.javanelec.com/shop/product/55407"
 
-        # JAVAN label paired with Lion URL
         raw2 = "JAVAN=https://lionelectronic.ir/products/3775"
         res2 = parse_vendor_links(raw2, registry=mock_registry)
-        assert res2.is_valid is False
-        assert "contradicts URL host" in str(res2.error_message)
+        assert res2.is_valid is True
+        assert "vendor_javan" in res2.links
+        assert res2.links["vendor_javan"].url == "https://lionelectronic.ir/products/3775"
 
     def test_unknown_legacy_host_behavior(self, mock_registry):
         # Legacy plain URL from unknown domain
@@ -686,17 +699,20 @@ class TestAdapterDispatchAndRegression:
         assert mcu["is_orderable"] is False
         assert mcu["link_type"] == "NONE"
 
-    def test_direct_bom_mode_remains_distinct_from_mode_a(self, mock_registry):
-        # Mode B (DIRECT_BOM) operates on part_number without requiring vendor links
-        item_mode_b = {
-            "mode": ProcurementMode.DIRECT_BOM,
+    def test_unsupported_mode_rejected_and_mode_a_enforced(self, mock_registry):
+        # Unsupported mode is rejected and does not bypass vendor link requirement
+        item_unsupported = {
+            "mode": "UNSUPPORTED_MODE",
             "part_number": "STM32F401RET6",
             "needed_qty": 5,
             "link": "",
         }
-        is_ord, v_id = ProcurementBridge.is_item_orderable(item_mode_b, mock_registry)
-        assert is_ord is True
+        is_ord, v_id = ProcurementBridge.is_item_orderable(item_unsupported, mock_registry)
+        assert is_ord is False
         assert v_id is None
+
+        with pytest.raises(ValueError, match="sole supported procurement workflow"):
+            ProcurementBridge.item_to_request(item_unsupported)
 
         # Mode A (DATABASE_AWARE) strictly requires vendor link or multi-links
         item_mode_a_blank = {

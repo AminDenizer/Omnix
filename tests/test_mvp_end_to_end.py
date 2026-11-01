@@ -6,13 +6,17 @@ Inventory Excel export, and Database Backup/Restore in a strictly isolated envir
 """
 
 import os
+import zipfile
 import openpyxl
 import pytest
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 import settings_manager
 from settings_manager import settings
+from core.plugins.manifest_mf import generate_manifest_mf
 from core.models import (
     StockStatus,
     OrderConstraints,
@@ -48,6 +52,28 @@ def qapp():
     return app
 
 
+
+def _build_signed_test_package(src_dir: Path, vendor_name: str, dest_xpl: Path, private_key: ed25519.Ed25519PrivateKey) -> Path:
+    """Build an authentic .xpl package from vendor source directory signed by an ephemeral test key."""
+    files = {}
+    for p in src_dir.rglob("*"):
+        if p.is_file() and not p.name.endswith(".pyc") and "__pycache__" not in p.parts:
+            rel = p.relative_to(src_dir).as_posix()
+            if rel == "manifest.json":
+                files["manifest.json"] = p.read_bytes()
+            else:
+                files[f"vendors/{vendor_name}/{rel}"] = p.read_bytes()
+    mf_text = generate_manifest_mf(files)
+    mf_bytes = mf_text.encode("utf-8")
+    files["META-INF/MANIFEST.MF"] = mf_bytes
+    files["META-INF/SIGNATURE.sig"] = private_key.sign(mf_bytes)
+    dest_xpl.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(dest_xpl, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fname, data in files.items():
+            zf.writestr(fname, data)
+    return dest_xpl
+
+
 @pytest.fixture()
 def isolated_mvp_env(tmp_path):
     """Strictly isolate settings, VendorRegistry, and PluginStore from workspace files."""
@@ -62,9 +88,23 @@ def isolated_mvp_env(tmp_path):
     VendorRegistry.reset_default_registry()
     reg = VendorRegistry.get_default_registry()
 
+    test_trust_store = tmp_path / "test_trust_store"
+    test_trust_store.mkdir(parents=True, exist_ok=True)
+    test_priv_key = ed25519.Ed25519PrivateKey.generate()
+    test_pub_key = test_priv_key.public_key()
+    pub_bytes = test_pub_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    (test_trust_store / "core-official-key-01.pub").write_bytes(pub_bytes)
+
+    test_packages_dir = tmp_path / "test_packages"
+    lion_xpl = _build_signed_test_package(Path("vendors/lion"), "lion", test_packages_dir / "lion.xpl", test_priv_key)
+    javan_xpl = _build_signed_test_package(Path("vendors/javan"), "javan", test_packages_dir / "javan.xpl", test_priv_key)
+
     plugins_root = tmp_path / "plugins_data"
     store = PluginStore(plugins_root=plugins_root)
-    trust_engine = TrustEngine()
+    trust_engine = TrustEngine(prod_trust_store=test_trust_store, env="production")
     inspector = PackageInspector()
     installer = PluginInstaller(store=store, trust_engine=trust_engine, inspector=inspector)
     loader = PluginLoader(store=store)
@@ -80,8 +120,14 @@ def isolated_mvp_env(tmp_path):
             "installer": installer,
             "loader": loader,
             "lifecycle": lifecycle,
+            "lion_xpl": lion_xpl,
+            "javan_xpl": javan_xpl,
         }
     finally:
+        import sys
+        for mod in list(sys.modules.keys()):
+            if mod.startswith("omnix_plugins."):
+                sys.modules.pop(mod, None)
         VendorRegistry.reset_default_registry()
         settings.file_path = orig_file_path
         settings.settings = orig_settings_dict
@@ -97,8 +143,10 @@ def test_mvp_official_xpl_packages_install_enable_configure_and_load(qapp, isola
     store: PluginStore = env["store"]
     reg: VendorRegistry = env["registry"]
 
-    for vname, expected_vid in (("lion", "vendor_lion"), ("javan", "vendor_javan")):
-        xpl_path = Path("vendors") / f"{vname}.xpl"
+    for vname, expected_vid, xpl_path in (
+        ("lion", "vendor_lion", env["lion_xpl"]),
+        ("javan", "vendor_javan", env["javan_xpl"]),
+    ):
         assert xpl_path.is_file(), f"Missing official package: {xpl_path}"
 
         insp = inspector.inspect_package(xpl_path)
@@ -122,9 +170,9 @@ def test_mvp_official_xpl_packages_install_enable_configure_and_load(qapp, isola
     assert reg.get_vendor_for_url("https://lionelectronic.ir/products/123-stm32f103c8t6") == "vendor_lion"
     assert reg.get_vendor_for_url("https://www.javanelec.com/shop/product/53852") == "vendor_javan"
 
-    # Verify PluginConfigDialog builds manifest-driven fields from config_schema
+    # Verify PluginConfigDialog builds manifest-driven fields from config_schema (headless is managed globally in settings)
     cfg_dlg = PluginConfigDialog(vendor_id="vendor_lion", registry=reg)
-    assert set(cfg_dlg.field_widgets.keys()) >= {"username", "password", "timeout_seconds", "headless"}
+    assert set(cfg_dlg.field_widgets.keys()) >= {"username", "password", "timeout_seconds"}
 
 
 def test_mvp_bom_link_status_consistency_across_plugin_states(qapp, isolated_mvp_env):
@@ -179,7 +227,7 @@ def test_mvp_bom_link_status_consistency_across_plugin_states(qapp, isolated_mvp
     item_uninstalled = res_uninstalled.items[0]
     assert item_uninstalled.status == "SHORTAGE"
     assert not item_uninstalled.is_orderable
-    assert item_uninstalled.link_type == "INVALID"
+    assert item_uninstalled.link_type == "LION"
 
     audit_widget = BOMAuditWidget(inventory_loader=repo)
     audit_widget.audit_result = res_uninstalled
@@ -194,7 +242,7 @@ def test_mvp_bom_link_status_consistency_across_plugin_states(qapp, isolated_mvp
     assert len(dlg_uninstalled.orderable_items) == 0
 
     # 2. Install & activate vendor_lion -> orderable, link_type == "LION"
-    installer.install_package("vendors/lion.xpl")
+    installer.install_package(env["lion_xpl"])
     lifecycle.activate_plugin("vendor_lion")
 
     ok, msg, res_installed = auditor.audit_bom(str(bom_xlsx), repo, board_multiplier=1)
@@ -220,7 +268,7 @@ def test_mvp_bom_link_status_consistency_across_plugin_states(qapp, isolated_mvp
     assert ok, msg
     item_disabled = res_disabled.items[0]
     assert not item_disabled.is_orderable
-    assert item_disabled.link_type == "INVALID"
+    assert item_disabled.link_type == "LION"
 
     repo.close()
 
@@ -232,8 +280,8 @@ def test_mvp_mode_a_stock_replenishment_and_staging_safety(qapp, isolated_mvp_en
     lifecycle: PluginLifecycleManager = env["lifecycle"]
     reg: VendorRegistry = env["registry"]
 
-    installer.install_package("vendors/lion.xpl")
-    installer.install_package("vendors/javan.xpl")
+    installer.install_package(env["lion_xpl"])
+    installer.install_package(env["javan_xpl"])
     lifecycle.activate_plugin("vendor_lion")
     lifecycle.activate_plugin("vendor_javan")
 
@@ -514,8 +562,7 @@ def test_mvp_excel_export_and_database_backup_restore(isolated_mvp_env):
     assert xlsx_path.is_file()
 
     wb = openpyxl.load_workbook(str(xlsx_path))
-    assert "Inventory" in wb.sheetnames
-    assert "Assembly View" in wb.sheetnames
+    assert wb.sheetnames == ["Inventory"]
     wb.close()
 
     # 2. Backup & Restore

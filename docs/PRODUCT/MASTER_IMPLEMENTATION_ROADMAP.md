@@ -42,7 +42,7 @@ All 18 product and architectural GAPs are summarized below with their canonical 
 
 | ID | Domain | Requirement Title | Current Implementation State | Blocking? | Target Task | Status |
 |---|---|---|---|:---:|:---:|:---:|
-| **`GAP-01`** | UI / Workflow | Dual Procurement Modes (Mode A vs Mode B) | Mode A (database-aware shortage calculation) and Mode B (100% inventory-independent turnkey BOM sourcing) fully implemented and UI-switchable. | **YES** | `TASK-A3` | `VERIFIED` |
+| **`GAP-01`** | UI / Workflow | Sole Canonical Procurement Architecture (Mode A) | Mode A (database-aware shortage calculation and reconciliation) fully verified as the sole operational procurement architecture. | **YES** | `TASK-A3` | `VERIFIED` |
 | **`GAP-02`** | UI / Workflow | Direct MPN Procurement Quick Order Dialog | Standalone QuickOrderDialog tab implemented with brand rules, stepper, vendor filtering, candidate table, and cart delta staging. | No | `TASK-A5` | `VERIFIED` |
 | **`GAP-03`** | UI / Workflow | Direct URL Procurement Quick Order Dialog | Standalone QuickOrderDialog tab implemented with strict PDP regex validation, live inspection, constraint extraction, and cart delta staging. | No | `TASK-A5` | `VERIFIED` |
 | **`GAP-04`** | Matching | Package & Footprint Hard Constraints (`OD-001` OPEN) | Fully implemented in Core models and orchestrator with conservative normalization. | **YES** | `TASK-A1` | `VERIFIED` |
@@ -66,7 +66,7 @@ All 18 product and architectural GAPs are summarized below with their canonical 
 ## 3. RELEASE-BLOCKING GAPS
 
 The following **EXACTLY 8 GAPS** are strictly release-blocking (ALL 8 ARE NOW VERIFIED):
-1. **`GAP-01` (Dual Procurement Modes):** Enables Mode A (Database-Aware) and Mode B (Direct BOM Sourcing). *(VERIFIED via Task A3)*
+1. **`GAP-01` (Canonical Procurement Architecture):** Enforces Mode A (Database-Aware) as the sole operational procurement workflow. *(VERIFIED via Task A3)*
 2. **`GAP-04` (Package & Footprint Hard Constraints):** Prevents purchasing physically incompatible SMD/through-hole parts. *(VERIFIED in Core via Task A1)*
 3. **`GAP-05` (`UNKNOWN_REQUIRED_PARAMETER` & Spec Engine):** Flags unlisted/unknown specs to prevent unsafe auto-ordering. *(VERIFIED in Core via Task A1)*
 4. **`GAP-06` (Manufacturer / Brand Constraint Engine):** Enforces brand rules (`ANY` vs approved list) over lower pricing. *(VERIFIED in Core via Task A1)*
@@ -77,34 +77,29 @@ The following **EXACTLY 8 GAPS** are strictly release-blocking (ALL 8 ARE NOW VE
 
 ---
 
-## 4. PROCUREMENT MODES ARCHITECTURE (`GAP-01`)
+## 4. CANONICAL PROCUREMENT ARCHITECTURE (GAP-01)
 
-```
+`
                                   [ Altium BOM Upload ]
                                             │
                                             ▼
-                        Mode Selection (BOM Audit View Toggle)
+                               [ Mode A: Database-Aware ]
                                             │
-                    ┌───────────────────────┴───────────────────────┐
-                    ▼                                               ▼
-        [ MODE A: DATABASE-AWARE ]                      [ MODE B: DIRECT BOM ]
-                    │                                               │
-        Read `Inventory.xlsx` on disk                   Bypass `Inventory.xlsx` completely
-                    │                                               │
-        Match BOM against Database Stock                BOM is the sole source of requirements
-                    │                                               │
-        Calculate Net Shortages:                        Required Quantity =
-        Needed = max(0, Q_BOM * M - Stock)              Q_BOM * M (Full batch demand)
-                    │                                               │
-        Link Source: Database Link Column               Link Source: Dynamic Catalog Search
-                    │                                               │
-                    └───────────────────────┬───────────────────────┘
-                                            ▼
-                             [ ProcurementRequest Model ]
+                               Read Inventory.xlsx on disk
+                                            │
+                               Match BOM against Database Stock
+                                            │
+                               Calculate Net Shortages:
+                               Needed = max(0, Q_BOM * M - Stock)
+                                            │
+                               Link Source: Database Link Column
                                             │
                                             ▼
-                          [ UniversalProcurementOrchestrator ]
-```
+                              [ ProcurementRequest Model ]
+                                            │
+                                            ▼
+                           [ UniversalProcurementOrchestrator ]
+`
 
 ---
 
@@ -330,7 +325,7 @@ The following decisions remain **OPEN** and are strictly preserved:
        │
        ▼
  [ LAYER 3: WORKFLOW MODES & CAD INGESTION ] (TASK-A3)
- ├── GAP-01: Dual Procurement Modes (Mode A vs Mode B)
+ ├── GAP-01: Canonical Procurement Architecture (Mode A)
  └── GAP-16: Extended Altium Parameter Ingestion Parser
        │
        ▼
@@ -393,7 +388,7 @@ The following decisions remain **OPEN** and are strictly preserved:
 #### TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion
 - **Target GAPs:** `GAP-01`, `GAP-16`.
 - **Status:** `COMPLETED_AND_VERIFIED` (258 unit/contract tests passing total, +17 new tests).
-- **Scope Accomplished:** Mode A (database-aware stock reconciliation) vs Mode B (100% inventory-independent turnkey BOM sourcing), interactive UI mode switcher, 20-parameter Altium contract parser, strict MPN validation, strict quantity validation, and `ManufacturerRule` vs `ManufacturerDataState` separation.
+- **Scope Accomplished:** Mode A (database-aware stock reconciliation), 20-parameter Altium contract parser, strict MPN validation, strict quantity validation, and `ManufacturerRule` vs `ManufacturerDataState` separation.
 - **Affected Files:** `ui/widgets/bom_audit_widget.py`, `bom_auditor.py`, `core/procurement/bridge.py`, `core/procurement/models.py`.
 
 #### TASK-A4: Multi-Vendor Cart Idempotency & Delta Synchronization

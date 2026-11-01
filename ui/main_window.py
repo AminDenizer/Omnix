@@ -10,10 +10,10 @@ from PyQt6.QtWidgets import (
     QApplication, QStatusBar, QMenu, QMessageBox, QDialog,
     QTabWidget, QPushButton, QSplitter, QFrame, QToolButton, QLineEdit,
     QFileDialog, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox,
-    QStackedWidget, QCheckBox, QAbstractButton,
+    QStackedWidget, QCheckBox, QAbstractButton, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QTimer, QPoint, QEvent, QT_VERSION_STR
-from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut, QIcon, QPixmap, QKeyEvent, QMouseEvent
+from PyQt6.QtGui import QFont, QColor, QKeySequence, QShortcut, QIcon, QPixmap, QKeyEvent, QMouseEvent, QShowEvent
 
 from config import (
     APP_NAME,
@@ -60,7 +60,6 @@ from ui.widgets.live_log_widget import LiveLogWidget
 from ui.dialogs import (
     SettingsDialog,
     OrderPreviewDialog,
-    QuickOrderDialog,
     PolicyEditDialog,
     ComponentEditDialog,
     StockAdjustmentDialog,
@@ -109,20 +108,11 @@ class MainWindow(QMainWindow):
             | Qt.WindowType.WindowMinMaxButtonsHint
             | Qt.WindowType.WindowSystemMenuHint
         )
+        self._native_window_handler = None
         if sys.platform == "win32":
             try:
-                import ctypes
-                from ui.dark_frame import apply_dark_window_frame
-                apply_dark_window_frame(self)
-                hwnd = int(self.winId())
-                user32 = getattr(ctypes.windll, "user32", None)
-                if user32:
-                    GWL_STYLE = -16
-                    WS_MINIMIZEBOX = 0x00020000
-                    WS_MAXIMIZEBOX = 0x00010000
-                    WS_THICKFRAME = 0x00040000
-                    cur_style = user32.GetWindowLongW(hwnd, GWL_STYLE)
-                    user32.SetWindowLongW(hwnd, GWL_STYLE, cur_style | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME)
+                from ui.native_window import setup_native_window
+                self._native_window_handler = setup_native_window(self)
             except Exception:
                 pass
 
@@ -159,6 +149,7 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._setup_shortcuts()
         self._setup_statusbar()
+        self._restore_window_geometry()
 
         # Install application-level event filter for clean '/' shortcut routing
         app_inst = QApplication.instance()
@@ -201,6 +192,9 @@ class MainWindow(QMainWindow):
         self.sidebar.set_active_page("component_inventory")
         self._on_inventory_subtab_changed(1)
 
+        # Apply Assembly View visibility setting on startup
+        self._apply_assembly_view_visibility(bool(settings.get("assembly_view_enabled", True)))
+
         # Focus search and trigger startup shortage audit
         QTimer.singleShot(150, self._focus_search)
         QTimer.singleShot(700, self._check_startup_shortages)
@@ -210,29 +204,13 @@ class MainWindow(QMainWindow):
         self.title_bar = WindowTitleBar(parent=self)
         self.setMenuWidget(self.title_bar)
 
-        # Retain direct button references on self for backward compatibility
-        self.manage_reference_btn = self.title_bar.manage_reference_btn
-        self.export_excel_btn = self.title_bar.export_excel_btn
-        self.settings_btn = self.title_bar.settings_btn
-
-        # Wire Title Bar 'Settings' dropdown menu actions
-        self.title_bar.generalRequested.connect(lambda: self._open_settings(initial_tab="general"))
-        self.title_bar.pluginsRequested.connect(lambda: self._open_settings(initial_tab="plugins"))
-        self.title_bar.referenceDataRequested.connect(self._open_reference_data_dialog)
-        self.title_bar.providersRequested.connect(self._open_providers_dialog)
-        self.title_bar.exportExcelRequested.connect(self._export_inventory_to_excel)
-        self.settings_btn.clicked.connect(self._open_settings)
-
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Quick Order Button (preserved on self for keyboard shortcuts and test compatibility)
-        self.quick_order_btn = QPushButton("Quick Order", self)
-        self.quick_order_btn.setVisible(False)
-        self.quick_order_btn.clicked.connect(self._open_quick_order)
+
 
         # 2. Main Dual-Tab Widget Container
         self.tabs = QTabWidget()
@@ -429,19 +407,19 @@ class MainWindow(QMainWindow):
 
         # Streamlined Unified Action & Search Toolbar
         comp_toolbar = QHBoxLayout()
-        comp_toolbar.setSpacing(8)
+        comp_toolbar.setSpacing(10)
 
         self.component_search_input = QLineEdit()
         self.component_search_input.setPlaceholderText("Search by MPN, Manufacturer, or Value...")
-        self.component_search_input.setFixedHeight(30)
+        self.component_search_input.setFixedHeight(38)
         self.component_search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #0f172a;
                 color: #f8fafc;
                 border: 1px solid #334155;
-                border-radius: 4px;
-                padding: 4px 10px;
-                font-size: 11px;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 13px;
             }
             QLineEdit:focus {
                 border-color: #38bdf8;
@@ -450,8 +428,14 @@ class MainWindow(QMainWindow):
         self.component_search_input.textChanged.connect(self._on_component_search_changed)
         comp_toolbar.addWidget(self.component_search_input, 1)
 
+        # 2x2 Action Buttons Grid (Two on top, two on bottom)
+        btn_grid = QGridLayout()
+        btn_grid.setContentsMargins(0, 0, 0, 0)
+        btn_grid.setHorizontalSpacing(8)
+        btn_grid.setVerticalSpacing(4)
+
         self.add_component_btn = QPushButton("Add Component")
-        self.add_component_btn.setFixedHeight(30)
+        self.add_component_btn.setFixedHeight(28)
         self.add_component_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_component_btn.setStyleSheet("""
             QPushButton {
@@ -459,7 +443,7 @@ class MainWindow(QMainWindow):
                 color: #ffffff;
                 font-size: 11px;
                 font-weight: 600;
-                padding: 4px 14px;
+                padding: 2px 14px;
                 border-radius: 4px;
                 border: none;
             }
@@ -473,10 +457,10 @@ class MainWindow(QMainWindow):
             }
         """)
         self.add_component_btn.clicked.connect(self._open_add_component_dialog)
-        comp_toolbar.addWidget(self.add_component_btn)
+        btn_grid.addWidget(self.add_component_btn, 0, 0)
 
         self.edit_component_btn = QPushButton("Edit Component")
-        self.edit_component_btn.setFixedHeight(30)
+        self.edit_component_btn.setFixedHeight(28)
         self.edit_component_btn.setEnabled(False)
         self.edit_component_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.edit_component_btn.setStyleSheet("""
@@ -485,7 +469,7 @@ class MainWindow(QMainWindow):
                 color: #f8fafc;
                 font-size: 11px;
                 font-weight: 600;
-                padding: 4px 14px;
+                padding: 2px 14px;
                 border-radius: 4px;
                 border: 1px solid #475569;
             }
@@ -500,10 +484,10 @@ class MainWindow(QMainWindow):
             }
         """)
         self.edit_component_btn.clicked.connect(lambda: self._open_edit_component_dialog())
-        comp_toolbar.addWidget(self.edit_component_btn)
+        btn_grid.addWidget(self.edit_component_btn, 0, 1)
 
         self.stock_mgmt_btn = QPushButton("Stock Management")
-        self.stock_mgmt_btn.setFixedHeight(30)
+        self.stock_mgmt_btn.setFixedHeight(28)
         self.stock_mgmt_btn.setEnabled(False)
         self.stock_mgmt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stock_mgmt_btn.setStyleSheet("""
@@ -512,7 +496,7 @@ class MainWindow(QMainWindow):
                 color: #38bdf8;
                 font-size: 11px;
                 font-weight: 600;
-                padding: 4px 14px;
+                padding: 2px 14px;
                 border-radius: 4px;
                 border: 1px solid #0284c7;
             }
@@ -527,10 +511,10 @@ class MainWindow(QMainWindow):
             }
         """)
         self.stock_mgmt_btn.clicked.connect(lambda: self._open_stock_adjustment_dialog())
-        comp_toolbar.addWidget(self.stock_mgmt_btn)
+        btn_grid.addWidget(self.stock_mgmt_btn, 1, 0)
 
         self.delete_component_btn = QPushButton("Delete Component")
-        self.delete_component_btn.setFixedHeight(30)
+        self.delete_component_btn.setFixedHeight(28)
         self.delete_component_btn.setEnabled(False)
         self.delete_component_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.delete_component_btn.setStyleSheet("""
@@ -539,7 +523,7 @@ class MainWindow(QMainWindow):
                 color: #f87171;
                 font-size: 11px;
                 font-weight: 600;
-                padding: 4px 12px;
+                padding: 2px 12px;
                 border-radius: 4px;
                 border: 1px solid #475569;
             }
@@ -554,9 +538,9 @@ class MainWindow(QMainWindow):
             }
         """)
         self.delete_component_btn.clicked.connect(self._delete_selected_component)
-        comp_toolbar.addWidget(self.delete_component_btn)
+        btn_grid.addWidget(self.delete_component_btn, 1, 1)
 
-
+        comp_toolbar.addLayout(btn_grid)
         comp_view_layout.addLayout(comp_toolbar)
 
         # 4. Table 1: Dedicated Component Inventory Table (Using InventoryTableWidget)
@@ -564,7 +548,7 @@ class MainWindow(QMainWindow):
         self.inventory_components_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.inventory_components_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.inventory_components_table.verticalHeader().setVisible(False)
-        self.inventory_components_table.verticalHeader().setDefaultSectionSize(30)
+        self.inventory_components_table.verticalHeader().setDefaultSectionSize(36)
         self.inventory_components_table.setShowGrid(True)
         self.inventory_components_table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.inventory_components_table.horizontalHeader().setSectionsClickable(False)
@@ -700,7 +684,7 @@ class MainWindow(QMainWindow):
         self.side_stock_policy_enabled_chk.setChecked(settings.get("stock_policy_enabled", True))
         card_layout.addWidget(self.side_stock_policy_enabled_chk)
 
-        # Stock-policy and shortage-automation group
+        # Stock-policy and shortage-automation group (Subordinates of Master)
         sub_layout = QVBoxLayout()
         sub_layout.setContentsMargins(24, 0, 0, 0)
         sub_layout.setSpacing(8)
@@ -715,9 +699,19 @@ class MainWindow(QMainWindow):
         self.side_startup_chk.setChecked(settings.get("auto_check_startup_shortage", True))
         sub_layout.addWidget(self.side_startup_chk)
 
+        # 4. Subordinate 3: Show Min Stock and Target Stock columns in Component Inventory
+        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
+        self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
+        sub_layout.addWidget(self.side_stock_policy_show_columns_chk)
+
+        # 5. Subordinate 4: Show Status column in Component Inventory
+        self.side_stock_policy_show_status_chk = QCheckBox("Show Status column in Component Inventory")
+        self.side_stock_policy_show_status_chk.setChecked(settings.get("stock_policy_show_status", True))
+        sub_layout.addWidget(self.side_stock_policy_show_status_chk)
+
         card_layout.addLayout(sub_layout)
 
-        # 4. Subtle horizontal divider immediately after the startup-check option
+        # Subtle horizontal divider immediately after stock-policy group
         card_layout.addSpacing(4)
         self.side_stock_policy_divider = QFrame()
         self.side_stock_policy_divider.setFrameShape(QFrame.Shape.HLine)
@@ -726,20 +720,27 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(self.side_stock_policy_divider)
         card_layout.addSpacing(4)
 
-        # Assembly View display settings group
+        # Assembly View display settings group (Parent: Assembly View Navigation)
         display_layout = QVBoxLayout()
         display_layout.setContentsMargins(0, 0, 0, 0)
         display_layout.setSpacing(8)
 
-        # 5. Show Min Stock and Target Stock columns in Component Inventory
-        self.side_stock_policy_show_columns_chk = QCheckBox("Show Min Stock and Target Stock columns in Component Inventory")
-        self.side_stock_policy_show_columns_chk.setChecked(settings.get("stock_policy_show_columns", True))
-        display_layout.addWidget(self.side_stock_policy_show_columns_chk)
+        # 6. Parent: Show Assembly View in Workspace navigation
+        self.side_assembly_view_enabled_chk = QCheckBox("Show Assembly View in Workspace navigation")
+        self.side_assembly_view_enabled_chk.setChecked(settings.get("assembly_view_enabled", True))
+        display_layout.addWidget(self.side_assembly_view_enabled_chk)
 
-        # 6. Show Matched Products in Assembly View
+        # Sub-layout for Assembly View children
+        assembly_sub_layout = QVBoxLayout()
+        assembly_sub_layout.setContentsMargins(24, 0, 0, 0)
+        assembly_sub_layout.setSpacing(8)
+
+        # 7. Child: Show Matched Products in Assembly View
         self.side_match_products_chk = QCheckBox("Show Matched Products in Assembly View")
         self.side_match_products_chk.setChecked(settings.get("match_products_enabled", True))
-        display_layout.addWidget(self.side_match_products_chk)
+        assembly_sub_layout.addWidget(self.side_match_products_chk)
+
+        display_layout.addLayout(assembly_sub_layout)
 
         card_layout.addLayout(display_layout)
 
@@ -747,6 +748,7 @@ class MainWindow(QMainWindow):
             master_on = self.side_stock_policy_enabled_chk.isChecked()
             self.side_stock_policy_validation_chk.setEnabled(master_on)
             self.side_stock_policy_show_columns_chk.setEnabled(master_on)
+            self.side_stock_policy_show_status_chk.setEnabled(master_on)
 
             if not master_on:
                 self.side_stock_policy_validation_chk.blockSignals(True)
@@ -757,6 +759,14 @@ class MainWindow(QMainWindow):
                 self.side_startup_chk.blockSignals(True)
                 self.side_startup_chk.setChecked(False)
                 self.side_startup_chk.blockSignals(False)
+
+                self.side_stock_policy_show_columns_chk.blockSignals(True)
+                self.side_stock_policy_show_columns_chk.setChecked(False)
+                self.side_stock_policy_show_columns_chk.blockSignals(False)
+
+                self.side_stock_policy_show_status_chk.blockSignals(True)
+                self.side_stock_policy_show_status_chk.setChecked(False)
+                self.side_stock_policy_show_status_chk.blockSignals(False)
             else:
                 saved_val = bool(settings.get("stock_policy_validation_enabled", True))
                 self.side_stock_policy_validation_chk.blockSignals(True)
@@ -772,6 +782,29 @@ class MainWindow(QMainWindow):
                 else:
                     self.side_startup_chk.setChecked(False)
                 self.side_startup_chk.blockSignals(False)
+
+                saved_cols = bool(settings.get("stock_policy_show_columns", True))
+                self.side_stock_policy_show_columns_chk.blockSignals(True)
+                self.side_stock_policy_show_columns_chk.setChecked(saved_cols)
+                self.side_stock_policy_show_columns_chk.blockSignals(False)
+
+                saved_status = bool(settings.get("stock_policy_show_status", True))
+                self.side_stock_policy_show_status_chk.blockSignals(True)
+                self.side_stock_policy_show_status_chk.setChecked(saved_status)
+                self.side_stock_policy_show_status_chk.blockSignals(False)
+
+            # Assembly View Parent-Child Dependency
+            assembly_on = self.side_assembly_view_enabled_chk.isChecked()
+            self.side_match_products_chk.setEnabled(assembly_on)
+            if not assembly_on:
+                self.side_match_products_chk.blockSignals(True)
+                self.side_match_products_chk.setChecked(False)
+                self.side_match_products_chk.blockSignals(False)
+            else:
+                saved_match = bool(settings.get("match_products_enabled", True))
+                self.side_match_products_chk.blockSignals(True)
+                self.side_match_products_chk.setChecked(saved_match)
+                self.side_match_products_chk.blockSignals(False)
 
         def _on_side_master_toggled(checked: bool):
             settings.set("stock_policy_enabled", checked)
@@ -791,24 +824,119 @@ class MainWindow(QMainWindow):
             settings.set("stock_policy_show_columns", checked)
             self._apply_threshold_columns_visibility()
 
+        def _on_side_status_toggled(checked: bool):
+            settings.set("stock_policy_show_status", checked)
+            self._apply_threshold_columns_visibility()
+
+        def _on_side_assembly_view_toggled(checked: bool):
+            settings.set("assembly_view_enabled", checked)
+            _update_dependency_states()
+            self._apply_assembly_view_visibility(checked)
+
         def _on_side_startup_toggled(checked: bool):
             if self.side_startup_chk.isEnabled():
                 settings.set("auto_check_startup_shortage", checked)
 
         def _on_side_match_products_toggled(checked: bool):
-            settings.set("match_products_enabled", checked)
-            self._apply_match_products_visibility(checked)
-            self._update_table_display()
+            if self.side_match_products_chk.isEnabled():
+                settings.set("match_products_enabled", checked)
+                self._apply_match_products_visibility(checked)
+                self._update_table_display()
 
         self.side_stock_policy_enabled_chk.toggled.connect(_on_side_master_toggled)
         self.side_stock_policy_validation_chk.toggled.connect(_on_side_validation_toggled)
         self.side_stock_policy_show_columns_chk.toggled.connect(_on_side_columns_toggled)
+        self.side_stock_policy_show_status_chk.toggled.connect(_on_side_status_toggled)
+        self.side_assembly_view_enabled_chk.toggled.connect(_on_side_assembly_view_toggled)
         self.side_startup_chk.toggled.connect(_on_side_startup_toggled)
         self.side_match_products_chk.toggled.connect(_on_side_match_products_toggled)
 
         _update_dependency_states()
 
         layout.addWidget(card)
+
+        # 2. Browser Automation Settings Card (GAP-09 / Phase 11)
+        browser_card = QFrame()
+        browser_card.setObjectName("cardFrame")
+        b_layout = QVBoxLayout(browser_card)
+        b_layout.setContentsMargins(16, 16, 16, 16)
+        b_layout.setSpacing(10)
+
+        b_title = QLabel("🌐 Browser Automation & Headless Mode")
+        b_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #38bdf8;")
+        b_layout.addWidget(b_title)
+
+        b_desc = QLabel("Select the preferred web browser and execution mode for automated supplier sessions:")
+        b_desc.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        b_layout.addWidget(b_desc)
+
+        b_row = QHBoxLayout()
+        b_row.setSpacing(8)
+        b_row.addWidget(QLabel("Browser Engine:"))
+
+        self.side_browser_combo = QComboBox()
+        self.side_browser_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 4px;
+                color: #f8fafc;
+                padding: 4px 10px;
+                font-size: 11px;
+                min-width: 140px;
+            }
+            QComboBox:hover {
+                border-color: #38bdf8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                color: #f8fafc;
+                selection-background-color: #1e293b;
+                selection-color: #38bdf8;
+            }
+        """)
+        self.side_browser_combo.addItem("Google Chrome", "chrome")
+        self.side_browser_combo.addItem("Mozilla Firefox", "firefox")
+
+        from core.browser_detection import BrowserDetectionService
+        current_b = str(settings.get("browser_type", "chrome")).lower()
+        idx = self.side_browser_combo.findData(current_b)
+        if idx >= 0:
+            self.side_browser_combo.setCurrentIndex(idx)
+        b_row.addWidget(self.side_browser_combo)
+
+        self.side_browser_status_lbl = QLabel()
+        def _update_side_browser_status():
+            b_id = self.side_browser_combo.currentData()
+            if b_id:
+                info = BrowserDetectionService.detect_browser(b_id)
+                if info.is_installed:
+                    self.side_browser_status_lbl.setText(f"✅ {info.status_message}")
+                    self.side_browser_status_lbl.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+                else:
+                    self.side_browser_status_lbl.setText("⚠️ Not detected on host")
+                    self.side_browser_status_lbl.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 600;")
+
+        self.side_browser_combo.currentIndexChanged.connect(lambda _: (
+            settings.set("browser_type", self.side_browser_combo.currentData()),
+            _update_side_browser_status()
+        ))
+        _update_side_browser_status()
+        b_row.addWidget(self.side_browser_status_lbl)
+        b_row.addStretch()
+        b_layout.addLayout(b_row)
+
+        self.side_browser_headless_chk = QCheckBox("Run automation in background (headless) mode")
+        self.side_browser_headless_chk.setChecked(bool(settings.get("browser_headless", True)))
+        self.side_browser_headless_chk.toggled.connect(lambda checked: settings.set("browser_headless", checked))
+        b_layout.addWidget(self.side_browser_headless_chk)
+
+        layout.addWidget(browser_card)
         layout.addStretch()
         return page
 
@@ -819,31 +947,64 @@ class MainWindow(QMainWindow):
         self.side_stock_policy_enabled_chk.blockSignals(True)
         self.side_stock_policy_validation_chk.blockSignals(True)
         self.side_stock_policy_show_columns_chk.blockSignals(True)
+        self.side_stock_policy_show_status_chk.blockSignals(True)
+        self.side_assembly_view_enabled_chk.blockSignals(True)
         self.side_startup_chk.blockSignals(True)
         self.side_match_products_chk.blockSignals(True)
 
         master_on = bool(settings.get("stock_policy_enabled", True))
         val_on = bool(settings.get("stock_policy_validation_enabled", True))
         cols_on = bool(settings.get("stock_policy_show_columns", True))
+        status_on = bool(settings.get("stock_policy_show_status", True))
+        assembly_on = bool(settings.get("assembly_view_enabled", True))
         startup_on = bool(settings.get("auto_check_startup_shortage", True))
         match_on = bool(settings.get("match_products_enabled", True))
 
         self.side_stock_policy_enabled_chk.setChecked(master_on)
         self.side_stock_policy_validation_chk.setChecked(master_on and val_on)
-        self.side_stock_policy_show_columns_chk.setChecked(cols_on)
+        self.side_stock_policy_show_columns_chk.setChecked(master_on and cols_on)
+        self.side_stock_policy_show_status_chk.setChecked(master_on and status_on)
+        self.side_assembly_view_enabled_chk.setChecked(assembly_on)
         self.side_startup_chk.setChecked(master_on and val_on and startup_on)
-        self.side_match_products_chk.setChecked(match_on)
+        self.side_match_products_chk.setChecked(assembly_on and match_on)
 
         self.side_stock_policy_validation_chk.setEnabled(master_on)
         self.side_stock_policy_show_columns_chk.setEnabled(master_on)
+        self.side_stock_policy_show_status_chk.setEnabled(master_on)
         self.side_startup_chk.setEnabled(master_on and val_on)
+        self.side_match_products_chk.setEnabled(assembly_on)
 
         self.side_stock_policy_enabled_chk.blockSignals(False)
         self.side_stock_policy_validation_chk.blockSignals(False)
         self.side_stock_policy_show_columns_chk.blockSignals(False)
+        self.side_stock_policy_show_status_chk.blockSignals(False)
+        self.side_assembly_view_enabled_chk.blockSignals(False)
         self.side_startup_chk.blockSignals(False)
         self.side_match_products_chk.blockSignals(False)
         self._apply_threshold_columns_visibility()
+        self._apply_assembly_view_visibility(assembly_on)
+
+        if hasattr(self, "side_browser_combo"):
+            self.side_browser_combo.blockSignals(True)
+            cur_b = str(settings.get("browser_type", "chrome")).lower()
+            b_idx = self.side_browser_combo.findData(cur_b)
+            if b_idx >= 0:
+                self.side_browser_combo.setCurrentIndex(b_idx)
+            self.side_browser_combo.blockSignals(False)
+            if hasattr(self, "side_browser_status_lbl"):
+                from core.browser_detection import BrowserDetectionService
+                info = BrowserDetectionService.detect_browser(cur_b)
+                if info.is_installed:
+                    self.side_browser_status_lbl.setText(f"✅ {info.status_message}")
+                    self.side_browser_status_lbl.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+                else:
+                    self.side_browser_status_lbl.setText("⚠️ Not detected on host")
+                    self.side_browser_status_lbl.setStyleSheet("color: #fbbf24; font-size: 11px; font-weight: 600;")
+
+        if hasattr(self, "side_browser_headless_chk"):
+            self.side_browser_headless_chk.blockSignals(True)
+            self.side_browser_headless_chk.setChecked(bool(settings.get("browser_headless", True)))
+            self.side_browser_headless_chk.blockSignals(False)
 
     def _build_about_page(self) -> QWidget:
         """Constructs the dedicated About view in Settings."""
@@ -925,8 +1086,6 @@ class MainWindow(QMainWindow):
 
         add_meta_row("Developer:", f"{DEVELOPER_NAME} ({DEVELOPER_ORG})")
         add_meta_row("Contact:", DEVELOPER_EMAIL)
-        add_meta_row("Repository:", f'<a href="{REPOSITORY_URL}" style="color: #38bdf8; text-decoration: none;">{REPOSITORY_URL}</a>', is_link=True)
-        add_meta_row("License:", LICENSE_TYPE)
         add_meta_row("Execution Mode:", "Mode A (BOM & Inventory Reconciliation)")
         add_meta_row("Runtime:", f"Python {platform.python_version()} | PyQt6 / Qt {QT_VERSION_STR} | SQLite {sqlite3.sqlite_version}")
         add_meta_row("Platform:", f"{platform.system()} {platform.release()} ({platform.machine()})")
@@ -1054,17 +1213,23 @@ class MainWindow(QMainWindow):
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self.handle_escape_key)
 
-        ctrl_shift_o = QShortcut(QKeySequence("Ctrl+Shift+O"), self)
-        ctrl_shift_o.activated.connect(self._open_quick_order)
 
-        ctrl_o = QShortcut(QKeySequence("Ctrl+O"), self)
-        ctrl_o.activated.connect(self._open_quick_order)
 
         ctrl_b = QShortcut(QKeySequence("Ctrl+B"), self)
         ctrl_b.activated.connect(self.sidebar.toggle_collapse)
 
         ctrl_q = QShortcut(QKeySequence("Ctrl+Q"), self)
         ctrl_q.activated.connect(self.close)
+
+    def nativeEvent(self, event_type, message):
+        if sys.platform == "win32" and getattr(self, "_native_window_handler", None):
+            try:
+                handled, result = self._native_window_handler.handle_native_event(event_type, message)
+                if handled:
+                    return True, result
+            except Exception:
+                pass
+        return False, 0
 
     def eventFilter(self, watched, event):
         ev_type = event.type()
@@ -1277,6 +1442,179 @@ class MainWindow(QMainWindow):
                 self.title_bar.update_maximize_state(self.isMaximized())
         super().changeEvent(event)
 
+    def showEvent(self, event: QShowEvent):
+        super().showEvent(event)
+        if not getattr(self, "_has_shown_once", False):
+            self._has_shown_once = True
+            self._ensure_proper_window_placement()
+
+    def _ensure_proper_window_placement(self):
+        """Verify and ensure proper window placement and centering upon display."""
+        try:
+            screen = self.screen() or QApplication.primaryScreen()
+            if not screen:
+                return
+            avail = screen.availableGeometry()
+
+            if getattr(self, "_was_restored_maximized", False):
+                self.showMaximized()
+                return
+
+            if not getattr(self, "_has_restored_saved_geometry", False):
+                desired_w = 1260
+                desired_h = 780
+                min_w = self.minimumWidth() if self.minimumWidth() > 0 else 960
+                min_h = self.minimumHeight() if self.minimumHeight() > 0 else 620
+                w = max(min_w, min(desired_w, avail.width()))
+                h = max(min_h, min(desired_h, avail.height()))
+                x = avail.x() + max(0, (avail.width() - w) // 2)
+                y = avail.y() + max(0, (avail.height() - h) // 2)
+                self.setGeometry(x, y, w, h)
+            else:
+                cur = self.geometry()
+                min_w = self.minimumWidth() if self.minimumWidth() > 0 else 960
+                min_h = self.minimumHeight() if self.minimumHeight() > 0 else 620
+                w = max(min_w, min(cur.width(), avail.width()))
+                h = max(min_h, min(cur.height(), avail.height()))
+                x = cur.x()
+                y = cur.y()
+                if x + w > avail.right() + 1:
+                    x = max(avail.left(), avail.right() + 1 - w)
+                if x < avail.left():
+                    x = avail.left()
+                if y + h > avail.bottom() + 1:
+                    y = max(avail.top(), avail.bottom() + 1 - h)
+                if y < avail.top():
+                    y = avail.top()
+                self.setGeometry(x, y, w, h)
+
+            if hasattr(self, "title_bar") and self.title_bar:
+                self.title_bar.update_maximize_state(self.isMaximized())
+        except Exception:
+            pass
+
+    def showMaximized(self):
+        """Native Win32 maximize override ensuring IsZoomed(hwnd) agreement and DWM transitions."""
+        if sys.platform == "win32":
+            try:
+                from ui.native_window import native_maximize
+                if native_maximize(self):
+                    return
+            except Exception:
+                pass
+        super().showMaximized()
+
+    def showNormal(self):
+        """Native Win32 restore override ensuring IsZoomed(hwnd) is cleared and DWM transitions."""
+        if sys.platform == "win32":
+            try:
+                from ui.native_window import native_restore
+                if native_restore(self):
+                    return
+            except Exception:
+                pass
+        super().showNormal()
+
+    def _save_window_geometry(self):
+        """Persist window geometry and maximized state to QSettings across sessions."""
+        if not self.isMinimized():
+            try:
+                if "pytest" in sys.modules and not getattr(self, "_allow_test_geometry_save", False):
+                    return
+                from PyQt6.QtCore import QSettings
+                qt_settings = QSettings("Omnix", "Omnix")
+                qt_settings.setValue("geometry", self.saveGeometry())
+                qt_settings.setValue("isMaximized", self.isMaximized())
+            except Exception:
+                pass
+
+    def _restore_window_geometry(self):
+        """
+        Restore window geometry and state with robust work-area clamping
+        and proper screen centering across high-DPI displays.
+        """
+        try:
+            from PyQt6.QtCore import QSettings
+            qt_settings = QSettings("Omnix", "Omnix")
+            geom = qt_settings.value("geometry")
+            was_maximized = qt_settings.value("isMaximized", False, type=bool)
+
+            self._was_restored_maximized = was_maximized
+            self._has_restored_saved_geometry = False
+            if geom:
+                self._has_restored_saved_geometry = bool(self.restoreGeometry(geom))
+            has_saved_geom = self._has_restored_saved_geometry
+
+            app = QApplication.instance()
+            if not app:
+                return
+
+            screens = app.screens()
+            if not screens:
+                return
+
+            # Determine the target screen (either screen containing the most of restored window, or primary)
+            target_screen = None
+            if has_saved_geom:
+                max_area = 0
+                win_geo = self.frameGeometry()
+                for s in screens:
+                    inter = s.availableGeometry().intersected(win_geo)
+                    area = inter.width() * inter.height()
+                    if area > max_area:
+                        max_area = area
+                        target_screen = s
+
+            if not target_screen:
+                target_screen = app.primaryScreen() or screens[0]
+
+            avail = target_screen.availableGeometry()
+
+            if not has_saved_geom:
+                # Fresh startup: center normal window cleanly within the screen work area
+                desired_w = 1260
+                desired_h = 780
+                min_w = self.minimumWidth() if self.minimumWidth() > 0 else 960
+                min_h = self.minimumHeight() if self.minimumHeight() > 0 else 620
+
+                w = max(min_w, min(desired_w, avail.width()))
+                h = max(min_h, min(desired_h, avail.height()))
+                x = avail.x() + max(0, (avail.width() - w) // 2)
+                y = avail.y() + max(0, (avail.height() - h) // 2)
+                self.setGeometry(x, y, w, h)
+            else:
+                # Restored from previous session: validate and clamp within work area so no corners extend beyond screen
+                cur_geo = self.geometry()
+                min_w = self.minimumWidth() if self.minimumWidth() > 0 else 960
+                min_h = self.minimumHeight() if self.minimumHeight() > 0 else 620
+
+                w = max(min_w, min(cur_geo.width(), avail.width()))
+                h = max(min_h, min(cur_geo.height(), avail.height()))
+
+                x = cur_geo.x()
+                y = cur_geo.y()
+
+                # Clamp right and bottom so corners do not hang off-screen
+                if x + w > avail.right() + 1:
+                    x = max(avail.left(), avail.right() + 1 - w)
+                if x < avail.left():
+                    x = avail.left()
+
+                if y + h > avail.bottom() + 1:
+                    y = max(avail.top(), avail.bottom() + 1 - h)
+                if y < avail.top():
+                    y = avail.top()
+
+                self.setGeometry(x, y, w, h)
+
+            if was_maximized:
+                # If was maximized in previous session, apply native maximize after setup
+                self.showMaximized()
+            elif hasattr(self, "title_bar") and self.title_bar:
+                self.title_bar.update_maximize_state(False)
+        except Exception:
+            pass
+
     def _create_confirmation_dialog(
         self,
         title: str,
@@ -1325,10 +1663,12 @@ class MainWindow(QMainWindow):
                 pass
 
         if self._is_force_closing:
+            self._save_window_geometry()
             event.accept()
             return
 
         if self._show_confirmation_dialog("Exit Confirmation", "Do you want to exit Omnix?", is_danger=True):
+            self._save_window_geometry()
             self._is_force_closing = True
             event.accept()
         else:
@@ -1359,18 +1699,7 @@ class MainWindow(QMainWindow):
         self._update_table_display()
         self._update_stats_ribbon()
 
-    def _open_quick_order(self):
-        dlg = QuickOrderDialog(
-            inventory_loader=self.excel,
-            on_stock_updated=self._on_stock_incremented_callback,
-            parent=self,
-        )
-        dlg.exec()
 
-
-    def _on_stock_incremented_callback(self):
-        """Callback when order payment is confirmed and inventory is incremented."""
-        self._filter_and_render()
 
     def _check_startup_shortages(self):
         """Check if any inventory items are below minimum threshold on startup and alert the user."""
@@ -1632,7 +1961,7 @@ class MainWindow(QMainWindow):
                 file_name,
                 shortage_count=shortage_count,
                 incomplete_count=incomplete_count,
-                validation_enabled=validation_active
+                validation_enabled=(validation_active and is_comp_tab)
             )
             return
 
@@ -1830,7 +2159,7 @@ class MainWindow(QMainWindow):
         self._is_updating_table = True
         headers = [
             "Category", "Type / Technology", "Value", "Package", "Footprint",
-            "Total In Stock", "Matched Products", "Status"
+            "Total In Stock", "Matched Products"
         ]
         col_count = len(headers)
 
@@ -1874,13 +2203,6 @@ class MainWindow(QMainWindow):
             stock_str = f"{group.current_stock:g}" if group.current_stock is not None else "⚠️ Missing"
             prods_count_str = str(len(group.products))
 
-            if not group.is_complete:
-                status_str = "⚠️ Incomplete"
-            elif group.is_low_stock:
-                status_str = "🔴 Low Stock"
-            else:
-                status_str = "🟢 Normal"
-
             row_cells = [
                 group.category,
                 group.type_technology,
@@ -1888,8 +2210,7 @@ class MainWindow(QMainWindow):
                 group.package,
                 group.footprint,
                 stock_str,
-                prods_count_str,
-                status_str
+                prods_count_str
             ]
 
             for col_idx, cell_text in enumerate(row_cells):
@@ -1901,9 +2222,6 @@ class MainWindow(QMainWindow):
                 if col_idx in [5, 6]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     item.setFont(font_numbers)
-                elif col_idx == 7:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    item.setFont(font_data)
                 else:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                     item.setFont(font_data)
@@ -1923,20 +2241,6 @@ class MainWindow(QMainWindow):
                 elif col_idx == 6:
                     item.setForeground(QColor("#38bdf8"))
                     item.setToolTip(f"Matched physical products in Inventory sheet: {len(group.products)}")
-                elif col_idx == 7:
-                    if "Incomplete" in cell_text:
-                        item.setForeground(QColor("#fbbf24"))
-                        item.setBackground(QColor(245, 158, 11, 40))
-                        missing_desc = ", ".join(f.replace("_", " ").title() for f in group.missing_fields) if group.missing_fields else "Required thresholds"
-                        item.setToolTip(f"Status: Incomplete Stock Policy\nMissing required fields: {missing_desc}")
-                    elif "Low Stock" in cell_text:
-                        item.setForeground(QColor("#f87171"))
-                        item.setBackground(QColor(248, 113, 113, 40))
-                        item.setToolTip(f"Status: Low Stock\nCurrent stock ({group.current_stock}) is at or below Min Stock ({group.min_stock})")
-                    else:
-                        item.setForeground(QColor("#34d399"))
-                        item.setBackground(QColor(52, 211, 153, 30))
-                        item.setToolTip("Status: Normal\nStock level meets or exceeds policy thresholds")
                 else:
                     item.setForeground(QColor("#f8fafc"))
 
@@ -1952,7 +2256,6 @@ class MainWindow(QMainWindow):
             4: 115,  # Footprint
             5: 105,  # Total In Stock
             6: 140,  # Matched Products
-            7: 135,  # Status
         }
 
         # Match products column & panel visibility
@@ -2013,14 +2316,24 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Copied database path: {db_path}", 1500)
 
     def _apply_threshold_columns_visibility(self):
-        """Show or hide Min Stock (col 9) and Target Stock (col 10) in Component Inventory based on settings."""
-        if hasattr(self, "inventory_components_table") and self.inventory_components_table.columnCount() > 10:
-            show_thresholds = bool(
-                settings.get("stock_policy_enabled", True) and
-                settings.get("stock_policy_show_columns", True)
-            )
+        """Show or hide Min Stock (col 9), Target Stock (col 10), and Status (col 11) in Component Inventory based on settings."""
+        if hasattr(self, "inventory_components_table") and self.inventory_components_table.columnCount() > 11:
+            master_on = bool(settings.get("stock_policy_enabled", True))
+            show_thresholds = master_on and bool(settings.get("stock_policy_show_columns", True))
+            show_status = master_on and bool(settings.get("stock_policy_show_status", True))
             self.inventory_components_table.setColumnHidden(9, not show_thresholds)
             self.inventory_components_table.setColumnHidden(10, not show_thresholds)
+            self.inventory_components_table.setColumnHidden(11, not show_status)
+
+    def _apply_assembly_view_visibility(self, enabled: bool):
+        """Show or hide the Assembly View destination from sidebar and subtabs."""
+        if hasattr(self, "sidebar"):
+            self.sidebar.set_button_visible("assembly_view", enabled)
+        if not enabled:
+            if hasattr(self, "inventory_subtabs") and self.inventory_subtabs.currentIndex() == 0:
+                self.inventory_subtabs.setCurrentIndex(1)
+            if hasattr(self, "sidebar") and self.sidebar.active_page() == "assembly_view":
+                self.sidebar.set_active_page("component_inventory")
 
     def _apply_match_products_visibility(self, enabled: bool):
         """Toggle column 6 and physical product panel based on match_products_enabled setting."""
@@ -2613,8 +2926,8 @@ class MainWindow(QMainWindow):
         if not item:
             return
         col = item.column()
-        # Column 12 is Purchase Link
-        if col == 12:
+        # Column 13 is Purchase Link (or fallback 12)
+        if col in (12, 13):
             val = item.text().strip()
             if val.startswith("http://") or val.startswith("https://"):
                 webbrowser.open(val)
@@ -2650,16 +2963,22 @@ class MainWindow(QMainWindow):
                     self.sidebar.set_active_page("component_inventory")
 
         if index == 1:
-            # Sub-tab 1: Component Inventory
-            if hasattr(self, "stats_ribbon") and hasattr(self.stats_ribbon, "stat_incomplete_btn"):
-                self.stats_ribbon.stat_incomplete_btn.setVisible(False)
+            # Sub-tab 1: Component Inventory (Hosts direct ordering action)
+            if hasattr(self, "stats_ribbon"):
+                if hasattr(self.stats_ribbon, "stat_incomplete_btn"):
+                    self.stats_ribbon.stat_incomplete_btn.setVisible(False)
+                if hasattr(self.stats_ribbon, "order_shortages_btn"):
+                    self.stats_ribbon.order_shortages_btn.setVisible(True)
             self._render_inventory_components_table()
             if hasattr(self, "inventory_components_table") and isinstance(self.inventory_components_table, InventoryTableWidget):
                 self.inventory_components_table.distribute_columns()
         elif index == 0:
-            # Sub-tab 0: Assembly View
-            if hasattr(self, "stats_ribbon") and hasattr(self.stats_ribbon, "stat_incomplete_btn"):
-                self.stats_ribbon.stat_incomplete_btn.setVisible(True)
+            # Sub-tab 0: Assembly View (Order action removed per Phase 8)
+            if hasattr(self, "stats_ribbon"):
+                if hasattr(self.stats_ribbon, "stat_incomplete_btn"):
+                    self.stats_ribbon.stat_incomplete_btn.setVisible(True)
+                if hasattr(self.stats_ribbon, "order_shortages_btn"):
+                    self.stats_ribbon.order_shortages_btn.setVisible(False)
             self._update_table_display()
             if hasattr(self, "table") and isinstance(self.table, InventoryTableWidget):
                 self.table.distribute_columns()
@@ -2676,7 +2995,7 @@ class MainWindow(QMainWindow):
         headers = [
             "Row", "Manufacturer", "Part Number (MPN)", "Category",
             "Type / Technology", "Value", "Package", "Footprint",
-            "Quantity in Stock", "Min Stock", "Target Stock", "Description", "Purchase Link"
+            "Quantity in Stock", "Min Stock", "Target Stock", "Status", "Description", "Purchase Link"
         ]
         col_count = len(headers)
         self.inventory_components_table.setSortingEnabled(False)
@@ -2767,13 +3086,25 @@ class MainWindow(QMainWindow):
                     f"Component Inventory ({comp_count} total individual records)"
                 )
 
-        font_data = QFont("Segoe UI", 9)
-        font_numbers = QFont("Consolas", 9)
+        font_data = QFont("Segoe UI", 10)
+        font_numbers = QFont("Consolas", 10)
 
         for row_idx, comp in enumerate(components):
-            qty_str = f"{comp.quantity_in_stock}" if comp.quantity_in_stock is not None else "0"
-            min_str = f"{comp.min_stock}" if getattr(comp, "min_stock", None) is not None else "0"
-            tgt_str = f"{comp.target_stock}" if getattr(comp, "target_stock", None) is not None else "0"
+            qty_val = comp.quantity_in_stock if comp.quantity_in_stock is not None else 0
+            min_val = getattr(comp, "min_stock", 0) or 0
+            tgt_val = getattr(comp, "target_stock", 0) or 0
+
+            qty_str = f"{qty_val}"
+            min_str = f"{min_val}"
+            tgt_str = f"{tgt_val}"
+
+            if qty_val == 0:
+                status_str = "⚠️ Out of Stock"
+            elif min_val > 0 and qty_val < min_val:
+                status_str = "🔴 Low Stock"
+            else:
+                status_str = "🟢 Normal"
+
             cells = [
                 str(row_idx + 1),         # 0: Row
                 comp.manufacturer,        # 1: Manufacturer
@@ -2786,8 +3117,9 @@ class MainWindow(QMainWindow):
                 qty_str,                  # 8: Quantity in Stock
                 min_str,                  # 9: Min Stock
                 tgt_str,                  # 10: Target Stock
-                comp.description or "",   # 11: Description
-                comp.purchase_link or ""  # 12: Purchase Link
+                status_str,               # 11: Status
+                comp.description or "",   # 12: Description
+                comp.purchase_link or ""  # 13: Purchase Link
             ]
 
             for col_idx, cell_text in enumerate(cells):
@@ -2799,6 +3131,9 @@ class MainWindow(QMainWindow):
                 if col_idx in [0, 8, 9, 10]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     item.setFont(font_numbers)
+                elif col_idx == 11:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item.setFont(font_data)
                 elif col_idx in [2, 5, 6, 7]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                     item.setFont(font_numbers)
@@ -2811,10 +3146,10 @@ class MainWindow(QMainWindow):
                 elif col_idx == 2:
                     item.setForeground(QColor("#f8fafc"))
                 elif col_idx == 8:
-                    if comp.min_stock > 0 and comp.quantity_in_stock < comp.min_stock:
+                    if min_val > 0 and qty_val < min_val:
                         item.setForeground(QColor("#f87171"))
-                        item.setToolTip(f"🔴 Low Stock: {comp.quantity_in_stock} on hand (Below Min Stock threshold: {comp.min_stock})")
-                    elif comp.quantity_in_stock == 0:
+                        item.setToolTip(f"🔴 Low Stock: {qty_val} on hand (Below Min Stock threshold: {min_val})")
+                    elif qty_val == 0:
                         item.setForeground(QColor("#fbbf24"))
                     else:
                         item.setForeground(QColor("#34d399"))
@@ -2822,7 +3157,20 @@ class MainWindow(QMainWindow):
                     item.setForeground(QColor("#38bdf8"))
                     lbl_name = "Min Stock" if col_idx == 9 else "Target Stock"
                     item.setToolTip(f"{lbl_name}: {cell_text} (Double-click to edit thresholds)")
-                elif col_idx == 12 and cell_text:
+                elif col_idx == 11:
+                    if "Out of Stock" in cell_text:
+                        item.setForeground(QColor("#fbbf24"))
+                        item.setBackground(QColor(245, 158, 11, 35))
+                        item.setToolTip("Status: Out of Stock (0 units on hand)")
+                    elif "Low Stock" in cell_text:
+                        item.setForeground(QColor("#f87171"))
+                        item.setBackground(QColor(248, 113, 113, 35))
+                        item.setToolTip(f"Status: Low Stock ({qty_val} on hand is below Min Stock: {min_val})")
+                    else:
+                        item.setForeground(QColor("#34d399"))
+                        item.setBackground(QColor(52, 211, 153, 25))
+                        item.setToolTip("Status: Normal (Stock level meets policy threshold)")
+                elif col_idx == 13 and cell_text:
                     item.setForeground(QColor("#38bdf8"))
                     item.setToolTip(f"Double-click to open purchase link: {cell_text}")
                 else:
@@ -2842,11 +3190,12 @@ class MainWindow(QMainWindow):
             8: 115,  # Quantity in Stock
             9: 90,   # Min Stock
             10: 95,  # Target Stock
-            11: 180, # Description (flexible)
-            12: 150, # Purchase Link (flexible)
+            11: 125, # Status
+            12: 180, # Description (flexible)
+            13: 150, # Purchase Link (flexible)
         }
         if isinstance(self.inventory_components_table, InventoryTableWidget):
-            self.inventory_components_table.configure_column_distribution(min_widths, [11, 12])
+            self.inventory_components_table.configure_column_distribution(min_widths, [12, 13])
 
         self.inventory_components_table.setSortingEnabled(False)
         self.inventory_components_table.horizontalHeader().setSectionsClickable(False)
@@ -2854,8 +3203,6 @@ class MainWindow(QMainWindow):
         self._apply_threshold_columns_visibility()
         self._on_component_selection_changed()
         self._update_stats_ribbon()
-        self._apply_threshold_columns_visibility()
-        self._on_component_selection_changed()
 
     def _open_add_component_dialog(self, initial_group: Optional[Any] = None):
         """Open the ComponentEditDialog in registration mode with a fresh, clean form."""
@@ -3180,7 +3527,7 @@ class MainWindow(QMainWindow):
 
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
-                "Export Inventory & Assembly View to Excel",
+                "Export Inventory to Excel",
                 os.path.join(os.getcwd(), "Inventory_Export.xlsx"),
                 "Excel Workbook (*.xlsx);;All Files (*)",
             )
@@ -3190,14 +3537,10 @@ class MainWindow(QMainWindow):
             try:
                 exported_path = InventoryExcelExporter.export(self.inventory_repo, file_path)
                 comp_count = len(self.inventory_repo.get_all_products())
-                grp_count = len(self.inventory_repo.get_all_groups())
                 QMessageBox.information(
                     self,
                     "Export Successful",
-                    f"Successfully exported {comp_count} individual components and "
-                    f"{grp_count} assembly groups with exactly 2 worksheets:\n"
-                    f"1. 'Inventory'\n"
-                    f"2. 'Assembly View'\n\n"
+                    f"Successfully exported {comp_count} individual components to worksheet 'Inventory'.\n\n"
                     f"Saved to: {exported_path}"
                 )
             except Exception as e:

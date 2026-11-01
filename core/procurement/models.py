@@ -87,10 +87,10 @@ class SupplierItemResult:
 class ProcurementMode(str, Enum):
     """
     Procurement workflow execution mode.
+    Mode A (DATABASE_AWARE) is the sole supported procurement workflow.
     Governing GAP: GAP-01.
     """
     DATABASE_AWARE = "DATABASE_AWARE"  # Mode A: Shortage calculation against Inventory.xlsx
-    DIRECT_BOM = "DIRECT_BOM"          # Mode B: Direct turnkey BOM sourcing bypassing inventory
 
 
 class ManufacturerRule(str, Enum):

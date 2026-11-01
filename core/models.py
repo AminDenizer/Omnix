@@ -29,6 +29,7 @@ class AdapterConfig:
     timeout_seconds: float = 10.0
     settle_seconds: float = 2.2
     user_agent: Optional[str] = None
+    browser_type: Optional[str] = None
     extra_options: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -239,6 +240,27 @@ class SessionStatus:
     requires_interactive: bool = False
 
 
+class SessionContinuityMode(str, Enum):
+    """
+    Formal qualification of browser session continuity across headless and headful transitions.
+    Governing Invariant: GAP-09 Session Continuity.
+    """
+    SAME_CONTEXT_PRESERVED = "SAME_CONTEXT_PRESERVED"
+    STATE_TRANSFERRED = "STATE_TRANSFERRED"
+    BROWSER_RECREATED_UNAUTHENTICATED = "BROWSER_RECREATED_UNAUTHENTICATED"
+    CONTINUITY_UNAVAILABLE = "CONTINUITY_UNAVAILABLE"
+
+
+@dataclass
+class SessionPromotionResult:
+    """Outcome of promoting/demoting browser between headless and headful modes."""
+    success: bool
+    continuity_mode: SessionContinuityMode
+    message: str = ""
+    cookies_transferred: int = 0
+    active_url: Optional[str] = None
+
+
 @dataclass
 class RecoveryResult:
     vendor_id: str
@@ -261,7 +283,6 @@ class PluginCapability(str, Enum):
     LIVE_STOCK_PROBE = "LIVE_STOCK_PROBE"
     TIERED_PRICING = "TIERED_PRICING"
     MODE_A_STAGING = "MODE_A_STAGING"
-    MODE_B_STAGING = "MODE_B_STAGING"
 
     # Layer C Capabilities (Live vendor integration, anti-bot, and interactive verification)
     LIVE_CONNECTIVITY_TEST = "LIVE_CONNECTIVITY_TEST"
@@ -305,7 +326,6 @@ class PluginProcurementMode(str, Enum):
     Procurement execution modes supported by vendor plugins.
     """
     MODE_A = "MODE_A"
-    MODE_B = "MODE_B"
 
 
 @dataclass

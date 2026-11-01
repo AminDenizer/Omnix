@@ -25,7 +25,7 @@
 ### 1.2 Long-Term System Capabilities
 1. **Multi-Source BOM Ingestion:** Ingest and parse engineering BOMs (Altium Designer `.xlsx`/`.csv` exports) with heterogeneous column taxonomies.
 2. **Deterministic Component Normalization:** Dissect raw engineering strings into structured technical parameters (Manufacturer Part Number [MPN], Manufacturer, Footprint/Package, Physical Case Size, Electrical Ratings, Tolerance, Suffixes).
-3. **Dual-Mode Procurement Intent:** Support both **Inventory-Based** procurement (purchasing net shortages against internal stock) and **BOM-Direct** procurement (purchasing full batch build requirements regardless of on-hand inventory).
+3. **Inventory-Aware Procurement Workflow:** Mode A (Database-Aware Stock Reconciliation) is the sole supported workflow, purchasing net shortages against internal warehouse stock while linking to registered vendor URLs.
 4. **Dynamic Catalog Discovery:** Autonomously search, query, and identify target components on live vendor platforms without relying on pre-existing, hard-coded URLs.
 5. **Multi-Attribute Product Matching:** Formally verify candidate vendor products against engineering requirements, distinguishing exact matches from incompatible variants (e.g., rejecting an 0603 passive when an 0805 footprint is required).
 6. **Constraint-Aware Quantity Computation:** Mathematically resolve vendor Minimum Order Quantities (MOQs), packaging order multiples (ضریب سفارش / بسته بندی), and available vendor stock levels.
@@ -39,7 +39,7 @@
 |---|---|---|
 | **Vendor Scope** | Monolithic single-vendor script tied exclusively to `lionelectronic.ir`. | Vendor-agnostic Core hosting multiple concurrently active `IVendorAdapter` instances. |
 | **Product Discovery** | 100% dependent on static URLs hard-coded in an Excel column. | Dynamic search querying vendor catalogs by MPN, attributes, and package. |
-| **Procurement Mode** | Single heuristic shortage check against `Inventory.xlsx`. | Explicit selection between **Mode A (Inventory-Based)** and **Mode B (BOM-Direct)**. |
+| **Procurement Mode** | Single heuristic shortage check against `Inventory.xlsx`. | Canonical **Mode A (Database-Aware Stock Reconciliation)** as the sole supported workflow. |
 | **Component Identity** | Loose substring matching on raw `Part Name` / `Part Number`. | Multi-attribute domain model (MPN, Manufacturer, Package, Size, Tolerance, Suffix). |
 | **Quantity Logic** | Hard-coded Lion step rules embedded inside Selenium automation code. | Formal mathematical constraint engine executing in Core prior to vendor automation. |
 | **Persistence** | Direct cell-level reading/writing to `Inventory.xlsx` on local disk via `openpyxl`. | Abstract Repository Layer separating persistent application state from export formats. |
@@ -78,33 +78,28 @@ Multiple vendors **must coexist simultaneously** within the platform runtime. Ve
 
 ---
 
-## 3. BOM & PROCUREMENT MODES
+## 3. CANONICAL PROCUREMENT ARCHITECTURE (MODE A)
 
-The BOM is the primary origin of procurement intent. Procurement modes belong strictly to the **BOM/Procurement-Intent Layer** and are completely independent of vendor adapter implementations.
+The BOM is the primary origin of procurement intent. Mode A (Database-Aware Stock Reconciliation against inventory) is the sole canonical procurement workflow.
 
 ```
                                   [ Altium BOM ]
                                          │
                                          ▼
-                     Select Procurement Mode (BOM-Level Intent)
+                     [ Mode A: Database-Aware Stock Reconciliation ]
                                          │
-                 ┌───────────────────────┴───────────────────────┐
-                 ▼                                               ▼
-     [ Mode A: Inventory-Based ]                     [ Mode B: BOM-Direct ]
-                 │                                               │
-     Read On-Hand Stock from DB                      Ignore On-Hand Stock from DB
-                 │                                               │
-     Calculate Shortage:                             Procurement Requirement =
-     Needed = max(0, BOM_Req - Stock)                BOM_Req (Full Batch Quantity)
-                 │                                               │
-                 └───────────────────────┬───────────────────────┘
+                             Read On-Hand Stock from DB
+                                         │
+                             Calculate Shortage:
+                             Needed = max(0, BOM_Req - Stock)
+                                         │
                                          ▼
-                        [ Core Procurement Engine ]
-                       Apply Vendor MOQ & Multiples
+                            [ Core Procurement Engine ]
+                           Apply Vendor MOQ & Multiples
 ```
 
-### 3.1 Mode A: Inventory-Based Procurement
-* **Conceptual Definition:** Procurement is calculated to satisfy the net deficit between production requirements and available warehouse stock.
+### 3.1 Inventory-Based Procurement (Mode A)
+* **Conceptual Definition:** Procurement is calculated to satisfy the net deficit between production requirements and available warehouse stock. Mode A is the sole canonical procurement workflow.
 * **Governing Parameters:**
   - $Q_{\text{BOM}}$: Gross quantity required by the BOM for a single board.
   - $M_{\text{Board}}$: Total number of boards to assemble in the current production run.
@@ -119,12 +114,6 @@ The BOM is the primary origin of procurement intent. Procurement modes belong st
     $$\Delta_{\text{Procure}} = \max\left(\Delta_{\text{Shortage}}, (S_{\text{Target}} - (S_{\text{Current}} - Q_{\text{Gross}}))\right)$$
   *(Note: Exact safety stock replenishment policies are documented in Section 23 as Open Decisions).*
 
-### 3.2 Mode B: BOM-Direct Procurement
-* **Conceptual Definition:** Procurement is executed strictly for the project batch requirements, completely bypassing and ignoring internal warehouse stock levels.
-* **Governing Formulation:**
-  $$Q_{\text{Procure}} = Q_{\text{Gross}} = Q_{\text{BOM}} \times M_{\text{Board}}$$
-* **Operational Intent:** Used for dedicated client turnkey projects, high-volume production batches where inventory must not be depleted, or organizations operating without internal warehouse stocking.
-
 ---
 
 ## 4. ORDER CONSTRAINTS & QUANTITY RESOLUTION
@@ -135,7 +124,7 @@ Vendors impose commercial and packaging constraints that dictate how raw compone
 
 | Constraint Term | Symbol | Persian Term | Definition |
 |---|---|---|---|
-| **Required Quantity** | $Q_{\text{Req}}$ | تعداد مورد نیاز | The net required quantity calculated by the BOM Procurement Layer (Mode A or Mode B). |
+| **Required Quantity** | $Q_{\text{Req}}$ | تعداد مورد نیاز | The net required quantity calculated by the BOM Procurement Layer (Mode A database-aware stock reconciliation). |
 | **Minimum Order Quantity (MOQ)** | $Q_{\text{MOQ}}$ | حداقل تعداد سفارش | The absolute minimum number of units a vendor will sell for a given line item. |
 | **Order Multiple / Quantity Multiple** | $M_{\text{Order}}$ | ضریب سفارش / مضرب بسته‌بندی | The increment step size enforced by vendor packaging (e.g. reels of 100, strips of 10, tubes of 50). **This is a packaging quantity constraint, NOT a price discount.** |
 | **Available Vendor Stock** | $S_{\text{Vendor}}$ | موجودی فروشنده | The live quantity of physical stock available for immediate purchase on the vendor's catalog. |
@@ -506,6 +495,11 @@ TARGET STATE (Clean Separation):
 * **Preserve User Workflow:** Excel remains fully supported as a human-friendly format for importing BOMs, downloading purchase reports, and exporting inventory snapshots.
 * **Decouple Core Runtime:** Runtime data queries (search, stock updates, matching) execute against an in-memory/embedded ACID repository to prevent Windows file locking issues (`PermissionError: [Errno 13]`) and eliminate data corruption.
 
+### 16.3 Backup, Restore, and Reference Baseline Architecture
+* **Strict Separation from Configuration:** Application backup (`.obk` archives) and baseline reference datasets capture database entities only (components, policies, supplier links, reference taxonomy). User application settings (`settings.json`) are maintained independently and are neither exported into nor overwritten by backup or restore workflows.
+* **Pre-Restore Safety & Atomic Rollback:** Any database restore operation automatically generates a pre-restore safety snapshot of the active SQLite database and rolls back cleanly without data loss if verification fails.
+* **Backward Compatibility:** Older `.obk` archives containing legacy `settings.json` payloads remain restorable, but their settings payload is safely ignored, ensuring active local user preferences and credentials remain intact.
+
 ---
 
 ## 17. ERROR TAXONOMY & FAULT TOLERANCE
@@ -676,7 +670,7 @@ The following architectural decisions are deliberately preserved as **Open Decis
 - [x] Multi-vendor simultaneous coexistence is guaranteed.
 - [x] Core is 100% vendor-independent.
 - [x] BOM/procurement layer owns procurement intent.
-- [x] Mode A (Inventory-Based) and Mode B (BOM-Direct) are formally formulated.
+- [x] Mode A (Database-Aware Stock Reconciliation) is established as the sole canonical workflow.
 - [x] MOQ is strictly distinguished from Order Multiples.
 - [x] Component identity is multi-attribute (MPN, Footprint, Package, Specs).
 - [x] Package size (e.g. 0603 vs 0805) is treated as a hard invariant.

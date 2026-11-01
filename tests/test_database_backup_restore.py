@@ -83,7 +83,7 @@ class TestDatabaseBackupAndRestore:
         assert meta["components"] == 1
         assert meta["supplier_links"] == 2
         assert meta["stock_policies"] == 1
-        assert meta["ref_providers"] >= 4
+        assert meta["ref_providers"] >= 3
 
         # Validate with static validator
         is_valid, val_msg, val_meta = DatabaseBackupService.validate_backup_file(backup_file)

@@ -173,9 +173,9 @@ class TestProcurementBridgeClassification:
     def test_classify_roboeq_link(self):
         link = "https://roboeq.ir/products/detail/0101001/"
         l_type, domain, vendor_id = ProcurementBridge.classify_link(link)
-        assert l_type == "ROBOEQ"
+        assert l_type == "INVALID"
         assert domain == "roboeq.ir"
-        assert vendor_id == "vendor_roboeq"
+        assert vendor_id is None
 
     def test_classify_unsupported_link(self):
         link = "https://www.digikey.com/en/products/detail/1234"
@@ -208,8 +208,8 @@ class TestProcurementBridgeClassification:
 
         item_robo = {"link": "https://roboeq.ir/products/detail/100/"}
         ok, vendor = ProcurementBridge.is_item_orderable(item_robo)
-        assert ok is True
-        assert vendor == "vendor_roboeq"
+        assert ok is False
+        assert vendor is None
 
         item_invalid = {"link": "https://unknownstore.ir/product/1"}
         ok, vendor = ProcurementBridge.is_item_orderable(item_invalid)

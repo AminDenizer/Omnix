@@ -193,16 +193,16 @@ class TestSensitiveDataRedaction:
         assert "***REDACTED***" in sanitized
 
     def test_sanitize_api_keys_and_cookies(self):
-        raw = "Connecting to vendor with api-key=AKIA1234567890 and cookie: session_id_xyz987"
+        raw = "Connecting to vendor with api-key=synth_api_key_sample_98765 and cookie: session_id_xyz987"
         sanitized = sanitize_text(raw)
-        assert "AKIA1234567890" not in sanitized
+        assert "synth_api_key_sample_98765" not in sanitized
         assert "session_id_xyz987" not in sanitized
         assert "api-key=***REDACTED***" in sanitized or "api-key=***REDACTED***" in sanitized.lower()
 
     def test_sanitize_bearer_tokens(self):
-        raw = "HTTP Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.secret"
+        raw = "HTTP Authorization: Bearer synthetic_test_bearer_token_12345_fixture"
         sanitized = sanitize_text(raw)
-        assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" not in sanitized
+        assert "synthetic_test_bearer_token_12345_fixture" not in sanitized
         assert "Bearer ***REDACTED***" in sanitized
 
     def test_sanitize_basic_auth_url(self):
@@ -285,7 +285,7 @@ class TestSensitiveDataRedaction:
 
     def test_sanitize_jwt_variants(self):
         """Verifies JWT tokens in headers, query strings, and standalone format are redacted."""
-        raw_jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.synth_signature_xyz"
+        raw_jwt = "eyJ0ZXN0Ijoic3ludGhldGljX2p3dF9maXh0dXJlXzAxIn0.eyJkYXRhIjoic3ludGhldGljX3Rlc3RfcGF5bG9hZF8wMiJ9.synthetic_signature_test_mock_03"
         t1 = f"jwt={raw_jwt}"
         t2 = f"Authorization: JWT {raw_jwt}"
         t3 = f"Token received: {raw_jwt}"
@@ -526,7 +526,7 @@ class TestSixDomainInstrumentation:
         wb.save(bom_file)
         wb.close()
 
-        ok, msg, res = BOMAuditor.audit_bom(str(bom_file), mode=ProcurementMode.DIRECT_BOM)
+        ok, msg, res = BOMAuditor.audit_bom(str(bom_file), mode=ProcurementMode.DATABASE_AWARE)
         assert ok is True
         bom_events = [c for c in captured if c.domain == "BOM"]
         assert any(e.event_type == "START" for e in bom_events)
@@ -625,37 +625,26 @@ class TestSixDomainInstrumentation:
         add_event_subscriber(lambda r: captured.append(r))
 
         from ui.dialogs.order_preview_dialog import OrderWorkerThread
-        from unittest.mock import MagicMock
+        from unittest.mock import patch
 
-        # Create 2 candidate results: 1 succeeds, 1 fails
-        r1 = MagicMock()
-        r1.selected_evaluation.is_eligible = True
-        r1.selected_evaluation.effective_quantity = 5
-        r1.selected_evaluation.candidate.vendor_id = "vendor_alpha"
-        r1.request.part_number = "PART_OK"
+        items = [
+            {"name": "PART_OK", "qty": 5, "url": "https://example.com/ok"},
+            {"name": "PART_FAIL", "qty": 10, "url": "https://example.com/fail"},
+        ]
+        worker = OrderWorkerThread(items=items)
 
-        r2 = MagicMock()
-        r2.selected_evaluation.is_eligible = True
-        r2.selected_evaluation.effective_quantity = 10
-        r2.selected_evaluation.candidate.vendor_id = "vendor_beta"
-        r2.request.part_number = "PART_FAIL"
-
-        mock_orch = MagicMock()
-        res_ok = MagicMock()
-        res_ok.success = True
-        res_ok.is_noop = False
-        res_ok.actual_quantity_staged = 5
-        res_ok.raw_vendor_message = "Added 5"
-
-        res_fail = MagicMock()
-        res_fail.success = False
-        res_fail.raw_vendor_message = "Out of stock"
-        res_fail.error_category = "INVENTORY_ERROR"
-
-        mock_orch.stage_candidate.side_effect = [res_ok, res_fail]
-
-        worker = OrderWorkerThread(results=[r1, r2], orchestrator=mock_orch)
-        worker._run_procurement_results()
+        with patch("ui.dialogs.order_preview_dialog.ProcurementBridge.execute_staged_procurement_batch") as mock_exec:
+            mock_exec.return_value = {
+                "success": False,
+                "successful_count": 1,
+                "failed_count": 1,
+                "message": "Partially failed: 1/2 items failed staging",
+                "results": [
+                    {"part": "PART_OK", "status": "SUCCESS", "qty": 5, "msg": "Staged"},
+                    {"part": "PART_FAIL", "status": "FAILED", "qty": 10, "msg": "Out of stock"},
+                ],
+            }
+            worker._run_direct_items()
 
         proc_events = [c for c in captured if c.domain == "Procurement"]
         assert len(proc_events) >= 2
@@ -711,7 +700,7 @@ class TestSixDomainInstrumentation:
         ws.append(["U1", "1", "NAND", "SN74HC00N", "Texas Instruments"])
         wb.save(bom_file)
         wb.close()
-        BOMAuditor.audit_bom(str(bom_file), mode=ProcurementMode.DIRECT_BOM)
+        BOMAuditor.audit_bom(str(bom_file), mode=ProcurementMode.DATABASE_AWARE)
         bom_events = [c for c in captured if c.domain == "BOM"]
         assert len(bom_events) >= 2
         bom_op_id = bom_events[0].operation_id

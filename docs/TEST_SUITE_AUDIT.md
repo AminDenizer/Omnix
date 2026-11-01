@@ -37,7 +37,7 @@
 | 9 | `test_desktop_workflows.py` | 54 | Passed | **KEEP** | End-to-end desktop workflow and multi-window navigation flows |
 | 10 | `test_dialog_and_edge_cases.py` | 3 | Passed | **KEEP** | Dialog modal edge cases, cancel behaviors, and input sanitation |
 | 11 | `test_dual_path_mode_a.py` | 17 | Passed | **KEEP** | Mode A dual-path validation: SQLite store vs read-only Excel ingestion |
-| 12 | `test_dual_procurement_modes.py` | 4 | Passed | **KEEP** | Architectural gating guaranteeing Mode A operations remain isolated from Mode B |
+| 12 | `test_dual_procurement_modes.py` | 4 | Passed | **KEEP** | Architectural gating guaranteeing Mode A operations enforce Mode A and reject unsupported modes |
 | 13 | `test_excel_loader.py` | 7 | Passed | **KEEP** | Read-only Excel workbook ingestion, column mapping, and schema extraction |
 | 14 | `test_export_pipeline.py` | 15 | Passed | **KEEP** | Customer-facing 2-sheet Excel export pipeline with styles and formulas |
 | 15 | `test_interactive_authentication.py` | 11 | Passed | **KEEP** | Interactive vendor credential prompt dialog and session handoff |
@@ -195,11 +195,11 @@
 
 ### 12. `test_dual_procurement_modes.py`
 - **Classification**: `KEEP`
-- **Domain**: Architectural gating guaranteeing Mode A operations remain isolated from Mode B
+- **Domain**: Architectural gating enforcing Mode A operations and fail-closed rejection of unsupported modes
 - **Summary**: 4 passed in 2.10s
-- **Module Docstring**: Comprehensive Unit & Integration Tests for GAP-01: Dual Procurement Modes - Mode A: Database-Aware Stock Reconciliation (Inventory.xlsx dependent) - Mode B: Direct BOM Sourcing (100% Inventory-Independent turnkey procurement)
+- **Module Docstring**: Comprehensive Unit & Integration Tests for GAP-01: Sole Canonical Procurement Architecture (Mode A) and fail-closed rejection of unsupported modes.
 - **Test Classes**:
-  - `TestDualProcurementModes` (4 tests): Tests evaluating Mode A and Mode B isolation, calculation, and bridge translation.
+  - `TestDualProcurementModes` (4 tests): Tests evaluating Mode A calculation, reconciliation, and fail-closed rejection.
 
 ### 13. `test_excel_loader.py`
 - **Classification**: `KEEP`
@@ -338,14 +338,14 @@
 - **Classification**: `KEEP`
 - **Domain**: Phase 9 end-to-end simulated procurement pipeline
 - **Summary**: 6 passed in 1.40s
-- **Module Docstring**: End-to-End Multi-Vendor Procurement Integration Test Suite Phase 9 — Step 8 Gate Certification Governing Documents: - docs/MASTER_PROJECT_SPECIFICATION.md - docs/PROCUREMENT/PHASE9_CONTRACT_GAP_ANALYSIS.md - docs/PROCUREMENT/PHASE9_STEP8_SCOPE_AUDIT.md  Strictly offline: Zero Selenium, Zero live websites, Zero network dependencies. Validates Mode A (Inventory Shortages) and Mode B (Altium BOM Assembly) lifecycles, error handling, MOQ stepping, partial failure tolerance, and post-order inventory updates.
+- **Module Docstring**: End-to-End Multi-Vendor Procurement Integration Test Suite Phase 9 — Step 8 Gate Certification Governing Documents: - docs/MASTER_PROJECT_SPECIFICATION.md - docs/PROCUREMENT/PHASE9_CONTRACT_GAP_ANALYSIS.md - docs/PROCUREMENT/PHASE9_STEP8_SCOPE_AUDIT.md  Strictly offline: Zero Selenium, Zero live websites, Zero network dependencies. Validates Mode A (Inventory Shortages and BOM Shortages) lifecycles, error handling, MOQ stepping, partial failure tolerance, and post-order inventory updates.
 - **Test Classes**:
   - `BaseE2EFakeAdapter` (0 tests): Base fake adapter for E2E tests implementing all 13 contract methods.
   - `FakeLionE2EAdapter` (0 tests): No class docstring
   - `FakeJavanE2EAdapter` (0 tests): No class docstring
   - `FakeRoboEqE2EAdapter` (0 tests): No class docstring
   - `TestModeAInventoryShortagesEndToEnd` (1 tests): Validates Mode A: Inventory.xlsx -> Shortage Extraction -> Orchestrator -> Cart Staging -> Stock Update.
-  - `TestModeBAltiumBOMAssemblyEndToEnd` (1 tests): Validates Mode B: Altium BOM -> Multiplier Calculation -> Audit -> Multi-Vendor Staging -> Stock Update.
+  - `TestModeAAltiumBOMAssemblyEndToEnd` (1 tests): Validates BOM Shortages: Altium BOM -> Multiplier Calculation -> Audit -> Multi-Vendor Staging -> Stock Update.
   - `TestMultiVendorProcurementEdgeCases` (4 tests): Validates edge cases: 100% stock, OOS items, network failure resilience, direct URL routing.
 
 ### 26. `test_plugin_contract.py`
@@ -379,7 +379,7 @@
 - **Classification**: `KEEP`
 - **Domain**: Declarative plugin manifest.json schema validation and semantic checking
 - **Summary**: 79 passed in 0.68s
-- **Module Docstring**: Comprehensive Test Suite for Omnix Plugin Manifest Validator & JSON Schema Governing Specification: OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 5  Tests: 1. Valid Manifests (Minimal, Full, Mode A-only, Mode B-only, All Capabilities) 2. Strict JSON Parsing (Duplicate keys, NaN, Infinity, Oversized, Malformed) 3. JSON Schema Validation (Draft 2020-12 compliance, Type checks, Extra properties) 4. Domain Semantic Rules (SemVer 2.0.0, Entry-point path safety, Identifier conventions) 5. Security Boundaries (Zero module imports, Zero code execution, Zero network egress)
+- **Module Docstring**: Comprehensive Test Suite for Omnix Plugin Manifest Validator & JSON Schema Governing Specification: OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 5  Tests: 1. Valid Manifests (Minimal, Full, Mode A, All Capabilities) 2. Strict JSON Parsing (Duplicate keys, NaN, Infinity, Oversized, Malformed) 3. JSON Schema Validation (Draft 2020-12 compliance, Type checks, Extra properties) 4. Domain Semantic Rules (SemVer 2.0.0, Entry-point path safety, Identifier conventions) 5. Security Boundaries (Zero module imports, Zero code execution, Zero network egress)
 - **Test Classes**:
   - `TestValidManifests` (9 tests): Verifies valid manifests across all permitted configurations.
   - `TestStrictJSONParsing` (11 tests): Verifies that parsing rejects malformed, duplicate-key, or non-standard JSON.
@@ -498,12 +498,12 @@
 - **Classification**: `KEEP`
 - **Domain**: Tab 2 procurement view staging, selection, and dispatch
 - **Summary**: 7 passed in 1.26s
-- **Module Docstring**: Tests for Tab 2 (Altium BOM Project Auditor) Canonical Procurement Semantics: - Mode A (Database-Aware / Inventory-Driven):   * Direct purchasing strictly targeting the Inventory.xlsx link.   * Validation of MPN, Package, Footprint, Specs, Dimensions.   * Brand double-check only if BOM specified an explicit brand; passes if ANY.   * Strict typed failures on mismatch (INCOMPATIBLE_MPN, INCOMPATIBLE_PACKAGE, etc.).   * No multi-vendor fallback or silent vendor substitution. - Mode B (BOM-Direct / Turnkey):   * Multi-vendor discovery across all enabled registered vendors.   * Brand Rule handling (ANY, single brand, approved list).   * Canonical quantity calculation (if req < moq: moq; else: ceil(req/step)*step).   * Deterministic price & quantity ranking. - 7 Historical Safeguards:   * Strict live site stock (NO-PARTIAL-STOCK).   * Out of stock & unorderable detection.
+- **Module Docstring**: Tests for Tab 2 (Altium BOM Project Auditor) Canonical Procurement Semantics: - Mode A (Database-Aware / Inventory-Driven):   * Direct purchasing strictly targeting the Inventory.xlsx link.   * Validation of MPN, Package, Footprint, Specs, Dimensions.   * Brand double-check only if BOM specified an explicit brand; passes if ANY.   * Strict typed failures on mismatch (INCOMPATIBLE_MPN, INCOMPATIBLE_PACKAGE, etc.).   * No multi-vendor fallback or silent vendor substitution. - Sourcing & Safeguards:   * Multi-vendor discovery across all enabled registered vendors.   * Brand Rule handling (ANY, single brand, approved list).   * Canonical quantity calculation (if req < moq: moq; else: ceil(req/step)*step).   * Deterministic price & quantity ranking. - 7 Historical Safeguards:   * Strict live site stock (NO-PARTIAL-STOCK).   * Out of stock & unorderable detection.
 - **Test Classes**:
   - `MockLionTab2Adapter` (0 tests): No class docstring
   - `MockJavanTab2Adapter` (0 tests): No class docstring
   - `TestModeAValidationAndSafeguards` (4 tests): Mode A tests: Database-aware direct purchasing strictly using Inventory.xlsx LINK.
-  - `TestModeBTurnkeySourcing` (2 tests): Mode B tests: Pure CAD BOM turnkey sourcing across all enabled vendors.
+  - `TestTurnkeyCandidateEvaluation` (2 tests): Candidate sourcing and ranking tests.
   - `TestCanonicalQuantityCalculation` (1 tests): Verifies Layer 5 Canonical Quantity Rule.
 
 ### 40. `test_ui_tab1_inventory_view.py`

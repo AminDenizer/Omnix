@@ -52,23 +52,23 @@ class TestSearchThreeFields:
     def test_assembly_view_mpn_match(self, win):
         """Verifies partial and case-insensitive MPN search matches in Assembly & Stock view."""
         # Search by partial MPN
-        win.search_query = "rc0603"
+        win.search_query = "stm32"
         win._filter_and_render()
         assert len(win.current_filtered_groups) > 0
         for group in win.current_filtered_groups:
             mpns = [p.mpn.lower() for p in group.products if p.mpn]
             mfrs = [p.manufacturer.lower() for p in group.products if p.manufacturer]
             vals = [group.value.lower()] + [p.value.lower() for p in group.products if p.value]
-            assert any("rc0603" in m for m in mpns) or any("rc0603" in m for m in mfrs) or any("rc0603" in v for v in vals)
+            assert any("stm32" in m for m in mpns) or any("stm32" in m for m in mfrs) or any("stm32" in v for v in vals)
 
     def test_assembly_view_manufacturer_match(self, win):
         """Verifies Manufacturer matching with case insensitivity and whitespace normalization."""
-        win.search_query = "   yAgEo   "
+        win.search_query = "   mUrAtA   "
         win._filter_and_render()
         assert len(win.current_filtered_groups) > 0
         for group in win.current_filtered_groups:
             mfrs = [p.manufacturer.lower() for p in group.products if p.manufacturer]
-            assert any("yageo" in m for m in mfrs)
+            assert any("murata" in m for m in mfrs)
 
     def test_assembly_view_value_match(self, win):
         """Verifies Value matching in Assembly & Stock view."""

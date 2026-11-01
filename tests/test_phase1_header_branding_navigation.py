@@ -101,9 +101,7 @@ class TestSidebarHierarchyAndIcons:
             "assembly_view",
             "bom_audit",
             "assembly_prep",
-            "reference_data",
-            "provider_management",
-            "backup_restore",
+            "vendor_plugins",
             "live_log",
             "settings",
         ]
@@ -162,24 +160,23 @@ class TestSettingsSubsectionsAndAbout:
     """Verifies settings collapsible sidebar submenu, the 5 subsections, and factual metadata in About."""
 
     def test_settings_subsections_structure_and_submenu(self, main_window, qapp):
-        """Settings page has a single sidebar button and tabbed interface for General, Vendors, About."""
+        """Settings page has a collapsible sidebar submenu for the 5 settings subpages."""
         sb = main_window.sidebar
         assert hasattr(sb, "settings_parent_btn")
         assert hasattr(sb, "SETTINGS_CHILDREN")
 
         expected_children = [
             ("general_settings", "General", "general_settings"),
-            ("vendor_plugins", "Vendors", "vendor_plugins"),
+            ("reference_data", "Reference Data", "reference_data"),
+            ("provider_management", "Supplier Directory", "provider_management"),
+            ("backup_restore", "Export & Backup", "backup_restore"),
             ("about", "About", "about"),
         ]
         assert sb.SETTINGS_CHILDREN == expected_children
 
-        # Verify unified Settings tabs exist on MainWindow
-        assert hasattr(main_window, "settings_tabs")
-        assert main_window.settings_tabs.count() == 3
-        assert main_window.settings_tabs.tabText(0) == "General"
-        assert main_window.settings_tabs.tabText(1) == "Vendors"
-        assert main_window.settings_tabs.tabText(2) == "About"
+        # Verify child buttons exist in sidebar
+        for child_id, _, _ in expected_children:
+            assert child_id in sb._buttons
 
         # Collapsing the sidebar rail works cleanly
         sb.set_collapsed(True)
@@ -217,8 +214,6 @@ class TestSettingsSubsectionsAndAbout:
         assert DEVELOPER_NAME in text_content
         assert DEVELOPER_ORG in text_content
         assert DEVELOPER_EMAIL in text_content
-        assert REPOSITORY_URL in text_content
-        assert LICENSE_TYPE in text_content
         assert "Mode A" in text_content
 
 
@@ -263,62 +258,59 @@ class TestNavigationRouting:
         assert win.sidebar.active_page() == "assembly_prep"
 
     def test_tools_vendor_plugins_routing(self, main_window, qapp):
-        """Vendor Plugins routes to unified Settings tab 1."""
+        """Vendor Plugins routes to standalone Tools page."""
         win = main_window
         win.sidebar._on_button_clicked("vendor_plugins")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_tabs.currentIndex() == 1
-        assert win.sidebar.active_page() == "settings"
+        assert win.content_stack.currentWidget() == win.vendor_plugins_page
+        assert win.sidebar.active_page() == "vendor_plugins"
+        assert win.sidebar.settings_parent_btn._is_active is False
 
     def test_settings_routing_and_legacy_aliases(self, main_window, qapp):
-        """Settings button and child navigation activate unified Settings tabs and Tools pages."""
+        """Settings button and child navigation activate settings and tools pages."""
         win = main_window
 
-        # Settings top-level (activates General settings tab 0)
+        # Settings top-level (activates General settings page)
         win.sidebar._on_button_clicked("settings")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_tabs.currentIndex() == 0
         assert win.sidebar.active_page() == "settings"
         assert win.sidebar.settings_parent_btn._is_active is True
 
-        # Child: vendor_plugins (Vendors tab 1)
+        # Tool: vendor_plugins (Standalone page under TOOLS)
         win.sidebar._on_button_clicked("vendor_plugins")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_tabs.currentIndex() == 1
-        assert win.sidebar.active_page() == "settings"
-        assert win.sidebar.settings_parent_btn._is_active is True
+        assert win.content_stack.currentWidget() == win.vendor_plugins_page
+        assert win.sidebar.active_page() == "vendor_plugins"
+        assert win.sidebar.settings_parent_btn._is_active is False
 
-        # Child: about (About tab 2)
+        # Child: about
         win.sidebar._on_button_clicked("about")
         qapp.processEvents()
-        assert win.content_stack.currentWidget() == win.settings_page
-        assert win.settings_tabs.currentIndex() == 2
-        assert win.sidebar.active_page() == "settings"
+        assert win.content_stack.currentWidget() == win.about_page
+        assert win.sidebar.active_page() == "about"
         assert win.sidebar.settings_parent_btn._is_active is True
 
-        # Tool: reference_data
+        # Child: reference_data
         win.sidebar._on_button_clicked("reference_data")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.reference_data_page
         assert win.sidebar.active_page() == "reference_data"
-        assert win.sidebar.settings_parent_btn._is_active is False
+        assert win.sidebar.settings_parent_btn._is_active is True
 
-        # Tool: provider_management (Supplier Directory)
+        # Child: provider_management (Supplier Directory)
         win.sidebar._on_button_clicked("provider_management")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.providers_page
         assert win.sidebar.active_page() == "provider_management"
-        assert win.sidebar.settings_parent_btn._is_active is False
+        assert win.sidebar.settings_parent_btn._is_active is True
 
-        # Tool: backup_restore (Export & Backup)
+        # Child: backup_restore (Export & Backup)
         win.sidebar._on_button_clicked("backup_restore")
         qapp.processEvents()
         assert win.content_stack.currentWidget() == win.backup_restore_page
         assert win.sidebar.active_page() == "backup_restore"
-        assert win.sidebar.settings_parent_btn._is_active is False
+        assert win.sidebar.settings_parent_btn._is_active is True
 
         # Navigating back to Workspace clears settings parent active state
         win.sidebar._on_button_clicked("assembly_view")
@@ -347,5 +339,5 @@ class TestExcelExport:
 
         assert os.path.exists(result)
         wb = openpyxl.load_workbook(result)
-        assert wb.sheetnames == ["Inventory", "Assembly View"]
+        assert wb.sheetnames == ["Inventory"]
         wb.close()

@@ -80,6 +80,8 @@ class VendorRegistry:
         self._vendor_to_plugin_id: Dict[str, str] = {}
         # plugin_id -> vendor_id
         self._plugin_id_to_vendor: Dict[str, str] = {}
+        # (vendor_id, version_str) -> IVendorAdapter instance cache
+        self._cached_adapters: Dict[Tuple[str, str], IVendorAdapter] = {}
 
     @property
     def _registrations(self) -> Dict[str, PluginVersionRegistration]:
@@ -705,6 +707,7 @@ class VendorRegistry:
                         vendor_id=clean_id,
                     )
                 reg = self._versions[clean_id][clean_ver]
+                used_ver = clean_ver
             else:
                 active_ver = self._active_versions.get(clean_id)
                 if not active_ver or active_ver not in self._versions[clean_id]:
@@ -713,9 +716,15 @@ class VendorRegistry:
                         vendor_id=clean_id,
                     )
                 reg = self._versions[clean_id][active_ver]
+                used_ver = active_ver
 
-            effective_config = config or reg.default_config
-            adapter_instance = reg.adapter_class(config=effective_config)
+            if config is not None:
+                adapter_instance = reg.adapter_class(config=config)
+            else:
+                cache_key = (clean_id, used_ver)
+                if cache_key not in self._cached_adapters:
+                    self._cached_adapters[cache_key] = reg.adapter_class(config=reg.default_config)
+                adapter_instance = self._cached_adapters[cache_key]
             return adapter_instance
 
     def resolve_adapter_for_url(
@@ -768,8 +777,13 @@ class VendorRegistry:
                 return None, None
 
             reg = self._versions[vendor_id][version]
-            effective_config = config or reg.default_config
-            adapter_instance = reg.adapter_class(config=effective_config)
+            if config is not None:
+                adapter_instance = reg.adapter_class(config=config)
+            else:
+                cache_key = (vendor_id, version)
+                if cache_key not in self._cached_adapters:
+                    self._cached_adapters[cache_key] = reg.adapter_class(config=reg.default_config)
+                adapter_instance = self._cached_adapters[cache_key]
             return adapter_instance, reg
 
     def get_vendor_for_url(self, url: str, enabled_only: bool = False) -> Optional[str]:
@@ -892,13 +906,13 @@ class VendorRegistry:
             self._domain_to_route.clear()
             self._vendor_to_plugin_id.clear()
             self._plugin_id_to_vendor.clear()
+            self._cached_adapters.clear()
 
     def register_default_adapters(self, settings_mgr: Optional[Any] = None) -> None:
         """
         Explicitly register the standard Omnix production vendor adapters:
         - vendor_lion (Lion Electronic: lionelectronic.ir)
         - vendor_javan (Javan Electronic: javanelec.com)
-        - vendor_roboeq (RoboEq Electronic: roboeq.ir)
 
         Ingests multi-vendor settings from SettingsManager (GAP-11).
 
@@ -917,10 +931,7 @@ class VendorRegistry:
         except ImportError:
             JavanVendorAdapter = None
 
-        try:
-            from vendors.roboeq.adapter import RoboEqVendorAdapter
-        except ImportError:
-            RoboEqVendorAdapter = None
+
 
         if settings_mgr is None:
             try:
@@ -976,28 +987,7 @@ class VendorRegistry:
                     settings=javan_settings,
                 )
 
-            # 3. RoboEq Electronic
-            if RoboEqVendorAdapter is not None and not self.has_vendor(RoboEqVendorAdapter.VENDOR_ID):
-                roboeq_settings = settings_mgr.get_vendor_settings(RoboEqVendorAdapter.VENDOR_ID) if settings_mgr else None
-                roboeq_enabled = roboeq_settings.enabled if roboeq_settings else True
-                roboeq_timeout = roboeq_settings.timeout_seconds if roboeq_settings else 10.0
-                roboeq_headless = roboeq_settings.headless if roboeq_settings else True
 
-                self.register_adapter(
-                    vendor_id=RoboEqVendorAdapter.VENDOR_ID,
-                    adapter_class=RoboEqVendorAdapter,
-                    config=AdapterConfig(
-                        vendor_id=RoboEqVendorAdapter.VENDOR_ID,
-                        base_url=RoboEqVendorAdapter.BASE_URL,
-                        headless=roboeq_headless,
-                        timeout_seconds=roboeq_timeout,
-                    ),
-                    domains=["roboeq.ir"],
-                    display_name="RoboEq Electronic",
-                    description="RoboEq Marketplace Distributor",
-                    enabled=roboeq_enabled,
-                    settings=roboeq_settings,
-                )
 
     @staticmethod
     def _normalize_domain(domain_str: str) -> str:

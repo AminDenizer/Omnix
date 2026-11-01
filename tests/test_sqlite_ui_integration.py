@@ -87,6 +87,10 @@ def sqlite_repo_with_data(temp_workbook, tmp_path):
     repo = SqliteInventoryRepository(db_path)
     res = bootstrap_sqlite_from_workbook(temp_workbook, repo)
     assert res.success is True
+    # Under Option B, physical components hold the stock thresholds
+    prods = repo.get_all_products()
+    yageo = next(p for p in prods if p.mpn == "RC0603FR-0710KL")
+    repo.update_component_thresholds(yageo.id, min_stock=100, target_stock=300)
     return repo
 
 
@@ -107,14 +111,15 @@ class TestPhase21SqliteUIIntegration:
             groups = win.inventory_repo.get_all_groups()
             assert len(groups) == 2
 
-            # Top table: Stock Policy Groups
+            # Top table: Stock Policy Groups (7 columns)
             assert win.table.rowCount() == 2
-            assert win.table.columnCount() == 10
+            assert win.table.columnCount() == 7
+            assert win.inventory_components_table.columnCount() == 14
 
-            # Headers match Phase 1 specification
+            # Headers match Section 5 specification
             expected_headers = [
                 "Category", "Type / Technology", "Value", "Package", "Footprint",
-                "Total In Stock", "Min Stock", "Target Stock", "Matched Products", "Status"
+                "Total In Stock", "Matched Products"
             ]
             actual_headers = [win.table.horizontalHeaderItem(c).text() for c in range(win.table.columnCount())]
             assert actual_headers == expected_headers
@@ -191,30 +196,47 @@ class TestPhase21SqliteUIIntegration:
             assert resistor_group.min_stock == 100
             assert resistor_group.target_stock == 300
 
-            # Mock PolicyEditDialog execution with updated thresholds (120, 350)
-            with patch("ui.main_window.PolicyEditDialog") as MockDialog:
+            # Mock ComponentThresholdDialog execution with updated thresholds (120, 350)
+            yageo = next(p for p in repo.get_all_products() if p.mpn == "RC0603FR-0710KL")
+            with patch("ui.main_window.ComponentThresholdDialog") as MockDialog:
                 mock_dlg_instance = MockDialog.return_value
                 mock_dlg_instance.exec.return_value = 1  # Accepted
+                saved_mock = InventoryProduct(
+                    manufacturer="Yageo",
+                    mpn="RC0603FR-0710KL",
+                    category="Resistor",
+                    type_technology="Thick Film",
+                    package="0603",
+                    footprint="SMD_0603",
+                    value="10k",
+                    description="10k Resistor",
+                    quantity_in_stock=100,
+                    purchase_link="LION=https://lionelectronic.ir/p/101",
+                    group_key=resistor_group.group_key,
+                    raw_package="603",
+                    id=yageo.id,
+                    min_stock=120,
+                    target_stock=350,
+                )
+                mock_dlg_instance.saved_component = saved_mock
 
                 def apply_mock_save():
-                    repo.set_policy(
-                        group_key=resistor_group.group_key,
+                    repo.update_component_thresholds(
+                        yageo.id,
                         min_stock=120,
                         target_stock=350,
                     )
                 mock_dlg_instance.exec.side_effect = lambda: (apply_mock_save(), 1)[1]
 
-                # Find resistor row index
-                res_idx = next(i for i, g in enumerate(win.current_filtered_groups) if g.category == "Resistor")
-                win._edit_stock_policy_thresholds(res_idx)
+                win._open_component_threshold_dialog(yageo)
                 qapp.processEvents()
 
-            # Verify SQLite persisted the new thresholds
-            updated_policy = repo.get_policy(resistor_group.group_key)
-            assert updated_policy.min_stock == 120
-            assert updated_policy.target_stock == 350
+            # Verify SQLite persisted the new thresholds on the component
+            updated_comp = repo.get_component_by_identity("Yageo", "RC0603FR-0710KL")
+            assert updated_comp.min_stock == 120
+            assert updated_comp.target_stock == 350
 
-            # Verify UI table reflects updated values
+            # Verify UI table reflects updated group aggregate values
             updated_group = next(g for g in win.current_filtered_groups if g.category == "Resistor")
             assert updated_group.min_stock == 120
             assert updated_group.target_stock == 350
@@ -226,11 +248,23 @@ class TestPhase21SqliteUIIntegration:
         repo = sqlite_repo_with_data
         group = repo.get_all_groups()[0]
 
-        dlg = PolicyEditDialog(
+        # Verify Option B read-only aggregate behavior when products exist
+        read_only_dlg = PolicyEditDialog(
             group=group,
             inventory_path=repo.file_path,
             repository=repo,
         )
+        assert read_only_dlg.is_read_only is True
+        read_only_dlg.close()
+
+        # Direct editing enabled via read_only=False (or for policy-only groups)
+        dlg = PolicyEditDialog(
+            group=group,
+            inventory_path=repo.file_path,
+            repository=repo,
+            read_only=False,
+        )
+        assert dlg.is_read_only is False
         dlg.min_spin.setValue(175)
         dlg.target_spin.setValue(450)
 

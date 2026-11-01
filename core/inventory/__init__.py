@@ -50,6 +50,7 @@ from core.inventory.bootstrap import (
     bootstrap_sqlite_from_workbook,
 )
 from core.inventory.exporter import InventoryExcelExporter
+from core.inventory.merge import DatabaseMergeService, MergeAnalysis
 
 __all__ = [
     "InventoryProduct",
@@ -88,5 +89,7 @@ __all__ = [
     "ExcelDatabaseMigrator",
     "bootstrap_sqlite_from_workbook",
     "InventoryExcelExporter",
+    "DatabaseMergeService",
+    "MergeAnalysis",
 ]
 

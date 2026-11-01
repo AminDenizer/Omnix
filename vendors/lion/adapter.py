@@ -85,11 +85,9 @@ class LionVendorAdapter(IVendorAdapter):
         PluginCapability.LIVE_STOCK_PROBE,
         PluginCapability.TIERED_PRICING,
         PluginCapability.MODE_A_STAGING,
-        PluginCapability.MODE_B_STAGING,
     })
     _SUPPORTED_MODES: frozenset = frozenset({
         PluginProcurementMode.MODE_A,
-        PluginProcurementMode.MODE_B,
     })
 
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -324,11 +322,10 @@ class LionVendorAdapter(IVendorAdapter):
                 if sm:
                     stock_qty = int(sm.group(1))
 
-            # Determine inquiry state
-            is_inquiry = False
+            # Determine inquiry vs buy button
+            buy_btn = soup.select_one(LionSelectors.BTN_BUY_PRIMARY)
             inquiry_btn = soup.select_one(LionSelectors.BTN_INQUIRY_PRIMARY)
-            if inquiry_btn is not None:
-                is_inquiry = True
+            is_inquiry = bool(inquiry_btn is not None and buy_btn is None)
 
             # Normalize Persian status strings
             norm_status = _normalize_persian_text(raw_status_text)
@@ -688,6 +685,18 @@ class LionVendorAdapter(IVendorAdapter):
         driver = self.session.get_driver()
 
         try:
+            status = self.validate_session()
+            if not status.is_authenticated:
+                try:
+                    from settings_manager import settings
+                    v_cfg = settings.get_vendor_settings(self.VENDOR_ID) if hasattr(settings, "get_vendor_settings") else None
+                    u = (v_cfg.username if v_cfg else "") or settings.get("lion_username", "").strip()
+                    p = (v_cfg.password if v_cfg else "") or settings.get("lion_password", "").strip()
+                    if u and p:
+                        self.authenticate(AuthCredentials(username=u, password=p))
+                except Exception:
+                    pass
+
             driver.get(LionSelectors.CART_URL)
             self.session.wait_for_settle(2.0)
 
@@ -701,10 +710,31 @@ class LionVendorAdapter(IVendorAdapter):
                 raise err
 
             soup = BeautifulSoup(driver.page_source, "html.parser")
-            rows = soup.select(LionSelectors.CART_ITEM_ROWS)
+            rows = soup.select(".cart-item") or soup.select("table.table tbody tr, .cart-table tbody tr")
 
             cart_items: List[CartItem] = []
             for r in rows:
+                # Check modern Lion cart structure: .cart-item / .checkout-item
+                title_el = r.select_one(".product-title")
+                qty_input = r.select_one("input.counter, input[name='quantity'], input[name*='quantity'], .quantity-cell, .card-quantity")
+                if title_el:
+                    name = title_el.get_text(strip=True)
+                    qty = 1
+                    if qty_input and qty_input.get("value"):
+                        try:
+                            qty = int(float(qty_input.get("value").replace(",", "")))
+                        except Exception:
+                            qty = 1
+                    cart_items.append(
+                        CartItem(
+                            vendor_sku=name,
+                            product_name=name,
+                            quantity=qty,
+                        )
+                    )
+                    continue
+
+                # Fallback to legacy table row format
                 tds = r.find_all("td")
                 if len(tds) >= 3:
                     name = tds[0].get_text(strip=True)
@@ -737,12 +767,7 @@ class LionVendorAdapter(IVendorAdapter):
         credentials: Optional[AuthCredentials] = None,
         challenge_handler: Optional[Any] = None,
     ) -> AuthResult:
-        """
-        Authenticate browser session using provided credentials,
-        with optional interactive challenge handler for CAPTCHA/OTP resolution (GAP-09, GAP-17).
-        """
-        from core.procurement.challenge_handler import ChallengeType, ChallengeState, ChallengeContext
-
+        """Authenticate browser session using provided credentials."""
         if not credentials:
             try:
                 from settings_manager import settings
@@ -765,127 +790,29 @@ class LionVendorAdapter(IVendorAdapter):
             driver.get(LionSelectors.LOGIN_URL)
             self.session.wait_for_settle(1.5)
 
-            # Upfront challenge detection (Turnstile, reCAPTCHA, WAF, OTP)
-            challenge_type = self._detect_challenge_on_page(driver)
-            if challenge_type is not None:
-                ctx = ChallengeContext(
-                    vendor_id=self.VENDOR_ID,
-                    challenge_type=challenge_type,
-                    prompt_message=f"Lion Electronic requires security challenge resolution ({challenge_type.value}).",
-                    target_url=driver.current_url or LionSelectors.LOGIN_URL,
-                )
-                if challenge_handler is not None:
-                    if challenge_type in (ChallengeType.TURNSTILE, ChallengeType.RECAPTCHA, ChallengeType.HCAPTCHA, ChallengeType.CUSTOM, ChallengeType.CAPTCHA):
-                        self.session.promote_to_headful()
-
-                    res = challenge_handler.handle_challenge(ctx)
-                    if res.state == ChallengeState.SOLVED:
-                        status = self.validate_session()
-                        if status.is_authenticated:
-                            self._is_authenticated = True
-                            self._current_user = credentials.username
-                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
-                    elif res.state == ChallengeState.CANCELLED:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
-                    else:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Challenge resolution failed: {res.message}")
-                else:
-                    return AuthResult(
-                        vendor_id=self.VENDOR_ID,
-                        success=False,
-                        message=f"Security challenge encountered ({challenge_type.value}) but no challenge handler configured.",
-                        requires_interactive=True,
-                        challenge_context=ctx,
-                    )
-
-            # Enter username
             user_input = driver.find_element(By.ID, LionSelectors.LOGIN_USERNAME_ID)
             user_input.click()
             user_input.send_keys(Keys.CONTROL + "a")
             user_input.send_keys(Keys.BACKSPACE)
             user_input.send_keys(credentials.username)
 
-            # Enter password
             pass_input = driver.find_element(By.ID, LionSelectors.LOGIN_PASSWORD_ID)
             pass_input.click()
             pass_input.send_keys(Keys.CONTROL + "a")
             pass_input.send_keys(Keys.BACKSPACE)
             pass_input.send_keys(credentials.password)
 
-            # Check for image CAPTCHA input if present on form
-            captcha_input_els = driver.find_elements(By.CSS_SELECTOR, "input[name*='captcha'], input[id*='captcha'], #captcha-input")
-            captcha_img_els = driver.find_elements(By.CSS_SELECTOR, "img[src*='captcha'], .captcha-img, #captcha-image")
-            if captcha_input_els and captcha_img_els:
-                img_src = captcha_img_els[0].get_attribute("src") or ""
-                ctx = ChallengeContext(
-                    vendor_id=self.VENDOR_ID,
-                    challenge_type=ChallengeType.IMAGE_CAPTCHA,
-                    prompt_message="Please enter the characters shown in the CAPTCHA image.",
-                    target_url=driver.current_url or LionSelectors.LOGIN_URL,
-                    image_base64=img_src if img_src.startswith("data:") else None,
-                    metadata={"src": img_src},
-                )
-                if challenge_handler is not None:
-                    res = challenge_handler.handle_challenge(ctx)
-                    if res.state == ChallengeState.SOLVED and res.solution:
-                        captcha_input_els[0].send_keys(res.solution)
-                    elif res.state == ChallengeState.CANCELLED:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
-                    else:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"CAPTCHA solving failed: {res.message}")
-                else:
-                    return AuthResult(
-                        vendor_id=self.VENDOR_ID,
-                        success=False,
-                        message="Image CAPTCHA encountered but no challenge handler configured.",
-                        requires_interactive=True,
-                        challenge_context=ctx,
-                    )
-
-            # Submit
             submit_btn = driver.find_element(By.CSS_SELECTOR, LionSelectors.LOGIN_SUBMIT_BTN)
             driver.execute_script("arguments[0].click();", submit_btn)
 
             self.session.wait_for_settle(2.5)
 
-            # Verify session state
             status = self.validate_session()
             if status.is_authenticated:
                 self._is_authenticated = True
                 self._current_user = credentials.username
                 return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Login successful.")
 
-            # Post-submit challenge detection
-            post_challenge = self._detect_challenge_on_page(driver)
-            if post_challenge is not None:
-                ctx = ChallengeContext(
-                    vendor_id=self.VENDOR_ID,
-                    challenge_type=post_challenge,
-                    prompt_message=f"Lion Electronic presented a post-login challenge ({post_challenge.value}).",
-                    target_url=driver.current_url or LionSelectors.LOGIN_URL,
-                )
-                if challenge_handler is not None:
-                    self.session.promote_to_headful()
-                    res = challenge_handler.handle_challenge(ctx)
-                    if res.state == ChallengeState.SOLVED:
-                        status = self.validate_session()
-                        if status.is_authenticated:
-                            self._is_authenticated = True
-                            self._current_user = credentials.username
-                            return AuthResult(vendor_id=self.VENDOR_ID, success=True, message="Interactive login successful.")
-                    elif res.state == ChallengeState.CANCELLED:
-                        return AuthResult(vendor_id=self.VENDOR_ID, success=False, message="Authentication cancelled by user.")
-                    return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Post-login challenge not resolved: {res.state.value}")
-                else:
-                    return AuthResult(
-                        vendor_id=self.VENDOR_ID,
-                        success=False,
-                        message=f"Post-login challenge encountered ({post_challenge.value}) but no challenge handler configured.",
-                        requires_interactive=True,
-                        challenge_context=ctx,
-                    )
-
-            # Check error message on page
             err_els = driver.find_elements(By.CSS_SELECTOR, ".help-block-error, .alert-danger, .has-error")
             for el in err_els:
                 txt = el.text.strip()
@@ -898,25 +825,6 @@ class LionVendorAdapter(IVendorAdapter):
             err = LionErrorTranslator.translate_transport_exception(e, {"operation": "authenticate"})
             return AuthResult(vendor_id=self.VENDOR_ID, success=False, message=f"Login error: {err.message}")
 
-    @staticmethod
-    def _detect_challenge_on_page(driver: Any) -> Optional[Any]:
-        """Detect whether the current browser DOM contains known security challenges."""
-        from core.procurement.challenge_handler import ChallengeType
-        try:
-            page_src = driver.page_source.lower()
-            if "cf-turnstile" in page_src or "challenges.cloudflare.com" in page_src:
-                return ChallengeType.TURNSTILE
-            if "g-recaptcha" in page_src or "recaptcha" in page_src:
-                return ChallengeType.RECAPTCHA
-            if "h-captcha" in page_src or "hcaptcha" in page_src:
-                return ChallengeType.HCAPTCHA
-            if "just a moment" in page_src or "ray id:" in page_src or "cf-challenge" in page_src:
-                return ChallengeType.CUSTOM
-            if "کد تایید" in page_src or "one-time password" in page_src or "enter otp" in page_src:
-                return ChallengeType.OTP
-        except Exception:
-            pass
-        return None
 
     def validate_session(self) -> SessionStatus:
         """

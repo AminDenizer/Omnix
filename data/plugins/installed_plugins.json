@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0.0",
+  "updated_at": "2026-11-01T06:58:31.097574+00:00",
+  "plugins": {
+    "vendor_lion": {
+      "vendor_id": "vendor_lion",
+      "plugin_id": "ir.lionelectronic.adapter",
+      "display_name": "Lion Electronic",
+      "active_version": "1.0.0",
+      "enabled": true,
+      "installed_versions": {
+        "1.0.0": {
+          "version": "1.0.0",
+          "install_path": "D:\\omnix\\omnix\\data\\plugins\\installed\\vendor_lion\\1.0.0",
+          "package_hash": "26027790bba4c80e4fbc5e437de7224abec648fb8fbe01cb7ee4b71e7492df4c",
+          "installed_at": "2026-11-01T03:41:28.001647+00:00",
+          "entry_point": "vendors.lion.adapter:LionVendorAdapter",
+          "publisher": {
+            "name": "Omnix Core Engineering",
+            "type": "OFFICIAL",
+            "key_id": "core-official-key-01"
+          },
+          "status": "INSTALLED",
+          "manifest": {
+            "manifest_version": "1.0.0",
+            "plugin_id": "ir.lionelectronic.adapter",
+            "vendor_id": "vendor_lion",
+            "display_name": "Lion Electronic",
+            "description": "Lion Electronic Component Distributor Automation Plugin",
+            "version": "1.0.0",
+            "min_omnix_version": "1.0.0",
+            "omnix_contract_version": "1.0.0",
+            "entry_point": "vendors.lion.adapter:LionVendorAdapter",
+            "publisher": {
+              "name": "Omnix Core Engineering",
+              "type": "OFFICIAL",
+              "key_id": "core-official-key-01"
+            },
+            "capabilities": [
+              "PRODUCT_URL_RECOGNITION",
+              "PRODUCT_INSPECTION",
+              "CART_URL_RESOLUTION",
+              "MPN_SEARCH",
+              "LIVE_STOCK_PROBE",
+              "TIERED_PRICING",
+              "MODE_A_STAGING"
+            ],
+            "supported_modes": [
+              "MODE_A"
+            ],
+            "routes": {
+              "base_url": "https://lionelectronic.ir",
+              "cart_url": "https://lionelectronic.ir/orders/cart",
+              "domains": [
+                "lionelectronic.ir"
+              ],
+              "pdp_patterns": [
+                "^https?://(?:www\\.)?lionelectronic\\.ir/products/\\d+-[a-zA-Z0-9_.-]+(?:/.*)?$"
+              ]
+            },
+            "config_schema": {
+              "fields": [
+                {
+                  "key": "username",
+                  "label": "Username / Phone / Email",
+                  "type": "string",
+                  "required": true,
+                  "is_secret": false,
+                  "default": "",
+                  "description": "Lion Electronic account username, mobile number, or email address."
+                },
+                {
+                  "key": "password",
+                  "label": "Password",
+                  "type": "password",
+                  "required": true,
+                  "is_secret": true,
+                  "description": "Lion Electronic account password (stored encrypted)."
+                },
+                {
+                  "key": "timeout_seconds",
+                  "label": "Page Load Timeout (s)",
+                  "type": "integer",
+                  "required": false,
+                  "is_secret": false,
+                  "default": 30,
+                  "description": "Maximum wait time in seconds for page navigation and DOM elements."
+                },
+                {
+                  "key": "headless",
+                  "label": "Run Browser in Headless Mode",
+                  "type": "boolean",
+                  "required": false,
+                  "is_secret": false,
+                  "default": false,
+                  "description": "Run browser in the background unless interactive login or challenge resolution is required."
+                }
+              ]
+            }
+          },
+          "error_message": null,
+          "file_digests": {
+            "vendors/lion/adapter.py": "bb082bbbf0dbf3b19b90b0514508ccf120f8876e767d101a4fca7a478ed66bd9",
+            "vendors/lion/errors.py": "2390387f10f39a936b3c38aebc3ee6da645729c7a35ef2fdecc955067ca93e67",
+            "manifest.json": "71fcc347f769ef6d4cc3afccfa9270af9b0a6d952c4f7aad906dd5150331d5e6",
+            "vendors/lion/selectors.py": "1e2d1660c5ff6b585bb7e290e6cecf706f963175671ef223802f1c6f94fe114d",
+            "vendors/lion/session.py": "126c5f958c3ee3e90ccb5ca6ac2e4ade54434878adca4dab97a0320ee97b1125",
+            "vendors/lion/__init__.py": "e604702d781499c0b78721bddc9a86e15d316ba7de78c7ff3f395b3d9b04403a",
+            "META-INF/MANIFEST.MF": "e29829280ad83d79839a5289c2bb4ec30f5cb1a5f5f05955d1164bfac2354bca",
+            "META-INF/SIGNATURE.sig": "4ba3294983e7f61b688591389775e501e9280b9018a053fb3971f26faa602c0b"
+          }
+        }
+      }
+    }
+  }
+}

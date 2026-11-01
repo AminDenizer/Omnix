@@ -28,7 +28,7 @@ The **Lion Electronic Vendor Adapter** (`LionVendorAdapter`) has been implemente
 │                              OMNIX CORE                                │
 │  • BOM Interpretation & Normalization                                  │
 │  • Inventory Matching & Shortage Calculation                           │
-│  • Procurement Modes (Mode A: Inventory-Based / Mode B: BOM-Direct)    │
+│  • Procurement Modes (Mode A: Inventory-Based)                         │
 │  • Multi-Vendor Discovery & Sourcing Orchestration                     │
 │  • Deterministic Purchase Allocation & Optimization                   │
 │  • Central Normalized Error Handling & Reporting                       │
@@ -111,7 +111,7 @@ All 13 conceptual operations required by `IVendorAdapter` are fully implemented:
 
 ### 4.1 Zero Core Logic Leakage
 - `LionVendorAdapter` contains **zero** BOM parsing, zero shortage sizing math, zero inventory comparison, and zero cross-vendor ranking.
-- Procurement modes (Mode A: Inventory-Based and Mode B: BOM-Direct) are owned exclusively by Core.
+- Procurement modes (Mode A: Inventory-Based) are owned exclusively by Core.
 
 ### 4.2 Raw Packaging Step Preservation
 - `#quantity-cell.value` is extracted directly as integer `packaging_step_raw`.

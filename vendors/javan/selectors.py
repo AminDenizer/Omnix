@@ -29,7 +29,7 @@ class JavanSelectors:
     PDP_TITLE = "h1.font-weight-bold, h1, .product-name"
     SPEC_TABLE_ROWS = "table tr"
     PRICE_TABLE_ROWS = "table tr"
-    BTN_ADD_TO_CART = "button.btn-success-outline[type='submit'], button[type='submit']"
+    BTN_ADD_TO_CART = "button.btn-success-outline, button[type='submit']"
     FORM_ADD_TO_CART = "form[action*='shoppingcarts'], form.form-horizontal"
 
     # Shopping Cart

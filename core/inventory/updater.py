@@ -134,10 +134,10 @@ class StockPolicyWriter:
                 )
 
             # Access 'Stock Policy' worksheet
-            for sheet in wb.Worksheets:
-                if sheet.Name == "Stock Policy":
-                    ws = sheet
-                    break
+            try:
+                ws = wb.Worksheets("Stock Policy")
+            except Exception:
+                ws = None
 
             if ws is None:
                 return False, "Worksheet 'Stock Policy' not found in workbook."
@@ -218,24 +218,33 @@ class StockPolicyWriter:
             return False, f"Unexpected error while writing to Excel workbook via COM: {e}"
 
         finally:
-            ws = None
-            if wb is not None:
-                try:
-                    wb.Close(SaveChanges=False)
-                except Exception:
-                    pass
-                wb = None
-            if excel is not None:
-                try:
-                    excel.Quit()
-                except Exception:
-                    pass
-                excel = None
-            import gc
-            gc.collect()
-            if has_co_init:
-                try:
-                    import pythoncom
-                    pythoncom.CoUninitialize()
-                except Exception:
-                    pass
+            import faulthandler
+            was_fh_enabled = faulthandler.is_enabled()
+            if was_fh_enabled:
+                faulthandler.disable()
+            try:
+                ws = None
+                if wb is not None:
+                    try:
+                        wb.Close(SaveChanges=False)
+                    except Exception:
+                        pass
+                    wb = None
+                import gc
+                gc.collect()
+                if excel is not None:
+                    try:
+                        excel.Quit()
+                    except Exception:
+                        pass
+                    excel = None
+                gc.collect()
+                if has_co_init:
+                    try:
+                        import pythoncom
+                        pythoncom.CoUninitialize()
+                    except Exception:
+                        pass
+            finally:
+                if was_fh_enabled:
+                    faulthandler.enable()

@@ -39,6 +39,40 @@ class ProcurementBridge:
     """
 
     @staticmethod
+    def get_plugin_status(vendor_id: Optional[str], registry: Optional[VendorRegistry] = None) -> str:
+        """
+        Determines the explicit status of a vendor plugin:
+        - READY FOR ORDER
+        - PLUGIN DISABLED
+        - PLUGIN NOT REGISTERED
+        - PLUGIN NOT INSTALLED
+        """
+        if not vendor_id:
+            return "PLUGIN NOT INSTALLED"
+
+        clean_vid = str(vendor_id).strip()
+        reg = registry if registry is not None else VendorRegistry.get_default_registry()
+
+        # 1. Check runtime registry
+        if reg is not None and hasattr(reg, "has_vendor") and reg.has_vendor(clean_vid):
+            if hasattr(reg, "is_vendor_enabled") and reg.is_vendor_enabled(clean_vid):
+                return "READY FOR ORDER"
+            return "PLUGIN DISABLED"
+
+        # 2. Check persistent store if available
+        try:
+            from core.plugins.plugin_lifecycle_manager import get_lifecycle_manager
+            mgr = get_lifecycle_manager(registry=reg)
+            p_rec = mgr.store.get_plugin(clean_vid)
+            if p_rec is not None:
+                # Installed in store, but not registered or active in registry
+                return "PLUGIN NOT REGISTERED"
+        except Exception:
+            pass
+
+        return "PLUGIN NOT INSTALLED"
+
+    @staticmethod
     def classify_link(
         link: str,
         registry: Optional[VendorRegistry] = None
@@ -113,8 +147,7 @@ class ProcurementBridge:
                 link_type = "LION"
             elif vendor_id == "vendor_javan":
                 link_type = "JAVAN"
-            elif vendor_id == "vendor_roboeq":
-                link_type = "ROBOEQ"
+
             else:
                 link_type = vendor_id.replace("vendor_", "").upper()
             return link_type, domain, vendor_id
@@ -127,21 +160,20 @@ class ProcurementBridge:
         registry: Optional[VendorRegistry] = None
     ) -> Tuple[bool, Optional[str]]:
         """
-        Determines whether a shortage or direct BOM item dictionary contains an automated-orderable request.
+        Determines whether an inventory shortage item dictionary contains an automated-orderable request.
 
-        In Mode B (DIRECT_BOM): Returns True if item has valid non-empty MPN and is marked valid.
         In Mode A (DATABASE_AWARE): Returns True if item has a valid registered vendor URL or multi-vendor links.
 
         Returns:
             (is_orderable, vendor_id)
         """
-        mode = item.get("mode")
-        if mode == ProcurementMode.DIRECT_BOM or mode == "DIRECT_BOM":
-            pn = item.get("part_number") or ""
-            is_valid = item.get("is_valid", True)
-            if is_valid and str(pn).strip():
-                return True, None
-            return False, None
+
+        # Check if item is marked as an unsupported or removed procurement mode
+        raw_mode = item.get("mode")
+        if raw_mode is not None:
+            mode_str = raw_mode.value if isinstance(raw_mode, ProcurementMode) else str(raw_mode).strip().upper()
+            if mode_str != ProcurementMode.DATABASE_AWARE.value:
+                return False, None
 
         # Check for zero or negative shortage / needed quantity in Mode A
         for q_key in ("needed_qty", "shortage_qty"):
@@ -182,27 +214,45 @@ class ProcurementBridge:
         mode: Optional[ProcurementMode] = None,
     ) -> ProcurementRequest:
         """
-        Converts an inventory shortage or BOM line item dictionary into a
-        formal immutable ProcurementRequest with strict MPN integrity and explicit mode branching.
+        Converts an inventory shortage line item dictionary into a
+        formal immutable ProcurementRequest under Mode A (Database-Aware Stock Reconciliation).
 
         Rules:
         - Strict MPN: Never fall back to Comment or Part Name!
-        - Mode B: Inventory links and DB stock are ignored; queries broadcast across all enabled vendors.
-        - Mode A: Reconciles against inventory link.
+        - Mode A: Reconciles against inventory link. Mode A is the sole supported procurement workflow.
         """
-        # Determine effective mode
+        # Determine effective mode (Mode A sole workflow)
         if mode is not None:
-            eff_mode = mode if isinstance(mode, ProcurementMode) else ProcurementMode(mode)
+            eff_mode = mode if isinstance(mode, ProcurementMode) else None
+            if eff_mode is None:
+                try:
+                    eff_mode = ProcurementMode(str(mode))
+                except ValueError:
+                    raise ValueError(
+                        f"Unsupported procurement mode '{mode}'. "
+                        "Mode A (DATABASE_AWARE) is the sole supported procurement workflow."
+                    )
         else:
             item_mode = item.get("mode")
             if isinstance(item_mode, ProcurementMode):
                 eff_mode = item_mode
-            elif isinstance(item_mode, str) and item_mode in ProcurementMode.__members__:
-                eff_mode = ProcurementMode(item_mode)
-            elif item_mode == "DIRECT_BOM":
-                eff_mode = ProcurementMode.DIRECT_BOM
+            elif item_mode is not None:
+                mode_str = str(item_mode).strip().upper()
+                if mode_str == ProcurementMode.DATABASE_AWARE.value:
+                    eff_mode = ProcurementMode.DATABASE_AWARE
+                else:
+                    raise ValueError(
+                        f"Unsupported procurement mode '{item_mode}'. "
+                        "Mode A (DATABASE_AWARE) is the sole supported procurement workflow."
+                    )
             else:
                 eff_mode = ProcurementMode.DATABASE_AWARE
+
+        if eff_mode != ProcurementMode.DATABASE_AWARE:
+            raise ValueError(
+                f"Unsupported procurement mode '{eff_mode}'. "
+                "Mode A (DATABASE_AWARE) is the sole supported procurement workflow."
+            )
 
         # Strict MPN validation: Missing MPN must NEVER fall back to Comment
         raw_pn = item.get("part_number") or item.get("part_name")
@@ -251,80 +301,62 @@ class ProcurementBridge:
 
         description = str(item.get("description") or item.get("comment") or "")
 
-        # Explicit mode branching
-        if eff_mode == ProcurementMode.DIRECT_BOM:
-            explicit_url = None
-            target_vendor = None
-            exact_mpn = item.get("exact_mpn_required", True)
-            package = str(item.get("package") or "").strip() or None
-            footprint = str(item.get("footprint") or "").strip() or None
-            raw_m = str(item.get("manufacturer") or item.get("brand") or "").strip()
-            manufacturer = None if raw_m.upper() == "ANY" else (raw_m or None)
-            allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
-            is_mfg_any = bool(
-                item.get("is_manufacturer_any", False)
-                or raw_m.upper() == "ANY"
-                or item.get("manufacturer_rule") == "ANY"
-                or (not manufacturer and not allowed_mfg)
-            )
-            req_specs = item.get("required_specs") or {}
-            req_dims = item.get("required_dimensions") or {}
-        else:
-            # Mode A: DATABASE_AWARE
-            selected_vendor = item.get("selected_vendor_id") or item.get("selected_vendor")
-            raw_link = str(item.get("link", "")).strip()
-            vendor_links = item.get("vendor_links")
+        # Mode A: Reconcile against inventory links
+        selected_vendor = item.get("selected_vendor_id") or item.get("selected_vendor")
+        raw_link = str(item.get("link", "")).strip()
+        vendor_links = item.get("vendor_links")
 
-            if vendor_links is None and raw_link:
-                try:
-                    from core.procurement.vendor_links import parse_vendor_links
-                    parsed = parse_vendor_links(raw_link, registry=registry)
-                    if parsed.is_valid and parsed.count > 0:
-                        vendor_links = {vid: e.url for vid, e in parsed.links.items()}
-                except Exception:
-                    vendor_links = None
+        if vendor_links is None and raw_link:
+            try:
+                from core.procurement.vendor_links import parse_vendor_links
+                parsed = parse_vendor_links(raw_link, registry=registry)
+                if parsed.is_valid and parsed.count > 0:
+                    vendor_links = {vid: e.url for vid, e in parsed.links.items()}
+            except Exception:
+                vendor_links = None
 
-            explicit_url = None
-            target_vendor = None
+        explicit_url = None
+        target_vendor = None
 
-            if vendor_links:
-                if selected_vendor:
-                    # Case D: Selected vendor has no link in component's mapping
-                    if selected_vendor not in vendor_links:
-                        raise ValueError(
-                            f"Selected vendor '{selected_vendor}' has no valid URL for component '{part_number}'. "
-                            f"Available vendors: {list(vendor_links.keys())}."
-                        )
-                    explicit_url = vendor_links[selected_vendor]
-                    target_vendor = selected_vendor
-                elif len(vendor_links) == 1:
-                    # Case A: Exactly one valid URL
-                    target_vendor, explicit_url = next(iter(vendor_links.items()))
-                else:
-                    # Case B: Multiple valid URLs, but no vendor selected
+        if vendor_links:
+            if selected_vendor:
+                # Case D: Selected vendor has no link in component's mapping
+                if selected_vendor not in vendor_links:
                     raise ValueError(
-                        f"Component '{part_number}' has multiple vendor links {list(vendor_links.keys())}. "
-                        "Vendor selection is required before procurement dispatch."
+                        f"Selected vendor '{selected_vendor}' has no valid URL for component '{part_number}'. "
+                        f"Available vendors: {list(vendor_links.keys())}."
                     )
+                explicit_url = vendor_links[selected_vendor]
+                target_vendor = selected_vendor
+            elif len(vendor_links) == 1:
+                # Case A: Exactly one valid URL
+                target_vendor, explicit_url = next(iter(vendor_links.items()))
             else:
-                explicit_url = raw_link if raw_link.startswith("http") else None
-                if explicit_url:
-                    _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
+                # Case B: Multiple valid URLs, but no vendor selected
+                raise ValueError(
+                    f"Component '{part_number}' has multiple vendor links {list(vendor_links.keys())}. "
+                    "Vendor selection is required before procurement dispatch."
+                )
+        else:
+            explicit_url = raw_link if raw_link.startswith("http") else None
+            target_vendor = item.get("vendor_id")
+            if explicit_url and not target_vendor:
+                _, _, target_vendor = ProcurementBridge.classify_link(explicit_url, registry)
 
-            exact_mpn = item.get("exact_mpn_required", True)
-            package = str(item.get("package") or "").strip() or None
-            footprint = str(item.get("footprint") or "").strip() or None
-            raw_m = str(item.get("manufacturer") or item.get("brand") or "").strip()
-            manufacturer = None if raw_m.upper() == "ANY" else (raw_m or None)
-            allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
-            is_mfg_any = bool(
-                item.get("is_manufacturer_any", False)
-                or raw_m.upper() == "ANY"
-                or item.get("manufacturer_rule") == "ANY"
-                or (not manufacturer and not allowed_mfg)
-            )
-            req_specs = item.get("required_specs") or {}
-            req_dims = item.get("required_dimensions") or {}
+        exact_mpn = item.get("exact_mpn_required", True)
+        package = str(item.get("package") or "").strip() or None
+        footprint = str(item.get("footprint") or "").strip() or None
+        raw_m = str(item.get("manufacturer") or item.get("brand") or "").strip()
+        manufacturer = None if raw_m.upper() == "ANY" else (raw_m or None)
+        allowed_mfg = item.get("allowed_manufacturers") or item.get("approved_manufacturers")
+        is_mfg_any = bool(
+            item.get("is_manufacturer_any", False)
+            or raw_m.upper() == "ANY"
+            or item.get("manufacturer_rule") == "ANY"
+            or (not manufacturer and not allowed_mfg)
+        )
+        req_specs = item.get("required_specs") or {}
+        req_dims = item.get("required_dimensions") or {}
 
         metadata = {
             k: v
@@ -352,14 +384,132 @@ class ProcurementBridge:
         )
 
     @staticmethod
+    def preflight_check(
+        items: List[Dict[str, Any]],
+        registry: Optional[VendorRegistry] = None
+    ) -> Dict[str, Any]:
+        """
+        Executes a deterministic preflight check across candidate items prior to staging.
+
+        Inspects every item and its supplier links independently to determine:
+        - Total items examined
+        - Items with eligible supplier links
+        - Items without eligible supplier links
+        - Breakdowns: invalid links, plugins not installed, plugins not registered, plugins disabled
+        - Excluded items with specific failure reasons
+        """
+        reg = registry if registry is not None else VendorRegistry.get_default_registry()
+        total_items = len(items)
+        eligible_items = []
+        excluded_items = []
+
+        invalid_links_count = 0
+        not_installed_count = 0
+        not_registered_count = 0
+        disabled_count = 0
+        covered_by_stock_count = 0
+
+        for item in items:
+            p_name = item.get("part_name") or item.get("part_number") or item.get("designator") or "Item"
+            raw_n = item.get("needed_qty")
+            if raw_n is None:
+                raw_n = item.get("shortage_qty")
+            if raw_n is None:
+                raw_n = item.get("total_needed_qty") or item.get("unit_qty") or 1
+            try:
+                needed_qty = int(raw_n)
+            except (ValueError, TypeError):
+                needed_qty = 1
+
+            if any(item.get(k) is not None and int(item.get(k)) <= 0 for k in ("needed_qty", "shortage_qty")):
+                covered_by_stock_count += 1
+                excluded_items.append({
+                    "item": item,
+                    "part": p_name,
+                    "reason": "FULLY_COVERED_BY_STOCK",
+                    "message": "No procurement requirement: item is fully covered by stock (0 pcs needed)"
+                })
+                continue
+
+            link = str(item.get("link", "")).strip()
+            raw_link = str(item.get("raw_link") or link).strip()
+
+            from core.procurement.vendor_links import parse_vendor_links
+            parsed = parse_vendor_links(raw_link or link, registry=reg)
+
+            if parsed.is_empty:
+                invalid_links_count += 1
+                excluded_items.append({
+                    "item": item,
+                    "part": p_name,
+                    "reason": "BLANK_LINK",
+                    "message": "Missing store link"
+                })
+                continue
+
+            if not parsed.is_valid:
+                invalid_links_count += 1
+                excluded_items.append({
+                    "item": item,
+                    "part": p_name,
+                    "reason": "INVALID_LINK",
+                    "message": parsed.error_message or "Syntactically invalid store link"
+                })
+                continue
+
+            # Check individual links for plugin readiness
+            item_links = parsed.links
+            link_evaluations = []
+            for vid, entry in item_links.items():
+                p_stat = ProcurementBridge.get_plugin_status(vid, reg)
+                link_evaluations.append((vid, entry.url, p_stat))
+
+            ready_links = [(v, u) for v, u, st in link_evaluations if st == "READY FOR ORDER"]
+
+            if not ready_links:
+                # Determine primary reason from evaluations
+                primary_stat = link_evaluations[0][2] if link_evaluations else "PLUGIN NOT INSTALLED"
+                if primary_stat == "PLUGIN NOT INSTALLED":
+                    not_installed_count += 1
+                elif primary_stat == "PLUGIN NOT REGISTERED":
+                    not_registered_count += 1
+                elif primary_stat == "PLUGIN DISABLED":
+                    disabled_count += 1
+
+                excluded_items.append({
+                    "item": item,
+                    "part": p_name,
+                    "reason": primary_stat,
+                    "message": f"Plugin unavailable for supplier link: {primary_stat}"
+                })
+            else:
+                eligible_items.append(item)
+
+        return {
+            "total_items": total_items,
+            "eligible_count": len(eligible_items),
+            "excluded_count": len(excluded_items),
+            "eligible_items": eligible_items,
+            "excluded_items": excluded_items,
+            "invalid_links_count": invalid_links_count,
+            "not_installed_count": not_installed_count,
+            "not_registered_count": not_registered_count,
+            "disabled_count": disabled_count,
+            "covered_by_stock_count": covered_by_stock_count,
+            "is_all_eligible": len(eligible_items) == total_items and total_items > 0,
+            "is_none_eligible": len(eligible_items) == 0,
+        }
+
+    @staticmethod
     def execute_staged_procurement_batch(
         items: List[Dict[str, Any]],
         progress_callback: Optional[Callable[[int, int, str, int, str], None]] = None,
         registry: Optional[VendorRegistry] = None,
         orchestrator: Optional[UniversalProcurementOrchestrator] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """
-        Executes cart staging across a batch of shortage or direct BOM items using the Universal
+        Executes cart staging across a batch of shortage items using the Universal
         Procurement Orchestrator and registered vendor adapters.
 
         Args:
@@ -395,11 +545,141 @@ class ProcurementBridge:
                 "message": "No items to stage.",
                 "successful_count": 0,
                 "failed_count": 0,
+                "preflight": None,
                 "results": [],
                 "items": [],
             }
 
-        for idx, item in enumerate(items, start=1):
+        # 1. Execute Staging Preflight Upfront
+        preflight = ProcurementBridge.preflight_check(items, registry=reg)
+        if preflight["is_none_eligible"]:
+            # Zero items eligible: abort staging immediately without calling adapters or reporting false execution failures.
+            # Count excluded items in failed_count to maintain contract consistency with batch failure reporting.
+            reasons = [exc["message"] for exc in preflight["excluded_items"]]
+            summary_reason = reasons[0] if reasons else "No vendor plugins available for selected items."
+            return {
+                "success": False,
+                "message": f"Preflight check failed: {summary_reason}",
+                "total_items": total,
+                "eligible_items": 0,
+                "excluded_items": len(preflight["excluded_items"]),
+                "attempted_items": 0,
+                "successful_count": 0,
+                "failed_count": len(preflight["excluded_items"]),
+                "actual_failed_count": 0,
+                "preflight": preflight,
+                "excluded_details": preflight["excluded_items"],
+                "results": [
+                    {
+                        "part": exc["part"],
+                        "status": "FAILED",
+                        "status_code": (
+                            SupplierOutcomeStatus.NO_OP_SATISFIED.value
+                            if exc.get("reason") == "COVERED_BY_STOCK"
+                            else SupplierOutcomeStatus.SKIPPED.value
+                        ),
+                        "qty": 0,
+                        "msg": exc["message"],
+                        "vendor_id": "",
+                        "item": exc["item"],
+                    }
+                    for exc in preflight["excluded_items"]
+                ],
+                "supplier_results": [],
+                "items": items,
+            }
+
+        # Mixed availability preflight filtering:
+        # Separate eligible items from excluded items upfront.
+        # Excluded items are recorded with their explicit preflight exclusion reasons,
+        # and NEVER dispatched to adapters or counted as attempted/failed staging operations.
+        eligible_items_list = preflight["eligible_items"]
+        excluded_items_list = preflight["excluded_items"]
+
+        for exc in excluded_items_list:
+            exc_item = exc["item"]
+            exc_item["order_success"] = False
+            exc_item["actual_ordered_qty"] = 0
+            exc_item["qty_ordered"] = 0
+            exc_item["order_message"] = exc["message"]
+            sc = (
+                SupplierOutcomeStatus.NO_OP_SATISFIED
+                if exc.get("reason") == "COVERED_BY_STOCK"
+                else SupplierOutcomeStatus.SKIPPED
+            )
+            results_log.append({
+                "part": exc["part"],
+                "status": "EXCLUDED",
+                "status_code": sc.value,
+                "qty": 0,
+                "msg": exc["message"],
+                "vendor_id": "",
+                "item": exc_item,
+            })
+            supplier_results.append(SupplierItemResult(
+                run_id=run_id,
+                item_id=str(exc_item.get("designator") or exc["part"]),
+                mpn=str(exc_item.get("part_number") or exc["part"]),
+                vendor_id="",
+                requested_quantity=int(exc_item.get("needed_qty") or exc_item.get("shortage_qty") or 0),
+                effective_quantity=0,
+                staged_quantity=0,
+                status=sc,
+                message=exc["message"],
+                pdp_url=str(exc_item.get("link", "")),
+            ))
+
+        items_to_stage = eligible_items_list
+        attempted_count = len(items_to_stage)
+
+        # -------------------------------------------------------------
+        # Step 1.5: Upfront Pre-Authentication for Involved Vendors
+        # Ensures sessions are authenticated and session cookies are loaded
+        # before any candidate inspection or cart staging begins.
+        # -------------------------------------------------------------
+        vendors_to_preauth = set()
+        for itm in items_to_stage:
+            orderable, vid = ProcurementBridge.is_item_orderable(itm, reg)
+            if orderable and vid:
+                vendors_to_preauth.add(vid)
+
+        for v_id in sorted(vendors_to_preauth):
+            try:
+                adapter = reg.get_adapter(v_id)
+                v_disp = (
+                    reg.get_vendor_name(v_id)
+                    if hasattr(reg, "get_vendor_name")
+                    else v_id.replace("vendor_", "").title()
+                )
+                session_stat = adapter.validate_session()
+                if session_stat and not getattr(session_stat, "is_authenticated", False):
+                    if progress_callback:
+                        progress_callback(0, total, v_disp, 0, f"Logging in to {v_disp}...")
+                    auth_res = adapter.authenticate()
+                    if auth_res and not auth_res.success:
+                        logger.warning(f"Upfront authentication for {v_id} failed: {auth_res.message}")
+            except Exception as auth_err:
+                logger.warning(f"Upfront pre-authentication error for {v_id}: {str(auth_err)}")
+
+        for idx, item in enumerate(items_to_stage, start=1):
+            if cancel_check and cancel_check():
+                log_event("INFO", "Procurement staging batch cancelled by user request.")
+                for rem_item in items_to_stage[idx - 1:]:
+                    rem_name = rem_item.get("part_name") or rem_item.get("part_number") or rem_item.get("designator") or "Item"
+                    rem_item["order_success"] = False
+                    rem_item["actual_ordered_qty"] = 0
+                    rem_item["qty_ordered"] = 0
+                    rem_item["order_message"] = "Automation stopped by user"
+                    results_log.append({
+                        "part": rem_name,
+                        "status": "STOPPED",
+                        "status_code": SupplierOutcomeStatus.SKIPPED.value,
+                        "qty": 0,
+                        "msg": "Stopped by user",
+                        "vendor_id": rem_item.get("vendor_id") or "",
+                        "item": rem_item,
+                    })
+                break
             p_name = (
                 item.get("part_name")
                 or item.get("part_number")
@@ -646,8 +926,15 @@ class ProcurementBridge:
         return {
             "success": overall_success,
             "message": summary_msg,
+            "total_items": total,
+            "eligible_items": len(eligible_items_list),
+            "excluded_items": len(excluded_items_list),
+            "attempted_items": attempted_count,
             "successful_count": successful_count,
-            "failed_count": failed_count,
+            "failed_count": failed_count + len(excluded_items_list),
+            "actual_failed_count": failed_count,
+            "preflight": preflight,
+            "excluded_details": excluded_items_list,
             "results": results_log,
             "supplier_results": supplier_results,
             "items": items,

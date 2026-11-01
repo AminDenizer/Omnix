@@ -108,7 +108,7 @@ class ProcurementReportBuilder:
             bom_raw_demand = meta.get("bom_raw_demand")
             if bom_raw_demand is None:
                 bom_raw_demand = req.required_quantity
-            db_stock = meta.get("db_stock_qty") or 0 if eff_mode == ProcurementMode.DATABASE_AWARE else 0
+            db_stock = meta.get("db_stock_qty") or 0
             shortage_qty = meta.get("shortage_qty") or req.required_quantity
 
             # Target orderable quantity (with A3 MOQ/step quantizations)
@@ -454,7 +454,7 @@ class ProcurementReportBuilder:
 
             item_warnings: List[str] = []
             if not link:
-                item_warnings.append("Store link is missing in database (Inventory.xlsx)")
+                item_warnings.append("Store link is missing in database")
             elif not is_registered_vendor:
                 item_warnings.append(f"Store link domain is not a registered vendor: {link}")
 

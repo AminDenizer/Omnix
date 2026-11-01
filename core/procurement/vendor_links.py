@@ -24,21 +24,18 @@ from urllib.parse import urlparse
 KNOWN_VENDOR_LABELS: Dict[str, str] = {
     "LION": "vendor_lion",
     "JAVAN": "vendor_javan",
-    "ROBOEQ": "vendor_roboeq",
 }
 
 # Authoritative default display names for fallback
 DEFAULT_VENDOR_NAMES: Dict[str, str] = {
     "vendor_lion": "Lion Electronic",
     "vendor_javan": "Javan Electronic",
-    "vendor_roboeq": "RoboEq",
 }
 
 # Default known storefront domains
 DEFAULT_VENDOR_DOMAINS: Dict[str, List[str]] = {
     "vendor_lion": ["lionelectronic.ir"],
     "vendor_javan": ["javanelec.com"],
-    "vendor_roboeq": ["roboeq.ir"],
 }
 
 
@@ -59,32 +56,42 @@ class ParsedVendorLinks:
     is_empty: bool = False
     is_valid: bool = True
     error_message: Optional[str] = None
+    entries: List[VendorLinkEntry] = field(default_factory=list)
     links: Dict[str, VendorLinkEntry] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.entries and not self.links:
+            # Populate dictionary for backwards compatibility
+            self.links = {e.vendor_id: e for e in self.entries}
+        elif self.links and not self.entries:
+            self.entries = list(self.links.values())
 
     @property
     def vendor_ids(self) -> List[str]:
         """Return sorted list of vendor identifiers present in the parsed result."""
-        return sorted(list(self.links.keys()))
+        return sorted(list({e.vendor_id for e in self.entries}))
 
     @property
     def count(self) -> int:
         """Return the number of valid vendor links."""
-        return len(self.links)
+        return len(self.entries)
 
     def get_url(self, vendor_id: str) -> Optional[str]:
         """Retrieve URL for a specific vendor_id if present."""
-        entry = self.links.get(vendor_id)
-        return entry.url if entry else None
+        for e in self.entries:
+            if e.vendor_id == vendor_id:
+                return e.url
+        return None
 
     def get_single_entry(self) -> Optional[VendorLinkEntry]:
         """Return the single VendorLinkEntry if exactly one valid link exists, else None."""
-        if len(self.links) == 1:
-            return next(iter(self.links.values()))
+        if len(self.entries) == 1:
+            return self.entries[0]
         return None
 
     def as_dict(self) -> Dict[str, str]:
         """Return mapping of vendor_id -> url."""
-        return {vid: entry.url for vid, entry in self.links.items()}
+        return {e.vendor_id: e.url for e in self.entries}
 
 
 def parse_vendor_links(
@@ -148,6 +155,12 @@ def parse_vendor_links(
                     reg = None
 
             vid = reg.get_vendor_for_url(clean_link) if (reg and hasattr(reg, "get_vendor_for_url")) else None
+            if not vid:
+                # Fallback to known default storefront domains so URL identity is recognized even if plugin is uninstalled
+                for cand_vid, domains in DEFAULT_VENDOR_DOMAINS.items():
+                    if any(netloc == d or netloc.endswith("." + d) for d in domains):
+                        vid = cand_vid
+                        break
 
             if vid:
                 v_label = vid.replace("vendor_", "").upper()
@@ -187,8 +200,8 @@ def parse_vendor_links(
 
     # Step 3: Labeled or Multi-vendor tokens separated by '||'
     raw_tokens = clean_link.split("||")
-    parsed_entries: Dict[str, VendorLinkEntry] = {}
-    seen_labels: Set[str] = set()
+    parsed_entries: List[VendorLinkEntry] = []
+    seen_urls: Set[str] = set()
 
     reg = registry
     if reg is None:
@@ -236,14 +249,6 @@ def parse_vendor_links(
                     error_message=f"Missing or malformed separator before '{other_lbl}' in token: '{tok}'.",
                 )
 
-        if norm_key in seen_labels:
-            return ParsedVendorLinks(
-                raw_input=clean_link,
-                is_valid=False,
-                error_message=f"Duplicate vendor key '{key}' in vendor links.",
-            )
-        seen_labels.add(norm_key)
-
         # Validate vendor label
         if norm_key not in KNOWN_VENDOR_LABELS:
             cand_vid = f"vendor_{key.lower()}"
@@ -274,6 +279,15 @@ def parse_vendor_links(
                 error_message=f"Invalid URL format for vendor '{key}': '{val}'. Must start with http:// or https://.",
             )
 
+        norm_u = val.rstrip("/").lower()
+        if norm_u in seen_urls:
+            return ParsedVendorLinks(
+                raw_input=clean_link,
+                is_valid=False,
+                error_message=f"Duplicate URL in vendor links: '{val}'. Each supplier link must be unique.",
+            )
+        seen_urls.add(norm_u)
+
         try:
             parsed_u = urlparse(val)
             scheme = parsed_u.scheme.lower()
@@ -294,51 +308,24 @@ def parse_vendor_links(
                 error_message=f"Malformed URL for vendor '{key}': {e}",
             )
 
-        # Domain mismatch check (Rule 11)
-        url_vid = reg.get_vendor_for_url(val) if (reg and hasattr(reg, "get_vendor_for_url")) else None
-        if not url_vid:
-            for candidate_vid, domains in DEFAULT_VENDOR_DOMAINS.items():
-                if any(netloc == d or netloc.endswith("." + d) for d in domains):
-                    url_vid = candidate_vid
-                    break
-
-        if url_vid and url_vid != vid:
-            url_v_name = (
-                reg.get_vendor_name(url_vid)
-                if (reg and hasattr(reg, "get_vendor_name"))
-                else DEFAULT_VENDOR_NAMES.get(url_vid, url_vid)
-            )
-            key_v_name = (
-                reg.get_vendor_name(vid)
-                if (reg and hasattr(reg, "get_vendor_name"))
-                else DEFAULT_VENDOR_NAMES.get(vid, key)
-            )
-            return ParsedVendorLinks(
-                raw_input=clean_link,
-                is_valid=False,
-                error_message=(
-                    f"Vendor key '{key}' ({key_v_name}) contradicts URL host '{netloc}' "
-                    f"(belongs to {url_v_name})."
-                ),
-            )
-
         display_name = (
             reg.get_vendor_name(vid)
             if (reg and hasattr(reg, "get_vendor_name"))
             else DEFAULT_VENDOR_NAMES.get(vid, norm_key.title())
         )
 
-        parsed_entries[vid] = VendorLinkEntry(
+        entry = VendorLinkEntry(
             vendor_id=vid,
             vendor_label=norm_key,
             url=val,
             display_name=display_name,
         )
+        parsed_entries.append(entry)
 
     is_multi = len(parsed_entries) > 1
     return ParsedVendorLinks(
         raw_input=clean_link,
         is_multi=is_multi,
         is_valid=True,
-        links=parsed_entries,
+        entries=parsed_entries,
     )

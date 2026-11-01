@@ -1007,13 +1007,13 @@ class TestThreeDistinctInventoryViews:
             assert any(text in win.inventory_subtabs.tabText(0) for text in ["Assembly View", "Stock Policy"])
             assert "Component Inventory" in win.inventory_subtabs.tabText(1)
 
-            # 3. Table 1: Dedicated Component Inventory Table (13 columns with Min Stock and Target Stock)
+            # 3. Table 1: Dedicated Component Inventory Table (14 columns with Min Stock, Target Stock, Status)
             assert hasattr(win, "inventory_components_table")
-            assert win.inventory_components_table.columnCount() == 13
+            assert win.inventory_components_table.columnCount() == 14
 
-            # 4. Table 2: Stock Policy Groups Table (8 columns without Min/Target Stock)
+            # 4. Table 2: Stock Policy Groups Table (7 columns without Min/Target Stock)
             assert hasattr(win, "table")
-            assert win.table.columnCount() == 8
+            assert win.table.columnCount() == 7
 
             # 5. Table 3: Associated Physical Products Table
             assert hasattr(win, "products_table")
@@ -1095,21 +1095,22 @@ class TestComponentInventoryViewAndColumns:
         with patch.object(MainWindow, "_check_startup_shortages"):
             win = MainWindow(default_file=repo.file_path, repository=repo)
             tbl = win.inventory_components_table
-            assert tbl.columnCount() == 13
+            assert tbl.columnCount() == 14
 
             expected_headers = [
                 "Row", "Manufacturer", "Part Number (MPN)", "Category",
                 "Type / Technology", "Value", "Package", "Footprint",
-                "Quantity in Stock", "Min Stock", "Target Stock", "Description", "Purchase Link"
+                "Quantity in Stock", "Min Stock", "Target Stock", "Status", "Description", "Purchase Link"
             ]
-            actual_headers = [tbl.horizontalHeaderItem(i).text() for i in range(13)]
+            actual_headers = [tbl.horizontalHeaderItem(i).text() for i in range(14)]
             assert actual_headers == expected_headers
 
-            # Verify Min Stock and Target Stock are at index 9 and 10, Description is at index 11, immediately before Purchase Link at index 12
+            # Verify Min Stock and Target Stock are at index 9 and 10, Status at index 11, Description is at index 12, immediately before Purchase Link at index 13
             assert actual_headers[9] == "Min Stock"
             assert actual_headers[10] == "Target Stock"
-            assert actual_headers[11] == "Description"
-            assert actual_headers[12] == "Purchase Link"
+            assert actual_headers[11] == "Status"
+            assert actual_headers[12] == "Description"
+            assert actual_headers[13] == "Purchase Link"
 
             win._is_force_closing = True
             win.close()
@@ -1143,8 +1144,10 @@ class TestComponentInventoryViewAndColumns:
             assert tbl.item(0, 1).text() in ["Yageo", "Murata"]
             # Col 8 is quantity
             assert tbl.item(0, 8).text() in ["100", "200"]
-            # Col 11 is description
-            assert "Resistor" in tbl.item(0, 11).text() or "Capacitor" in tbl.item(0, 11).text()
+            # Col 11 is status
+            assert tbl.item(0, 11).text() in ["🟢 Normal", "🔴 Low Stock", "⚠️ Out of Stock"]
+            # Col 12 is description
+            assert "Resistor" in tbl.item(0, 12).text() or "Capacitor" in tbl.item(0, 12).text()
 
             win._is_force_closing = True
             win.close()

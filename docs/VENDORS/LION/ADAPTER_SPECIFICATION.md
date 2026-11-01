@@ -26,7 +26,7 @@ The Adapter serves as the isolated translation layer between the vendor-agnostic
 │                              OMNIX CORE                                │
 │  • BOM Interpretation & Normalization                                  │
 │  • Inventory Matching & Shortage Calculation                           │
-│  • Procurement Modes (Mode A: Inventory-Based / Mode B: BOM-Direct)    │
+│  • Procurement Modes (Mode A: Inventory-Based)                         │
 │  • Multi-Vendor Discovery & Sourcing Orchestration                     │
 │  • Deterministic Purchase Allocation & Optimization                   │
 │  • Central Normalized Error Handling & Reporting                       │
@@ -54,7 +54,7 @@ The Adapter serves as the isolated translation layer between the vendor-agnostic
 ```
 
 ### 1.1 Strict Core / Adapter Separation Rules
-1. **Core Owns Business Logic:** Procurement modes (Mode A / Mode B), BOM parsing, stock allocation, and cross-vendor pricing comparisons are owned exclusively by Core. The Lion Adapter contains zero BOM math and zero multi-vendor ranking logic.
+1. **Core Owns Business Logic:** Procurement modes (Mode A), BOM parsing, stock allocation, and cross-vendor pricing comparisons are owned exclusively by Core. The Lion Adapter contains zero BOM math and zero multi-vendor ranking logic.
 2. **Adapter Owns Vendor Mechanics:** The Lion Adapter encapsulates all Lion-specific HTML IDs, CSS classes, URL patterns, Persian text strings, SweetAlert popup signatures, and Yii2 session tokens.
 3. **Vendor Isolation:** The Lion Adapter is 100% standalone. It has no dependencies on, or shared code with, any other vendor adapter.
 4. **Evidence-Backed Requirements:** Every selector, URL, state transition, and error condition specified herein is traceable to verified Phase 5 evidence records (`EV-LION-*`).

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QScrollArea,
+    QDialog,
 )
 
 from core.inventory.repository import SqliteInventoryRepository
@@ -169,8 +170,8 @@ class DatabaseBackupRestoreWidget(QWidget):
         excel_layout.addWidget(excel_title)
 
         excel_desc = QLabel(
-            "Export the authoritative SQLite inventory and assembly groups to a customer-facing Excel workbook (.xlsx).\n\n"
-            "• Generates exactly two worksheets: 'Inventory' & 'Assembly View'\n"
+            "Export the authoritative SQLite inventory to a customer-facing Excel workbook (.xlsx).\n\n"
+            "• Generates exactly one worksheet: 'Inventory'\n"
             "• Preserves MPN leading zeroes, groupings, and stock policies\n"
             "• Strictly independent of application backups; safe read-only snapshot"
         )
@@ -217,9 +218,9 @@ class DatabaseBackupRestoreWidget(QWidget):
         exp_layout.addWidget(exp_title)
 
         exp_desc = QLabel(
-            "Create a versioned Omnix Backup Archive (.obk) containing all database entities and sanitized settings.\n\n"
+            "Create a versioned Omnix Backup Archive (.obk) containing all database entities.\n\n"
             "• Preserves components, policies, supplier links, and reference data\n"
-            "• Automatically excludes credentials, tokens, and session secrets\n"
+            "• Application settings and credentials remain independent of backups\n"
             "• Supports backward-compatible SQLite database export (.db)"
         )
         exp_desc.setWordWrap(True)
@@ -344,6 +345,53 @@ class DatabaseBackupRestoreWidget(QWidget):
 
         ops_grid.addWidget(starter_card, 1, 1)
 
+        # Card 5: Bind / Merge Database Card
+        merge_card = QFrame()
+        merge_card.setProperty("card", "operation")
+        merge_card.setStyleSheet(card_style)
+        merge_card.setMinimumHeight(210)
+        merge_layout = QVBoxLayout(merge_card)
+        merge_layout.setContentsMargins(16, 16, 16, 16)
+        merge_layout.setSpacing(10)
+
+        merge_title = QLabel("🔀 Bind / Merge Database")
+        merge_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #10b981;")
+        merge_layout.addWidget(merge_title)
+
+        merge_desc = QLabel(
+            "Non-destructively bind and reconcile an external SQLite database into active inventory.\n\n"
+            "• Imports only verified NEW components and their supplier links with fresh IDs\n"
+            "• Safely skips duplicate, conflicting, and incomplete components without overwriting existing data\n"
+            "• Mandates pre-merge safety backup and guarantees atomic rollback on error"
+        )
+        merge_desc.setWordWrap(True)
+        merge_desc.setStyleSheet("color: #94a3b8; font-size: 11px; line-height: 1.45;")
+        merge_layout.addWidget(merge_desc)
+
+        merge_layout.addStretch(1)
+
+        self.merge_db_btn = QPushButton("Bind / Merge Database...")
+        self.merge_db_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.merge_db_btn.setFixedHeight(34)
+        self.merge_db_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #059669;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 11px;
+                border-radius: 4px;
+                padding: 6px 14px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #10b981;
+            }
+        """)
+        self.merge_db_btn.clicked.connect(self._handle_merge_database)
+        merge_layout.addWidget(self.merge_db_btn)
+
+        ops_grid.addWidget(merge_card, 2, 0)
+
         main_layout.addLayout(ops_grid, 1)
 
         scroll_area.setWidget(container)
@@ -401,7 +449,7 @@ class DatabaseBackupRestoreWidget(QWidget):
         suggested_path = os.path.join(os.getcwd(), "Inventory_Export.xlsx")
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Inventory & Assembly View to Excel",
+            "Export Inventory to Excel",
             suggested_path,
             "Excel Workbook (*.xlsx);;All Files (*)",
         )
@@ -411,14 +459,10 @@ class DatabaseBackupRestoreWidget(QWidget):
         try:
             exported_path = InventoryExcelExporter.export(self.repository, file_path)
             comp_count = len(self.repository.get_all_products())
-            grp_count = len(self.repository.get_all_groups())
             QMessageBox.information(
                 self,
                 "Export Successful",
-                f"Successfully exported {comp_count} individual components and "
-                f"{grp_count} assembly groups with exactly 2 worksheets:\n"
-                f"1. 'Inventory'\n"
-                f"2. 'Assembly View'\n\n"
+                f"Successfully exported {comp_count} individual components to worksheet 'Inventory'.\n\n"
                 f"Saved to: {exported_path}"
             )
         except Exception as e:
@@ -455,7 +499,6 @@ class DatabaseBackupRestoreWidget(QWidget):
             success, msg, meta = DatabaseBackupService.export_full_backup(
                 self.repository,
                 file_path,
-                settings_mgr=settings,
                 overwrite=True,
                 description="Omnix User Application Backup",
             )
@@ -465,7 +508,6 @@ class DatabaseBackupRestoreWidget(QWidget):
             policy_cnt = meta.get("stock_policies", 0)
             prov_cnt = meta.get("ref_providers", 0)
             size_kb = meta.get("file_size_bytes", 0) / 1024.0
-            has_set = "Yes (Sanitized)" if meta.get("has_settings") else "No"
             b_type = meta.get("backup_type", "full")
 
             QMessageBox.information(
@@ -476,7 +518,6 @@ class DatabaseBackupRestoreWidget(QWidget):
                 f"• Components: {comp_cnt}\n"
                 f"• Stock Policies: {policy_cnt}\n"
                 f"• Providers: {prov_cnt}\n"
-                f"• Settings Included: {has_set}\n"
                 f"• Size: {size_kb:.1f} KB\n\n"
                 f"Destination: {file_path}",
             )
@@ -512,7 +553,6 @@ class DatabaseBackupRestoreWidget(QWidget):
         policy_cnt = meta.get("stock_policies", 0)
         prov_cnt = meta.get("ref_providers", 0)
         b_type = meta.get("backup_type", "full")
-        has_settings = "Yes (passwords preserved)" if meta.get("has_settings") else "No"
 
         confirm_msg = (
             f"Are you sure you want to restore this backup?\n\n"
@@ -520,10 +560,9 @@ class DatabaseBackupRestoreWidget(QWidget):
             f"• Backup Type: {b_type.upper()}\n"
             f"• Components to restore: {comp_cnt}\n"
             f"• Stock Policies: {policy_cnt}\n"
-            f"• Providers: {prov_cnt}\n"
-            f"• Settings included: {has_settings}\n\n"
-            f"Note: An automatic safety snapshot of the active database and settings will be created before restoring.\n"
-            f"Current database data will be replaced."
+            f"• Providers: {prov_cnt}\n\n"
+            f"Note: An automatic safety snapshot of the active database will be created before restoring.\n"
+            f"Current database data will be replaced. Local application settings and credentials remain unchanged."
         )
 
         reply = QMessageBox.question(
@@ -540,8 +579,6 @@ class DatabaseBackupRestoreWidget(QWidget):
         success, msg, res_meta = DatabaseBackupService.restore_backup(
             self.repository,
             file_path,
-            settings_mgr=settings,
-            restore_settings=True,
         )
         if success:
             self.refresh_status()
@@ -664,3 +701,19 @@ class DatabaseBackupRestoreWidget(QWidget):
             QMessageBox.information(self, "Starter Baseline Applied", info_msg)
         else:
             QMessageBox.critical(self, "Failed to Apply Starter Baseline", f"Operation failed:\n\n{msg}")
+
+    def _handle_merge_database(self):
+        """Open DatabaseMergeDialog to non-destructively merge external SQLite database."""
+        if not self.repository or not isinstance(self.repository, SqliteInventoryRepository):
+            QMessageBox.information(
+                self,
+                "SQLite Database Required",
+                "Database merge requires an active SQLite inventory repository."
+            )
+            return
+
+        from ui.dialogs.database_merge_dialog import DatabaseMergeDialog
+        dlg = DatabaseMergeDialog(repository=self.repository, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.refresh_status()
+            self.databaseRestored.emit()

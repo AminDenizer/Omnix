@@ -93,6 +93,11 @@ def keypair():
 @pytest.fixture
 def temp_environment():
     """Create a pristine isolated directory structure for tests."""
+    import sys
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("omnix_plugins."):
+            sys.modules.pop(mod, None)
+
     temp_dir = Path(tempfile.mkdtemp(prefix="omnix_test_m1_"))
     prod_store = temp_dir / "prod_trust_store"
     dev_store = temp_dir / "dev_trust_store"
@@ -102,17 +107,21 @@ def temp_environment():
     dev_store.mkdir(parents=True)
     plugins_root.mkdir(parents=True)
 
-    yield {
-        "root": temp_dir,
-        "prod_store": prod_store,
-        "dev_store": dev_store,
-        "plugins_root": plugins_root,
-    }
-
     try:
-        shutil.rmtree(temp_dir)
-    except Exception:
-        pass
+        yield {
+            "root": temp_dir,
+            "prod_store": prod_store,
+            "dev_store": dev_store,
+            "plugins_root": plugins_root,
+        }
+    finally:
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass
+        for mod in list(sys.modules.keys()):
+            if mod.startswith("omnix_plugins."):
+                sys.modules.pop(mod, None)
 
 
 def make_manifest(

@@ -142,24 +142,21 @@ class TestSection4BackupAndRestore:
         assert meta["stock_policies"] == 1
         assert meta["ref_manufacturers"] >= 2
         assert meta["ref_categories"] >= 1
-        assert meta["has_settings"] is True
+        assert meta["has_settings"] is False
 
         # Inspect ZIP archive structure
         with zipfile.ZipFile(backup_file, "r") as zf:
             namelist = zf.namelist()
             assert "manifest.json" in namelist
             assert "database.db" in namelist
-            assert "settings.json" in namelist
+            # MPS §16.3: Settings are strictly independent and must not be in backup archives
+            assert "settings.json" not in namelist
 
             manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
             assert manifest["app_name"] == "Omnix"
             assert manifest["backup_type"] == "full"
+            assert manifest["has_settings"] is False
             assert manifest["entity_counts"]["components"] == 1
-
-            # Verify secrets are redacted from settings.json
-            st_data = json.loads(zf.read("settings.json").decode("utf-8"))
-            assert st_data.get("lion_password") == ""
-            assert st_data.get("stock_policy_enabled") is True
 
     # 2. Backup/restore round-trip preserving records, identifiers, relationships, and settings
     def test_backup_restore_roundtrip_preserves_environment(self, populated_repo, mock_settings, tmp_path):
@@ -191,9 +188,9 @@ class TestSection4BackupAndRestore:
         assert p.mpn == "RC0603FR-0710KL"
         assert p.quantity_in_stock == 1500
 
-        # Verify settings restored
-        assert mock_settings.settings["stock_policy_enabled"] is True
-        # Verify local password was not wiped
+        # MPS §16.3: Active local user settings and credentials remain intact and are not overwritten by restore
+        mock_settings.load()
+        assert mock_settings.settings["stock_policy_enabled"] is False
         assert mock_settings.settings["lion_password"] == "super_secret_password_123"
 
     # 3. Supplier/vendor names and reference data surviving round-trip
@@ -750,3 +747,99 @@ class TestSection4BackupAndRestore:
         assert "rollback to previous state also failed" in msg.lower()
         assert "rollback i/o crash" in msg.lower()
         assert "rolled back to safety snapshot" not in msg.lower()
+
+    # 23. Bundled Starter Baseline Archive Verification
+    def test_bundled_starter_archive_canonical_integrity(self):
+        """
+        Validates the physical checked-in starter archive on disk: 'data/starter_backup.obk'.
+        Guarantees that the distributed asset strictly matches the canonical reference taxonomy:
+        - Exactly 22 categories
+        - Exactly 205 category-scoped types
+        - Exactly 399 canonical manufacturers
+        - Exactly 4 link providers
+        - Zero inventory components, zero stock policies, and zero supplier links
+        - Zero obsolete top-level categories ('BJT', 'MOSFET', 'JFET', 'IGBT')
+        - Transistor technologies correctly consolidated under 'Transistor'
+        - Zero orphaned types
+        """
+        import os
+        import zipfile
+        import sqlite3
+        import tempfile
+        from core.inventory.backup import get_default_starter_backup_path, DatabaseBackupService
+
+        starter_path = get_default_starter_backup_path()
+        assert starter_path is not None, "Starter backup archive path could not be resolved"
+        assert os.path.exists(starter_path), f"Starter archive not found at: {starter_path}"
+
+        # 1. Structural and integrity validation using existing service API
+        is_valid, msg, meta = DatabaseBackupService.validate_backup_file(starter_path)
+        assert is_valid is True, f"Bundled starter archive failed validation: {msg}"
+        assert meta["backup_type"] == "starter"
+        assert meta["format_version"] == "1.0.0"
+
+        # 2. Assert canonical entity counts reported in metadata / manifest
+        assert meta["ref_categories"] == 22, f"Expected 22 categories, got {meta.get('ref_categories')}"
+        assert meta["ref_types"] == 205, f"Expected 205 types, got {meta.get('ref_types')}"
+        assert meta["ref_manufacturers"] == 399, f"Expected 399 manufacturers, got {meta.get('ref_manufacturers')}"
+        assert meta["ref_providers"] == 4, f"Expected 4 providers, got {meta.get('ref_providers')}"
+        assert meta["components"] == 0, "Starter archive must contain zero components"
+        assert meta["stock_policies"] == 0, "Starter archive must contain zero stock policies"
+        assert meta["supplier_links"] == 0, "Starter archive must contain zero supplier links"
+        assert meta.get("has_settings") is False, "Starter archive must not contain settings"
+
+        # 3. Direct inspection of embedded SQLite database
+        with zipfile.ZipFile(starter_path, "r") as zf:
+            assert "manifest.json" in zf.namelist()
+            assert "database.db" in zf.namelist()
+            assert "settings.json" not in zf.namelist()
+
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                extracted_db = os.path.join(tmp_dir, "starter_extracted.db")
+                with open(extracted_db, "wb") as f_out:
+                    f_out.write(zf.read("database.db"))
+
+                conn = sqlite3.connect(f"file:{os.path.abspath(extracted_db)}?mode=ro", uri=True)
+                cur = conn.cursor()
+
+                # Zero components, policies, links
+                cur.execute("SELECT COUNT(*) FROM components;")
+                assert cur.fetchone()[0] == 0
+                cur.execute("SELECT COUNT(*) FROM stock_policies;")
+                assert cur.fetchone()[0] == 0
+                cur.execute("SELECT COUNT(*) FROM supplier_links;")
+                assert cur.fetchone()[0] == 0
+
+                # Categories verification
+                cur.execute("SELECT id, name FROM ref_categories ORDER BY id;")
+                categories = cur.fetchall()
+                assert len(categories) == 22
+                cat_names = [c[1] for c in categories]
+                assert "Transistor" in cat_names
+
+                # No obsolete top-level categories
+                for obsolete in ["BJT", "MOSFET", "JFET", "IGBT"]:
+                    assert obsolete not in cat_names, f"Obsolete category '{obsolete}' found in starter archive"
+
+                # Transistor scoped technologies
+                cur.execute(
+                    "SELECT t.name FROM ref_types t JOIN ref_categories c ON c.id=t.category_id WHERE c.name='Transistor' ORDER BY t.id;"
+                )
+                trans_types = [r[0] for r in cur.fetchall()]
+                assert len(trans_types) == 9
+                for expected_tech in ["BJT", "MOSFET", "JFET", "IGBT", "Darlington", "Digital Transistor", "RF Transistor", "Power Transistor", "Other / Special-Purpose"]:
+                    assert expected_tech in trans_types, f"Expected technology '{expected_tech}' missing from Transistor category"
+
+                # Zero orphaned types
+                cur.execute("SELECT COUNT(*) FROM ref_types WHERE category_id NOT IN (SELECT id FROM ref_categories);")
+                assert cur.fetchone()[0] == 0, "Orphaned types detected in starter database"
+
+                # Zero duplicate normalized names
+                cur.execute("SELECT norm_name, COUNT(*) FROM ref_categories GROUP BY norm_name HAVING COUNT(*) > 1;")
+                assert len(cur.fetchall()) == 0
+                cur.execute("SELECT norm_name, COUNT(*) FROM ref_manufacturers GROUP BY norm_name HAVING COUNT(*) > 1;")
+                assert len(cur.fetchall()) == 0
+                cur.execute("SELECT category_id, norm_name, COUNT(*) FROM ref_types GROUP BY category_id, norm_name HAVING COUNT(*) > 1;")
+                assert len(cur.fetchall()) == 0
+
+                conn.close()

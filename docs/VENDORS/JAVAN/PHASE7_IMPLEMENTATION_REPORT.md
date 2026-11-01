@@ -29,7 +29,7 @@ The **Javan Electronic Vendor Adapter** (`JavanVendorAdapter`) has been implemen
 │                              OMNIX CORE                                │
 │  • BOM Interpretation & Normalization                                  │
 │  • Inventory Matching & Shortage Calculation                           │
-│  • Procurement Modes (Mode A: Inventory-Based / Mode B: BOM-Direct)    │
+│  • Procurement Modes (Mode A: Inventory-Based)                         │
 │  • Multi-Vendor Discovery & Sourcing Orchestration                     │
 │  • Deterministic Purchase Allocation & Optimization                   │
 │  • Central Normalized Error Handling & Reporting                       │

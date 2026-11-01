@@ -48,10 +48,9 @@ CANONICAL_CAPABILITIES = frozenset({
     "LIVE_STOCK_PROBE",
     "TIERED_PRICING",
     "MODE_A_STAGING",
-    "MODE_B_STAGING",
 })
 
-CANONICAL_MODES = frozenset({"MODE_A", "MODE_B"})
+CANONICAL_MODES = frozenset({"MODE_A"})
 CANONICAL_PUBLISHER_TYPES = frozenset({"OFFICIAL", "THIRD_PARTY_VERIFIED", "COMMUNITY"})
 
 
@@ -608,12 +607,6 @@ class ManifestValidator:
             errors.append(ManifestValidationError(
                 code="SEMANTIC_MODE_CAPABILITY_MISMATCH",
                 message="Capability 'MODE_A_STAGING' declared but 'MODE_A' is absent from supported_modes",
-                path="supported_modes"
-            ))
-        if "MODE_B_STAGING" in capabilities and "MODE_B" not in supported_modes:
-            errors.append(ManifestValidationError(
-                code="SEMANTIC_MODE_CAPABILITY_MISMATCH",
-                message="Capability 'MODE_B_STAGING' declared but 'MODE_B' is absent from supported_modes",
                 path="supported_modes"
             ))
 

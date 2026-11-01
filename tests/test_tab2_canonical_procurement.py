@@ -1,17 +1,17 @@
 """
 Tests for Tab 2 (Altium BOM Project Auditor) Canonical Procurement Semantics:
-- Mode A (Database-Aware / Inventory-Driven):
+- Mode A (Database-Aware / Inventory-Driven): Sole supported procurement workflow.
   * Direct purchasing strictly targeting the Inventory.xlsx link.
   * Validation of MPN, Package, Footprint, Specs, Dimensions.
   * Brand double-check only if BOM specified an explicit brand; passes if ANY.
   * Strict typed failures on mismatch (INCOMPATIBLE_MPN, INCOMPATIBLE_PACKAGE, etc.).
   * No multi-vendor fallback or silent vendor substitution.
-- Mode B (BOM-Direct / Turnkey):
-  * Multi-vendor discovery across all enabled registered vendors.
+- Multi-Vendor Candidate Discovery & Evaluation (Shared Orchestration Infrastructure):
+  * Catalog discovery across enabled registered vendors.
   * Brand Rule handling (ANY, single brand, approved list).
   * Canonical quantity calculation (if req < moq: moq; else: ceil(req/step)*step).
   * Deterministic price & quantity ranking.
-- 7 Historical Safeguards:
+- Safeguards:
   * Strict live site stock (NO-PARTIAL-STOCK).
   * Out of stock & unorderable detection.
 """
@@ -313,8 +313,23 @@ class TestModeAValidationAndSafeguards:
         reg = tab2_registry
         orchestrator = UniversalProcurementOrchestrator(registry=reg)
 
-        # Mode A item with link to Javan (STMicroelectronics), but BOM specifies Texas Instruments
-        req = ProcurementRequest(
+        # 1. Without explicit direct link (discovery): Brand mismatch strictly fails
+        req_discovery = ProcurementRequest(
+            part_number="NE555P",
+            required_quantity=5,
+            explicit_vendor_id="vendor_javan",
+            manufacturer="Texas Instruments",
+            is_manufacturer_any=False,
+            mode=ProcurementMode.DATABASE_AWARE,
+        )
+        plan_discovery = orchestrator.build_plan([req_discovery])
+        assert plan_discovery.is_complete is False
+        res_discovery = plan_discovery.results[0]
+        assert res_discovery.status == "UNRESOLVED"
+        assert res_discovery.evaluations[0].state == EvaluationState.INCOMPATIBLE_MANUFACTURER
+
+        # 2. Option A (DOC-OMNIX-PLAN-FINAL-004): Explicit direct link bypasses scraper heuristics
+        req_direct = ProcurementRequest(
             part_number="NE555P",
             required_quantity=5,
             explicit_vendor_id="vendor_javan",
@@ -323,26 +338,29 @@ class TestModeAValidationAndSafeguards:
             is_manufacturer_any=False,
             mode=ProcurementMode.DATABASE_AWARE,
         )
-
-        plan = orchestrator.build_plan([req])
-        assert plan.is_complete is False
-        res = plan.results[0]
-        assert res.status == "UNRESOLVED"
-        assert res.selected_evaluation is None
-        assert len(res.evaluations) == 1
-        ev = res.evaluations[0]
-        assert ev.is_eligible is False
-        assert ev.state == EvaluationState.INCOMPATIBLE_MANUFACTURER
-        # Must NOT silently switch to Lion even though Lion sells TI!
-        assert len(res.candidates) == 1
-        assert res.candidates[0].vendor_id == "vendor_javan"
+        plan_direct = orchestrator.build_plan([req_direct])
+        assert plan_direct.is_complete is True
+        assert plan_direct.results[0].selected_evaluation.state == EvaluationState.ELIGIBLE
 
     def test_mode_a_direct_purchasing_package_mismatch_fails(self, tab2_registry):
         reg = tab2_registry
         orchestrator = UniversalProcurementOrchestrator(registry=reg)
 
-        # Mode A item linked to DIP-8 product, but BOM requires SOP-8
-        req = ProcurementRequest(
+        # 1. Without explicit direct link (discovery): Package mismatch strictly fails
+        req_discovery = ProcurementRequest(
+            part_number="NE555P",
+            required_quantity=5,
+            explicit_vendor_id="vendor_lion",
+            is_manufacturer_any=True,
+            package="SOP-8",
+            mode=ProcurementMode.DATABASE_AWARE,
+        )
+        plan_discovery = orchestrator.build_plan([req_discovery])
+        assert plan_discovery.is_complete is False
+        assert plan_discovery.results[0].evaluations[0].state == EvaluationState.INCOMPATIBLE_PACKAGE
+
+        # 2. Option A (DOC-OMNIX-PLAN-FINAL-004): Explicit direct link bypasses scraper heuristics
+        req_direct = ProcurementRequest(
             part_number="NE555P",
             required_quantity=5,
             explicit_vendor_id="vendor_lion",
@@ -351,13 +369,9 @@ class TestModeAValidationAndSafeguards:
             package="SOP-8",
             mode=ProcurementMode.DATABASE_AWARE,
         )
-
-        plan = orchestrator.build_plan([req])
-        assert plan.is_complete is False
-        res = plan.results[0]
-        assert res.status == "UNRESOLVED"
-        assert res.selected_evaluation is None
-        assert res.evaluations[0].state == EvaluationState.INCOMPATIBLE_PACKAGE
+        plan_direct = orchestrator.build_plan([req_direct])
+        assert plan_direct.is_complete is True
+        assert plan_direct.results[0].selected_evaluation.state == EvaluationState.ELIGIBLE
 
     def test_mode_a_insufficient_site_stock_fails_safeguard(self, tab2_registry):
         reg = tab2_registry
@@ -376,25 +390,25 @@ class TestModeAValidationAndSafeguards:
         )
         ev = orchestrator.evaluate_candidate(cand, required_quantity=7)
         assert ev.is_eligible is False
-        assert ev.state == EvaluationState.OUT_OF_STOCK
+        assert ev.state == EvaluationState.INSUFFICIENT_STOCK
         assert any("Insufficient stock" in r for r in ev.rejection_reasons)
 
 
-class TestModeBTurnkeySourcing:
-    """Mode B tests: Pure CAD BOM turnkey sourcing across all enabled vendors."""
+class TestTurnkeyCandidateEvaluation:
+    """Verifies vendor catalog candidate discovery, cost ranking, and brand filtering."""
 
-    def test_mode_b_multi_vendor_discovery_and_cost_ranking(self, tab2_registry):
+    def test_multi_vendor_discovery_and_cost_ranking(self, tab2_registry):
         reg = tab2_registry
         orchestrator = UniversalProcurementOrchestrator(registry=reg)
 
-        # Mode B request for NE555P (ANY brand, needed=10)
+        # NE555P (ANY brand, needed=10)
         # Lion: 5000 IRR, MOQ 10 -> total = 50,000 IRR
         # Javan: 4500 IRR, MOQ 5, step 5 -> needed 10 -> total = 45,000 IRR (Javan is cheaper)
         req = ProcurementRequest(
             part_number="NE555P",
             required_quantity=10,
             is_manufacturer_any=True,
-            mode=ProcurementMode.DIRECT_BOM,
+            mode=ProcurementMode.DATABASE_AWARE,
         )
 
         plan = orchestrator.build_plan([req])
@@ -406,18 +420,18 @@ class TestModeBTurnkeySourcing:
         assert res.selected_evaluation.candidate.vendor_id == "vendor_javan"
         assert res.selected_evaluation.effective_total_price_irr == 45000
 
-    def test_mode_b_brand_rule_filtering(self, tab2_registry):
+    def test_brand_rule_filtering(self, tab2_registry):
         reg = tab2_registry
         orchestrator = UniversalProcurementOrchestrator(registry=reg)
 
-        # Mode B request with Brand = "Texas Instruments"
+        # Request with Brand = "Texas Instruments"
         # Javan (ST) is disqualified; Lion (TI) is selected
         req = ProcurementRequest(
             part_number="NE555P",
             required_quantity=10,
             manufacturer="Texas Instruments",
             is_manufacturer_any=False,
-            mode=ProcurementMode.DIRECT_BOM,
+            mode=ProcurementMode.DATABASE_AWARE,
         )
 
         plan = orchestrator.build_plan([req])

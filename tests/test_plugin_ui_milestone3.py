@@ -829,11 +829,10 @@ class TestVendorPluginsWidgetUI:
         dlg.show()
         qapp.processEvents()
 
-        # Check field widgets
+        # Check field widgets (headless is managed in global settings, not per-plugin dialog)
         assert "username" in dlg.field_widgets
         assert "password" in dlg.field_widgets
         assert "timeout" in dlg.field_widgets
-        assert "headless" in dlg.field_widgets
 
         # Simulate user input
         dlg.field_widgets["username"][0].setText("test_user_42")

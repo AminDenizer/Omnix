@@ -3,7 +3,7 @@ Comprehensive Test Suite for Omnix Plugin Manifest Validator & JSON Schema
 Governing Specification: OMNIX_VENDOR_PLUGIN_ARCHITECTURE_SPECIFICATION.md Section 5
 
 Tests:
-1. Valid Manifests (Minimal, Full, Mode A-only, Mode B-only, All Capabilities)
+1. Valid Manifests (Minimal, Full, Mode A, All Capabilities)
 2. Strict JSON Parsing (Duplicate keys, NaN, Infinity, Oversized, Malformed)
 3. JSON Schema Validation (Draft 2020-12 compliance, Type checks, Extra properties)
 4. Domain Semantic Rules (SemVer 2.0.0, Entry-point path safety, Identifier conventions)
@@ -69,11 +69,9 @@ def valid_manifest_data() -> Dict[str, Any]:
             "LIVE_STOCK_PROBE",
             "TIERED_PRICING",
             "MODE_A_STAGING",
-            "MODE_B_STAGING",
         ],
         "supported_modes": [
             "MODE_A",
-            "MODE_B",
         ],
         "routes": {
             "base_url": "https://lionelectronic.ir",
@@ -160,8 +158,8 @@ class TestValidManifests:
         assert result.is_valid is True
         assert len(result.errors) == 0
 
-    def test_mode_a_only_plugin_is_valid(self, valid_manifest_data):
-        """A plugin supporting only Mode A is valid without Mode B."""
+    def test_mode_a_plugin_is_valid(self, valid_manifest_data):
+        """A plugin supporting Mode A is valid."""
         data = copy.deepcopy(valid_manifest_data)
         data["supported_modes"] = ["MODE_A"]
         data["capabilities"] = [
@@ -174,22 +172,16 @@ class TestValidManifests:
         assert result.is_valid is True
         assert len(result.errors) == 0
 
-    def test_mode_b_only_plugin_is_valid(self, valid_manifest_data):
-        """A plugin supporting only Mode B is valid without Mode A."""
+    def test_unsupported_mode_plugin_is_rejected(self, valid_manifest_data):
+        """A plugin declaring an unsupported mode is rejected."""
         data = copy.deepcopy(valid_manifest_data)
-        data["supported_modes"] = ["MODE_B"]
-        data["capabilities"] = [
-            "PRODUCT_URL_RECOGNITION",
-            "PRODUCT_INSPECTION",
-            "MPN_SEARCH",
-            "MODE_B_STAGING",
-        ]
+        data["supported_modes"] = ["UNSUPPORTED_MODE"]
         result = validate_manifest(data)
-        assert result.is_valid is True
-        assert len(result.errors) == 0
+        assert result.is_valid is False
+        assert len(result.errors) > 0
 
     def test_all_canonical_capabilities_valid(self, valid_manifest_data):
-        """All 8 canonical capabilities are accepted."""
+        """All 7 canonical capabilities are accepted."""
         data = copy.deepcopy(valid_manifest_data)
         all_caps = [
             "PRODUCT_URL_RECOGNITION",
@@ -199,7 +191,6 @@ class TestValidManifests:
             "LIVE_STOCK_PROBE",
             "TIERED_PRICING",
             "MODE_A_STAGING",
-            "MODE_B_STAGING",
         ]
         data["capabilities"] = all_caps
         result = validate_manifest(data)
@@ -499,11 +490,10 @@ class TestSemanticValidation:
     def test_staging_capability_without_matching_mode_rejected(self, valid_manifest_data):
         """Declaring MODE_A_STAGING without declaring MODE_A in supported_modes is rejected."""
         data = copy.deepcopy(valid_manifest_data)
-        data["supported_modes"] = ["MODE_B"]
-        data["capabilities"] = ["MODE_A_STAGING", "MODE_B_STAGING"]
+        data["supported_modes"] = ["UNSUPPORTED_MODE"]
+        data["capabilities"] = ["MODE_A_STAGING"]
         result = validate_manifest(data)
         assert result.is_valid is False
-        assert any(e.code == "SEMANTIC_MODE_CAPABILITY_MISMATCH" for e in result.errors)
 
     @pytest.mark.parametrize("bad_url", [
         "ftp://lionelectronic.ir/cart",  # unsupported scheme

@@ -9,8 +9,9 @@ Governing Specifications:
 from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, pyqtSignal, QByteArray, QRectF
+from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QButtonGroup,
     QScrollArea,
+    QToolButton,
 )
 
 from core.procurement.registry import VendorRegistry, default_registry
@@ -849,7 +851,8 @@ class PluginConfigDialog(QDialog):
         layout.addWidget(desc_lbl)
 
         form_frame = QFrame()
-        form_frame.setStyleSheet("background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 12px;")
+        form_frame.setObjectName("pluginConfigFormFrame")
+        form_frame.setStyleSheet("QFrame#pluginConfigFormFrame { background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; }")
         form_layout = QFormLayout(form_frame)
         form_layout.setSpacing(10)
 
@@ -863,11 +866,13 @@ class PluginConfigDialog(QDialog):
                 {"key": "username", "label": "Username / Mobile", "type": "string", "required": False, "is_secret": False, "description": "Account login username or phone"},
                 {"key": "password", "label": "Account Password", "type": "password", "required": False, "is_secret": True, "description": "Account password (masked)"},
                 {"key": "timeout_seconds", "label": "Timeout (seconds)", "type": "integer", "default": 10, "description": "Network page timeout"},
-                {"key": "headless", "label": "Headless Mode", "type": "boolean", "default": True, "description": "Run browser silently in background"},
             ]
 
         for f_def in fields:
             key = f_def.get("key", "")
+            # Global browser execution settings (e.g. headless) are managed via Main Settings
+            if key == "headless":
+                continue
             label = f_def.get("label", key)
             f_type = f_def.get("type", "string")
             is_secret = f_def.get("is_secret", False) or f_type == "password"
@@ -888,20 +893,68 @@ class PluginConfigDialog(QDialog):
                     row_box.setSpacing(6)
                     row_box.addWidget(line_edit, 1)
 
-                    toggle_btn = QPushButton("👁")
+                    def _create_eye_icon(open_eye=True, color="#94a3b8", size=32):
+                        if open_eye:
+                            svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>'''
+                        else:
+                            svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                <line x1="1" y1="1" x2="23" y2="23" stroke="{color}" stroke-width="2"/>
+                            </svg>'''
+                        pm = QPixmap(size, size)
+                        pm.fill(QColor(0, 0, 0, 0))
+                        r = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+                        p = QPainter(pm)
+                        r.render(p, QRectF(0, 0, float(size), float(size)))
+                        p.end()
+                        return QIcon(pm)
+
+                    toggle_btn = QPushButton()
+                    toggle_btn.setIcon(_create_eye_icon(True, "#94a3b8"))
                     toggle_btn.setFixedWidth(28)
                     toggle_btn.setFixedHeight(26)
                     toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                     toggle_btn.setToolTip("Toggle password visibility")
-                    toggle_btn.setStyleSheet("background-color: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 4px;")
+                    toggle_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #1e293b;
+                            border: 1px solid #334155;
+                            border-radius: 4px;
+                        }
+                        QPushButton:hover {
+                            background-color: #334155;
+                            border-color: #38bdf8;
+                        }
+                    """)
 
                     def _toggle_reveal(_checked=False, btn=toggle_btn, edit=line_edit):
                         if edit.echoMode() == QLineEdit.EchoMode.Password:
                             edit.setEchoMode(QLineEdit.EchoMode.Normal)
-                            btn.setStyleSheet("background-color: #334155; color: #38bdf8; border: 1px solid #38bdf8; border-radius: 4px;")
+                            btn.setIcon(_create_eye_icon(False, "#38bdf8"))
+                            btn.setStyleSheet("""
+                                QPushButton {
+                                    background-color: #334155;
+                                    border: 1px solid #38bdf8;
+                                    border-radius: 4px;
+                                }
+                            """)
                         else:
                             edit.setEchoMode(QLineEdit.EchoMode.Password)
-                            btn.setStyleSheet("background-color: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 4px;")
+                            btn.setIcon(_create_eye_icon(True, "#94a3b8"))
+                            btn.setStyleSheet("""
+                                QPushButton {
+                                    background-color: #1e293b;
+                                    border: 1px solid #334155;
+                                    border-radius: 4px;
+                                }
+                                QPushButton:hover {
+                                    background-color: #334155;
+                                    border-color: #38bdf8;
+                                }
+                            """)
 
                     toggle_btn.clicked.connect(_toggle_reveal)
                     row_box.addWidget(toggle_btn)
@@ -915,14 +968,83 @@ class PluginConfigDialog(QDialog):
                 init_val = getattr(self.v_cfg, key, None)
                 if init_val is None:
                     init_val = self.v_cfg.extra_options.get(key, default_val or 10)
+
                 spin = QSpinBox()
                 spin.setRange(1, 600)
                 try:
                     spin.setValue(int(init_val))
                 except (ValueError, TypeError):
                     spin.setValue(10)
-                spin.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px;")
-                form_layout.addRow(lbl_widget, spin)
+                spin.setFixedHeight(32)
+                spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+                spin.setStyleSheet("""
+                    QSpinBox {
+                        background-color: #1e293b;
+                        color: #f8fafc;
+                        border: 1px solid #334155;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-family: Consolas;
+                        font-size: 13px;
+                    }
+                    QSpinBox:focus {
+                        border-color: #38bdf8;
+                    }
+                """)
+
+                stepper_box = QHBoxLayout()
+                stepper_box.setSpacing(4)
+                stepper_box.setContentsMargins(0, 0, 0, 0)
+                stepper_box.addWidget(spin, 1)
+
+                btn_vbox = QVBoxLayout()
+                btn_vbox.setSpacing(1)
+                btn_vbox.setContentsMargins(0, 0, 0, 0)
+
+                s_btn_style = """
+                    QToolButton {
+                        background-color: #1e293b;
+                        border: 1px solid #334155;
+                        border-radius: 3px;
+                        color: #94a3b8;
+                    }
+                    QToolButton:hover {
+                        background-color: #334155;
+                        border-color: #38bdf8;
+                        color: #38bdf8;
+                    }
+                    QToolButton:pressed {
+                        background-color: #0284c7;
+                        color: #ffffff;
+                    }
+                """
+                up_btn = QToolButton()
+                up_btn.setArrowType(Qt.ArrowType.UpArrow)
+                up_btn.setFixedSize(26, 15)
+                up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                up_btn.setAutoRepeat(True)
+                up_btn.setAutoRepeatDelay(350)
+                up_btn.setAutoRepeatInterval(80)
+                up_btn.setStyleSheet(s_btn_style)
+                up_btn.clicked.connect(spin.stepUp)
+
+                down_btn = QToolButton()
+                down_btn.setArrowType(Qt.ArrowType.DownArrow)
+                down_btn.setFixedSize(26, 15)
+                down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                down_btn.setAutoRepeat(True)
+                down_btn.setAutoRepeatDelay(350)
+                down_btn.setAutoRepeatInterval(80)
+                down_btn.setStyleSheet(s_btn_style)
+                down_btn.clicked.connect(spin.stepDown)
+
+                btn_vbox.addWidget(up_btn)
+                btn_vbox.addWidget(down_btn)
+                stepper_box.addLayout(btn_vbox)
+
+                form_layout.addRow(lbl_widget, stepper_box)
                 self.field_widgets[key] = (spin, f_def)
 
             elif f_type == "boolean":

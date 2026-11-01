@@ -1,15 +1,14 @@
 """
 Omnix Core — Inventory Excel Exporter
-Governing Document: Phase 2.4 Excel Export Specification
+Governing Document: Phase 2 Inventory Export Specification
 
 Exports the authoritative SQLite inventory database to a customer-facing Excel workbook
-with EXACTLY two worksheets in exact order:
-1. 'Inventory'      — Individual physical component records.
-2. 'Assembly View'  — Aggregated stock groups and group-level policies.
+with exactly one worksheet named 'Inventory' representing Component Inventory:
+- 'Inventory' — Individual physical component records.
 
 Architectural guarantees:
 - SQLite database remains the runtime source of truth.
-- Output contains strictly 2 sheets (no extra reference/diagnostic sheets).
+- Component Inventory export contains strictly 1 worksheet named 'Inventory'.
 - Package leading zeroes are strictly preserved (e.g. '0402', '0603', '0805').
 - Never modifies existing user workbooks.
 """
@@ -31,8 +30,8 @@ from core.logger import log_event, track_operation
 
 class InventoryExcelExporter:
     """
-    Exports inventory and assembly stock groups to an Excel (.xlsx) workbook
-    conforming strictly to the two-sheet contract: ['Inventory', 'Assembly View'].
+    Exports inventory to an Excel (.xlsx) workbook conforming strictly to the
+    single-sheet Component Inventory contract: ['Inventory'].
     """
 
     @classmethod
@@ -40,13 +39,16 @@ class InventoryExcelExporter:
         cls,
         repository: SqliteInventoryRepository,
         filepath: str,
+        include_assembly: bool = False,
     ) -> str:
         """
         Exports the contents of the given SqliteInventoryRepository to an Excel workbook.
 
         Args:
-            repository: SqliteInventoryRepository instance containing components and policies.
+            repository: SqliteInventoryRepository instance containing components.
             filepath: Target output file path (.xlsx).
+            include_assembly: If True, also includes 'Assembly View' worksheet (legacy option).
+                              Defaults to False (strictly single-sheet 'Inventory').
 
         Returns:
             The absolute path of the generated workbook.
@@ -60,9 +62,11 @@ class InventoryExcelExporter:
             ws_inventory = wb.create_sheet(title="Inventory")
             cls._build_inventory_sheet(ws_inventory, repository)
 
-            # 2. Sheet 2: Assembly View (Aggregated stock groups & policies)
-            ws_assembly = wb.create_sheet(title="Assembly View")
-            cls._build_assembly_sheet(ws_assembly, repository)
+            # 2. Sheet 2: Assembly View (Optional legacy option)
+            ws_assembly = None
+            if include_assembly:
+                ws_assembly = wb.create_sheet(title="Assembly View")
+                cls._build_assembly_sheet(ws_assembly, repository)
 
             # Remove initial default sheet if still present
             if default_sheet is not None and default_sheet in wb.worksheets:
@@ -72,7 +76,7 @@ class InventoryExcelExporter:
             try:
                 if hasattr(ws_inventory, "views") and ws_inventory.views.sheetView:
                     ws_inventory.views.sheetView[0].showGridLines = True
-                if hasattr(ws_assembly, "views") and ws_assembly.views.sheetView:
+                if ws_assembly is not None and hasattr(ws_assembly, "views") and ws_assembly.views.sheetView:
                     ws_assembly.views.sheetView[0].showGridLines = True
             except Exception:
                 pass
@@ -84,7 +88,7 @@ class InventoryExcelExporter:
             wb.save(filepath)
             wb.close()
             abs_p = os.path.abspath(filepath)
-            tracker.complete(f"Successfully exported inventory & assembly workbook to '{os.path.basename(abs_p)}'")
+            tracker.complete(f"Successfully exported inventory workbook to '{os.path.basename(abs_p)}'")
             return abs_p
 
     @classmethod

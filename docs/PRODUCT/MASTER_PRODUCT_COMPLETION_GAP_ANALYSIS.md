@@ -36,7 +36,7 @@ Following the formal certification of Phase 9 (`PHASE_9_FINAL_REVIEW_PASS`), thi
 │ Vendor Registry & Routing     │ 100% Verified (Regex Routing)   │ Enable/Disable Toggles VERIF.  │
 │ Discovery Site Maps           │ 30 / 30 Checks PASSED (10/10)   │ Codified in Graph Selectors    │
 │ Vendor Automation Adapters    │ Mock Staging Verified (183)     │ Interactive Challenge VERIFIED │
-│ Desktop UI Workflows          │ Mode A & Mode B Working         │ Quick Order & Preview VERIFIED │
+│ Desktop UI Workflows          │ Mode A Working                  │ Quick Order & Preview VERIFIED │
 │ Cart Staging Runtime          │ Batch Staging Working           │ Idempotent Deduplication VERIF.│
 │ Reporting & Audit             │ Deterministic Export Pipeline   │ Multi-Vendor PDF/CSV/XLSX VERIF│
 │ Persistence & Relational DB   │ Openpyxl Direct File Access     │ Future SQLite Roadmap (GAP-14) │
@@ -74,7 +74,7 @@ The following master table details all **18 identified product gaps** across the
 
 | ID | Domain | Requirement Title | Current Implementation State | Repository Evidence | Status | Primary Layer | Impact Classification | Dependencies | Blocking? |
 |---|---|---|---|---|:---:|:---:|---|---|:---:|
-| **`GAP-01`** | UI / Workflow | Dual Procurement Modes (Mode A vs Mode B) | Mode A (database-aware) and Mode B (turnkey direct BOM) fully implemented and UI switchable | [`bom_auditor.py:10`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10) | `VERIFIED` | `UI / WORKFLOW` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-06` | **YES** |
+| **`GAP-01`** | UI / Workflow | Sole Canonical Procurement Architecture (Mode A) | Mode A (database-aware) stock reconciliation enforced as the sole canonical procurement architecture | [`bom_auditor.py:10`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10) | `VERIFIED` | `UI / WORKFLOW` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-06` | **YES** |
 | **`GAP-02`** | UI / Workflow | Direct MPN Procurement Entry Form | Standalone QuickOrderDialog tab implemented with brand rules, stepper, vendor filtering, candidate table, and cart delta staging | [`ui/dialogs/quick_order_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py) | `VERIFIED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-04`, `GAP-07` | No |
 | **`GAP-03`** | UI / Workflow | Direct URL Procurement Entry Form | Standalone QuickOrderDialog tab implemented with strict PDP regex validation, live inspection, constraint extraction, and cart delta staging | [`ui/dialogs/quick_order_dialog.py`](file:///d:/management-elec/autom/atom/ui/dialogs/quick_order_dialog.py) | `VERIFIED` | `UI` | `BLOCKS_USER_WORKFLOW` | `GAP-13` | No |
 | **`GAP-04`** | Matching | Package & Footprint Hard Constraints | Exact normalized string equality in candidate evaluation with conservative normalization | [`core/procurement/orchestrator.py`](file:///d:/management-elec/autom/atom/core/procurement/orchestrator.py) | `VERIFIED` | `CORE_ENGINE` | `BLOCKS_PRODUCT_COMPLETION`, `BLOCKS_DATA_CORRECTNESS` | None (Internal Contract) | **YES** |
@@ -107,7 +107,7 @@ The following master table details all **18 identified product gaps** across the
 
 ### 4.2 Release-Blocking vs Non-Blocking GAPs
 Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified as **`BLOCKS_PRODUCT_COMPLETION`** (ALL 8 ARE NOW VERIFIED):
-1. **`GAP-01` (Dual Procurement Operating Modes):** Users must be able to select between Mode A (Database-Aware) and Mode B (Direct BOM Sourcing) without database presence blocking procurement. *(VERIFIED in Task A3)*
+1. **`GAP-01` (Canonical Procurement Operating Mode):** Enforces Mode A (Database-Aware) stock reconciliation as the sole operational procurement architecture. *(VERIFIED in Task A3)*
 2. **`GAP-04` (Package & Footprint Independent Hard Constraints):** Prevents purchasing physically incompatible SMD/through-hole components (e.g. DIP vs SOP). *(VERIFIED in Task A1)*
 3. **`GAP-05` (`UNKNOWN_REQUIRED_PARAMETER` & Spec Engine):** Prevents auto-accepting or auto-rejecting products with unlisted technical specifications or unconfirmed dimensions. *(VERIFIED in Task A1)*
 4. **`GAP-06` (Manufacturer / Brand Constraint Engine):** Enforces user brand rules (`ANY` vs explicit approved brand set) so cheaper unapproved brands are not selected over approved ones. *(VERIFIED in Task A1)*
@@ -120,17 +120,12 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 
 ## 5. FORENSIC AUDIT OF THE 20 PRODUCT REQUIREMENTS (REQUIREMENTS A THROUGH U)
 
-### Requirement A: Two Explicit Procurement Modes
+### Requirement A: Canonical Procurement Architecture
 - **Mode A (Database-Aware Procurement):**
-  - Reconciles BOM components against `Inventory.xlsx`.
-  - Computes net shortages: $Q_{\text{procure}} = \max(0, Q_{\text{BOM}} + Q_{\text{safety}} - Q_{\text{stock}})$.
+  - Reconciles BOM components against Inventory.xlsx.
+  - Computes net shortages: {\\text{procure}} = \\max(0, Q_{\\text{BOM}} + Q_{\\text{safety}} - Q_{\\text{stock}})$.
   - Uses existing inventory database links and shortage logic.
-- **Mode B (Direct BOM Procurement):**
-  - Ingests BOM directly without requiring part numbers to exist in `Inventory.xlsx`.
-  - Sets $Q_{\text{procure}} = Q_{\text{BOM}}$ directly.
-  - Queries all enabled vendor catalogs to discover candidate components.
-  - Database presence is **NOT a prerequisite** for ordering through Mode B.
-- **Gap Status:** `GAP-01` (`PARTIALLY_IMPLEMENTED`). The bridge supports arbitrary items, but `BOMAuditor` and `BOMAuditWidget` are hardcoded to Mode A inventory matching.
+- **Gap Status:** GAP-01 (VERIFIED). Mode A inventory reconciliation operates as the sole canonical procurement workflow.
 
 ### Requirement B & C: BOM-First Component Requirement Configuration & Brand Rules
 - **Brand Selection UX:**
@@ -238,7 +233,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
  └── GAP-10: Encrypted Keyring Credential Storage (Future / Post-Release)
 
  [ 3. PROCUREMENT MODES & CAD INGESTION ]
- ├── GAP-01: Dual Procurement Operating Modes (Mode A Database-Aware vs Mode B Direct BOM)
+├── GAP-01: Canonical Procurement Architecture (Mode A Database-Aware)
  └── GAP-16: Extended Altium Parameter Ingestion Parser (DOC-OMNIX-ALTIUM-CONTRACT-001)
 
  [ 4. RUNTIME EXECUTION & CART IDEMPOTENCY ]
@@ -281,7 +276,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
        │
        ▼
  [ LAYER 3: WORKFLOW MODES & CAD INGESTION ]
- ├── GAP-01: Dual Procurement Modes (Mode A Database-Aware vs Mode B Direct BOM)
+├── GAP-01: Canonical Procurement Architecture (Mode A Database-Aware)
  └── GAP-16: Extended Altium Parameter Ingestion Parser
        │
        ▼
@@ -313,7 +308,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 | **SCN-B** | **Required Parameter Unknown** on Vendor PDP | Flag as `UNKNOWN_REQUIRED_PARAMETER`, alert user in UI, block auto-ordering | Silently treats missing parameter as valid | `GAP-05` |
 | **SCN-C** | **Human Login & Challenge Recovery** (CAPTCHA/OTP) | Switch to headful browser or show image dialog, prompt user, verify session, resume | Headless fails immediately with `AuthResult(False)` | `GAP-09`, `GAP-17` |
 | **SCN-D** | **Disabled Vendor Sourcing** | Disabled vendor is excluded from catalog queries, candidate evaluation, and cart staging | All registered vendors are queried unconditionally | `GAP-11` |
-| **SCN-E** | **Mode B Direct BOM Procurement** | Upload BOM, procure directly from vendors without requiring components in `Inventory.xlsx` | Forces lookup in `Inventory.xlsx`; marks non-DB items unorderable | `GAP-01` |
+| **SCN-E** | **Mode A BOM Shortage Procurement** | Upload BOM, procure shortages against Inventory.xlsx | Evaluates inventory stock against BOM requirements | GAP-01 |
 | **SCN-F** | **Direct MPN Quick Order** | Enter MPN and quantity in GUI, discover candidates across enabled vendors, preview, stage | Core supports search; no GUI dialog exists to input MPN | `GAP-02` |
 | **SCN-G** | **Direct URL Quick Order** | Paste vendor product URL and quantity, inspect PDP, evaluate constraints, stage | Core resolves URL; no GUI dialog exists to paste URL | `GAP-03` |
 | **SCN-H** | **Duplicate Staging Execution** (Accidental re-run) | Inspect cart, calculate $\Delta Q = \max(0, Q_{\text{target}} - Q_{\text{existing}})$, stage only $\Delta Q$ | Adds full quantity again, doubling cart items | `GAP-13` |
@@ -353,11 +348,11 @@ flowchart TD
   3. Implement interactive headful browser fallback and user confirmation modal in adapters and UI.
 - **Dependencies:** None.
 
-### TASK-A3: Dual Procurement Modes & Altium Parameter Ingestion
+### TASK-A3: Canonical Procurement Architecture & Altium Parameter Ingestion
 - **Target GAPs:** `GAP-01`, `GAP-16`
 - **Scope:**
-  1. Add explicit Procurement Mode selector (Mode A: Database-Aware vs Mode B: Direct BOM Sourcing) to `BOMAuditWidget`.
-  2. Implement Mode B sourcing workflow querying all enabled vendors directly from BOM.
+  1. Enforce Mode A (Database-Aware) as the sole canonical procurement architecture.
+  2. Validate fail-closed rejection of non-Mode A requests.
   3. Extend `BOMAuditor` to ingest extended Altium Parameter Contract columns (`DOC-OMNIX-ALTIUM-CONTRACT-001`).
 - **Dependencies:** `TASK-A1`.
 

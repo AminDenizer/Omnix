@@ -31,6 +31,7 @@ from core.models import (
     ProductDetails,
     StockStatus,
     CartMutationResult,
+    SessionStatus,
 )
 from core.procurement.models import (
     ProcurementMode,
@@ -207,6 +208,7 @@ class TestLionAvailabilityGate:
         </body></html>
         """
         adapter = self._create_mock_lion_adapter(html)
+        adapter.validate_session = MagicMock(return_value=SessionStatus(vendor_id="vendor_lion", is_authenticated=True))
         ref = ProductReference(vendor_id="vendor_lion", vendor_sku="2070-NE555P", pdp_url="https://lionelectronic.ir/products/2070-NE555P")
 
         with pytest.raises(OutOfStockError) as exc_info:
@@ -406,6 +408,7 @@ class TestJavanAvailabilityGate:
         </body></html>
         """
         adapter = self._create_mock_javan_adapter(html)
+        adapter.validate_session = MagicMock(return_value=SessionStatus(vendor_id="vendor_javan", is_authenticated=True))
         ref = ProductReference(vendor_id="vendor_javan", vendor_sku="17930", pdp_url="https://www.javanelec.com/shop/product/17930/ti/ne555p")
 
         with pytest.raises(OutOfStockError) as exc_info:

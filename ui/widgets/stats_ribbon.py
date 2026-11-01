@@ -60,7 +60,7 @@ class StatsRibbonWidget(QFrame):
 
         ribbon_layout.addStretch()
 
-        self.order_shortages_btn = QPushButton("🛒 Order Low Stock (0)")
+        self.order_shortages_btn = QPushButton("🛒 Add Low Stock to Cart (0)")
         self.order_shortages_btn.setObjectName("secondaryBtn")
         self.order_shortages_btn.setStyleSheet("""
             QPushButton {
@@ -175,7 +175,7 @@ class StatsRibbonWidget(QFrame):
             self.order_shortages_btn.setVisible(True)
             if shortage_count > 0:
                 self.order_shortages_btn.setEnabled(True)
-                self.order_shortages_btn.setText(f"⚠️ Order Low Stock ({shortage_count})")
+                self.order_shortages_btn.setText(f"⚠️ Add Low Stock to Cart ({shortage_count})")
                 self.order_shortages_btn.setStyleSheet("""
                     QPushButton {
                         background-color: rgba(245, 158, 11, 0.18);

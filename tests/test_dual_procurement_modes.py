@@ -1,7 +1,7 @@
 """
-Comprehensive Unit & Integration Tests for GAP-01: Dual Procurement Modes
-- Mode A: Database-Aware Stock Reconciliation (Inventory.xlsx dependent)
-- Mode B: Direct BOM Sourcing (100% Inventory-Independent turnkey procurement)
+Comprehensive Unit & Integration Tests for GAP-01: Canonical Mode A Enforcement
+- Mode A: Database-Aware Stock Reconciliation (Sole supported procurement workflow)
+- Unsupported procurement modes: Formally rejected fail-closed across all entry points
 """
 
 import os
@@ -62,7 +62,7 @@ def sample_bom_file():
 
 
 class TestDualProcurementModes:
-    """Tests evaluating Mode A and Mode B isolation, calculation, and bridge translation."""
+    """Tests evaluating Mode A procurement reconciliation, calculation, and bridge translation."""
 
     @pytest.fixture(autouse=True)
     def register_test_adapters(self):
@@ -121,60 +121,28 @@ class TestDualProcurementModes:
         assert u4.shortage_qty == 8
         assert u4.link == ""
 
-    def test_mode_b_direct_bom_inventory_independence(self, sample_inventory_file, sample_bom_file):
-        inv_loader = ExcelDataLoader()
-        inv_loader.load_file(sample_inventory_file)
+    def test_unsupported_mode_rejected_fail_closed(self, sample_bom_file):
+        """Unsupported procurement modes must fail-closed with ValueError."""
+        with pytest.raises(ValueError, match="sole supported procurement workflow"):
+            BOMAuditor.audit_bom(sample_bom_file, mode="UNSUPPORTED_MODE")
+        with pytest.raises(ValueError, match="sole supported procurement workflow"):
+            BOMAuditor.audit_bom(sample_bom_file, mode="INVALID_MODE")
 
-        # In Mode B, inventory MUST BE COMPLETELY IGNORED
-        # All valid items have shortage = total_needed_qty = unit_qty * M
-        ok, msg, res = BOMAuditor.audit_bom(
-            sample_bom_file,
-            inventory=inv_loader,  # Even if passed, must be ignored in Mode B
-            board_multiplier=3,
-            mode=ProcurementMode.DIRECT_BOM,
-        )
-        assert ok is True
-        assert res is not None
-        assert res.mode == ProcurementMode.DIRECT_BOM
-        assert res.total_items_count == 4
-        assert res.in_stock_count == 0
-        assert res.shortage_count == 4
-        assert res.not_in_db_count == 0
-        assert res.invalid_count == 0
-
-        # U1: needed 2 * 3 = 6 (ignores 15 stock in DB)
-        u1 = next(it for it in res.items if it.designator == "U1")
-        assert u1.total_needed_qty == 6
-        assert u1.db_stock_qty == 0
-        assert u1.shortage_qty == 6
-        assert u1.link == ""
-        assert u1.link_type == "DIRECT_BOM"
-        assert u1.is_orderable is True
-
-        # U3: needed 1 * 3 = 3 (ignores 50 stock in DB)
-        u3 = next(it for it in res.items if it.designator == "U3")
-        assert u3.total_needed_qty == 3
-        assert u3.db_stock_qty == 0
-        assert u3.shortage_qty == 3
-        assert u3.link == ""
-        assert u3.link_type == "DIRECT_BOM"
-        assert u3.is_orderable is True
-
-    def test_mode_b_with_none_inventory_loader(self, sample_bom_file):
-        """Mode B must execute cleanly when inventory loader is None."""
+    def test_mode_a_with_none_inventory_loader(self, sample_bom_file):
+        """Mode A with None inventory treats all items as NOT_IN_DB."""
         ok, msg, res = BOMAuditor.audit_bom(
             sample_bom_file,
             inventory=None,
             board_multiplier=1,
-            mode=ProcurementMode.DIRECT_BOM,
+            mode=ProcurementMode.DATABASE_AWARE,
         )
         assert ok is True
         assert res is not None
-        assert res.mode == ProcurementMode.DIRECT_BOM
+        assert res.mode == ProcurementMode.DATABASE_AWARE
         assert res.total_items_count == 4
-        assert res.shortage_count == 4
+        assert res.not_in_db_count == 4
 
-    def test_bridge_mode_a_vs_mode_b_translation(self):
+    def test_bridge_mode_a_enforcement_and_unsupported_mode_rejection(self):
         # Mode A item with explicit URL
         item_a = {
             "part_number": "STM32F103C8T6",
@@ -191,22 +159,18 @@ class TestDualProcurementModes:
         assert req_a.explicit_vendor_url == "https://lionelectronic.ir/product/101"
         assert req_a.explicit_vendor_id == "vendor_lion"
 
-        # Mode B item: link is cleared and targeted across all enabled vendors
-        item_b = {
-            "part_number": "STM32F103C8T6",
-            "total_needed_qty": 10,
-            "unit_qty": 2,
-            "link": "https://lionelectronic.ir/product/101",  # Even if link is present, Mode B ignores it
-            "mode": ProcurementMode.DIRECT_BOM,
-            "package": "LQFP-48",
-            "manufacturer": "STMicroelectronics",
-        }
-        req_b = ProcurementBridge.item_to_request(item_b)
-        assert req_b.mode == ProcurementMode.DIRECT_BOM
-        assert req_b.part_number == "STM32F103C8T6"
-        assert req_b.required_quantity == 10
-        assert req_b.explicit_vendor_url is None
-        assert req_b.explicit_vendor_id is None
-        assert req_b.exact_mpn_required is True
-        assert req_b.manufacturer == "STMicroelectronics"
-        assert req_b.package == "LQFP-48"
+        # Unsupported modes: rejected fail-closed across all invalid conventions
+        for bad_mode in ("UNSUPPORTED_MODE", "INVALID_UNKNOWN", "UNKNOWN"):
+            item_bad = {
+                "part_number": "STM32F103C8T6",
+                "total_needed_qty": 10,
+                "link": "https://lionelectronic.ir/product/101",
+                "mode": bad_mode,
+            }
+            with pytest.raises(ValueError, match="sole supported procurement workflow"):
+                ProcurementBridge.item_to_request(item_bad)
+
+            # Also ensure is_item_orderable rejects unsupported modes even with valid links
+            is_ord, v_id = ProcurementBridge.is_item_orderable(item_bad)
+            assert is_ord is False
+            assert v_id is None

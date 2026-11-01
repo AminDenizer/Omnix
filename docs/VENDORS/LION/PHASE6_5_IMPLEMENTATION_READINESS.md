@@ -26,7 +26,7 @@ The objective is to verify that the Phase 6 specification is 100% complete, math
 
 ### Key Verification Verdicts:
 1. **Zero Production Code Modified:** Production files (`main.py`, `lion_automator.py`, `bom_auditor.py`, `excel_loader.py`) and datasets (`Inventory.xlsx`) remain 100% untouched.
-2. **Core / Adapter Boundary Integrity:** The boundary between Omnix Core (BOM parsing, Mode A / Mode B, shortage calculation, vendor ranking) and the Lion Vendor Adapter (Lion routes, selectors, DOM extraction, raw step extraction, internal AJAX cart actions) is strictly maintained.
+2. **Core / Adapter Boundary Integrity:** The boundary between Omnix Core (BOM parsing, Mode A, shortage calculation, vendor ranking) and the Lion Vendor Adapter (Lion routes, selectors, DOM extraction, raw step extraction, internal AJAX cart actions) is strictly maintained.
 3. **Packaging Mathematics Decoupling:** The historical client-side heuristic (`[2,5,10] -> 10`) from `lion_automator.py` is completely excluded from the vendor adapter contract. The adapter exposes the raw integer `packaging_step_raw` directly from the DOM `#quantity-cell.value`.
 4. **Network & AJAX Realism:** `POST /orders/cart/add` is formally specified as an internal browser AJAX action within the active browser session (`INTERNAL_BROWSER_AJAX`), preventing invalid headless REST API assumptions.
 5. **Error Taxonomy Rigor:** All 13 normalized error categories are verified across their actual technical detection sources (DOM modal, HTTP status, transport event, security container, JS exception), preserving the distinction between 7 empirically verified and 6 defensive/security categories.
@@ -67,7 +67,6 @@ The 13 conceptual interface operations defined in `ADAPTER_SPECIFICATION.md` wer
 │ Inventory Spreadsheet Matching          │     YES      │      NO       │
 │ Shortage Calculation & Demand Sizing    │     YES      │      NO       │
 │ Mode A (Inventory-Based Procurement)    │     YES      │      NO       │
-│ Mode B (BOM-Direct Procurement)         │     YES      │      NO       │
 │ Multi-Vendor Discovery & Sourcing       │     YES      │      NO       │
 │ Vendor Price Comparison & Ranking       │     YES      │      NO       │
 │ Purchase Quantity Step Rounding Formula │     YES      │      NO       │

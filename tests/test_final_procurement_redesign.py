@@ -408,7 +408,7 @@ class TestDynamicPluginConfigDialog:
         assert pwd_widget.echoMode() == QLineEdit.EchoMode.Password
 
         # Find reveal button (child of the parent container or matching row)
-        reveal_buttons = [b for b in dlg.findChildren(QPushButton) if b.text() == "👁"]
+        reveal_buttons = [b for b in dlg.findChildren(QPushButton) if b.toolTip() == "Toggle password visibility"]
         assert len(reveal_buttons) > 0
         btn = reveal_buttons[0]
 

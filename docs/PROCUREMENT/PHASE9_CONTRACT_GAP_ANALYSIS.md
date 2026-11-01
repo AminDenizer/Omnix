@@ -22,7 +22,7 @@
 
 With the successful completion and verification of the Universal Discovery and Adapter implementations across three diverse electronic component distributors (**Lion Electronic**, **Javan Electronic**, and **RoboEq Electronic**), Omnix enters **Phase 9: Universal Procurement Orchestration Integration**.
 
-The objective of Phase 9 is to integrate these verified vendor adapters into the existing procurement workflow (Mode A: Inventory Shortages, Mode B: Altium BOM Project Assembly) **without coupling procurement logic to any specific vendor** and **without modifying core inventory math or BOM formulas**.
+The objective of Phase 9 is to integrate these verified vendor adapters into the existing procurement workflow (Mode A: Inventory Shortages) **without coupling procurement logic to any specific vendor** and **without modifying core inventory math or BOM formulas**.
 
 ### Key Findings of this Gap Analysis:
 1. **`IVendorAdapter` is 100% Structurally Sound**: All 13 canonical operations defined in `core/vendor_interface.py` provide full coverage for vendor interaction (catalog search, product resolution, inspection, stock checking, constraint evaluation, cart mutation, authentication, and error recovery). No breaking changes to `IVendorAdapter` are required.

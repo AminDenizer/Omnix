@@ -538,7 +538,7 @@ class TestUserSuppliedValidationCases:
 
         assert eval_result.effective_quantity == 23
         assert eval_result.state == EvaluationState.INSUFFICIENT_STOCK
-        assert any("11 available < 23 needed" in r for r in eval_result.rejection_reasons)
+        assert any("11 available < 23" in r for r in eval_result.rejection_reasons)
 
     def test_lion_product_without_conventional_mpn(self):
         """Verifies local PCB product (6207-eMMC-WFBGA153-to-microSD-PCB) uses exact title without inventing MPN."""

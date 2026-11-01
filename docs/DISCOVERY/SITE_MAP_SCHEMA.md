@@ -313,7 +313,7 @@ A `SITE_MAP_GRAPH.json` artifact is invalid if any of the following automated ch
 * **`VAL-003` Orphan Node Detection:** Every node (except root `PAGE: Home`) must have at least one incoming or outgoing edge.
 * **`VAL-004` Dead-End Unreachable States:** Non-terminal nodes must have valid recovery or navigation transitions.
 * **`VAL-005` Broken Selector References:** Any `selector_id` referenced in a node or extraction rule must exist in the `selectors` dictionary.
-* **`VAL-006` Vendor Isolation Integrity:** Graph must contain zero mentions of Mode A/Mode B procurement logic, BOM math, or multi-vendor ranking algorithms.
+* **`VAL-006` Vendor Isolation Integrity:** Graph must contain zero mentions of procurement business logic, BOM math, or vendor ranking algorithms.
 
 ---
 

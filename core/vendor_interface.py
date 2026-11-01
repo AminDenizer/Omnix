@@ -184,7 +184,7 @@ class IVendorAdapter(ABC):
 
     def get_supported_modes(self) -> Set[PluginProcurementMode]:
         """
-        Return the set of procurement modes supported by this adapter (e.g. MODE_A, MODE_B).
+        Return the set of procurement modes supported by this adapter (e.g. MODE_A).
         Base implementation returns an empty set (fail-closed).
         """
         return set(self._SUPPORTED_MODES)
@@ -207,14 +207,11 @@ def validate_capability_mode_consistency(
     """
     Enforce capability and procurement mode consistency invariants:
     - Declaring MODE_A_STAGING requires MODE_A in supported modes.
-    - Declaring MODE_B_STAGING requires MODE_B in supported modes.
     Returns a list of violation error strings (empty list if valid).
     """
     errors: List[str] = []
     if PluginCapability.MODE_A_STAGING in capabilities and PluginProcurementMode.MODE_A not in modes:
         errors.append("Declaring MODE_A_STAGING requires MODE_A in supported procurement modes.")
-    if PluginCapability.MODE_B_STAGING in capabilities and PluginProcurementMode.MODE_B not in modes:
-        errors.append("Declaring MODE_B_STAGING requires MODE_B in supported procurement modes.")
     return errors
 
 
@@ -227,7 +224,6 @@ CAPABILITY_METHOD_MAP: Dict[PluginCapability, Tuple[str, ...]] = {
     PluginCapability.LIVE_STOCK_PROBE: ("inspect_stock",),
     PluginCapability.TIERED_PRICING: ("inspect_product",),
     PluginCapability.MODE_A_STAGING: ("add_to_cart",),
-    PluginCapability.MODE_B_STAGING: ("add_to_cart",),
 
     # Layer C Capabilities (Live verification boundaries; no direct adapter methods exist in Phase 2.
     # Verification belongs to the dedicated Layer C Live Test Runner scheduled for Phase 9+)

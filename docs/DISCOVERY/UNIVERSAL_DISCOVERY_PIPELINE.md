@@ -158,7 +158,6 @@ python -m core.discovery.cli audit docs/VENDORS/{VENDOR_ID}/SITE_MAP_GRAPH.json 
 │ Altium BOM Parsing & Column Matching    │     YES      │      NO       │
 │ Inventory Sizing & Shortage Math        │     YES      │      NO       │
 │ Mode A (Inventory-Based Procurement)    │     YES      │      NO       │
-│ Mode B (BOM-Direct Procurement)         │     YES      │      NO       │
 │ Multi-Vendor Ranking & Allocation       │     YES      │      NO       │
 │ Purchase Step Rounding Formulas         │     YES      │      NO       │
 │ Vendor Discovery Tooling & Validator    │     YES      │      NO       │

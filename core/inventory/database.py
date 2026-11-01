@@ -293,7 +293,6 @@ class DatabaseManager:
                 raw_providers = [
                     ("vendor_lion", "Lion Electronic (LION)", "LION", "https://lionelectronic.ir", 1),
                     ("vendor_javan", "Javan Electronic (JAVAN)", "JAVAN", "https://javanelec.com", 1),
-                    ("vendor_roboeq", "RoboEq (ROBOEQ)", "ROBOEQ", "https://roboeq.ir", 1),
                     ("generic", "Other / Generic", "OTHER", "", 1),
                 ]
                 default_providers = [

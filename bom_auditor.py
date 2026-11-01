@@ -138,24 +138,14 @@ class BOMItem:
             from core.procurement.registry import VendorRegistry
             reg = VendorRegistry.get_default_registry()
             parsed = parse_vendor_links(self.link.strip(), registry=reg)
-            if parsed is not None and parsed.is_valid and parsed.links and reg is not None:
-                active_links = {
-                    vid: entry
-                    for vid, entry in parsed.links.items()
-                    if reg.has_vendor(vid) and reg.is_vendor_enabled(vid)
-                }
-                if len(active_links) != len(parsed.links):
-                    parsed.links = active_links
-                    parsed.is_multi = len(active_links) > 1
+
             return parsed
         except Exception:
             return None
 
     @property
     def link_type(self) -> str:
-        """Returns 'LION', 'JAVAN', 'ROBOEQ', or vendor-specific string; 'MULTI', 'DIRECT_BOM', 'INVALID', or 'NONE'."""
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return "DIRECT_BOM"
+        """Returns 'LION', 'JAVAN', or vendor-specific string; 'MULTI', 'INVALID', or 'NONE'."""
         if not self.link or not self.link.strip():
             return "NONE"
         parsed = self._parse_links()
@@ -174,45 +164,67 @@ class BOMItem:
     def is_orderable(self) -> bool:
         """
         Returns True if the line item is eligible for automated procurement.
-        In Mode A: Requires a valid registered vendor URL (or multi-vendor links) in Inventory.xlsx.
-        In Mode B: Requires valid CAD MPN and positive quantity (sourced via multi-vendor search).
+        In Mode A: Requires a valid registered vendor URL (or multi-vendor links) with an installed and enabled vendor plugin.
         """
         if not self.is_valid or not self.part_number or not self.part_number.strip():
             return False
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return True
         if not self.link or not self.link.strip():
             return False
         parsed = self._parse_links()
         if parsed is None or not parsed.is_valid or parsed.is_empty:
             return False
+        if parsed.count == 0:
+            return False
+        try:
+            from core.procurement.registry import VendorRegistry
+            reg = VendorRegistry.get_default_registry()
+            if reg is not None:
+                has_active = any(reg.has_vendor(vid) and reg.is_vendor_enabled(vid) for vid in parsed.links.keys())
+                return has_active
+        except Exception:
+            pass
         return parsed.count >= 1
 
     @property
     def vendor_id(self) -> Optional[str]:
-        """Returns the registered vendor identifier if exactly 1 link, or None."""
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return None
+        """Returns the registered vendor identifier if exactly 1 link (or exactly 1 active vendor), or None."""
         if not self.link or not self.link.strip():
             return None
         parsed = self._parse_links()
-        if parsed is not None and parsed.is_valid and parsed.count == 1:
-            return parsed.get_single_entry().vendor_id
+        if parsed is not None and parsed.is_valid:
+            if parsed.count == 1:
+                return parsed.get_single_entry().vendor_id
+            elif parsed.count > 1:
+                try:
+                    from core.procurement.registry import VendorRegistry
+                    reg = VendorRegistry.get_default_registry()
+                    if reg is not None:
+                        active_vids = [vid for vid in parsed.links.keys() if reg.has_vendor(vid) and reg.is_vendor_enabled(vid)]
+                        if len(active_vids) == 1:
+                            return active_vids[0]
+                except Exception:
+                    pass
         return None
 
     @property
     def is_multi_vendor(self) -> bool:
-        """Returns True if item has multiple valid vendor links configured."""
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return False
+        """Returns True if item has multiple active vendor links configured."""
         parsed = self._parse_links()
-        return bool(parsed and parsed.is_valid and parsed.count > 1)
+        if not parsed or not parsed.is_valid or parsed.count <= 1:
+            return False
+        try:
+            from core.procurement.registry import VendorRegistry
+            reg = VendorRegistry.get_default_registry()
+            if reg is not None:
+                active_vids = [vid for vid in parsed.links.keys() if reg.has_vendor(vid) and reg.is_vendor_enabled(vid)]
+                return len(active_vids) > 1
+        except Exception:
+            pass
+        return parsed.count > 1
 
     @property
     def vendor_links(self) -> Dict[str, str]:
         """Returns mapping of vendor_id -> url for all valid links."""
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return {}
         parsed = self._parse_links()
         if parsed and parsed.is_valid and parsed.count > 0:
             return {vid: e.url for vid, e in parsed.links.items()}
@@ -263,7 +275,7 @@ class BOMItem:
             "board_multiplier": self.board_multiplier,
             "total_needed": self.total_needed_qty,
             "total_needed_qty": self.total_needed_qty,
-            "needed_qty": self.shortage_qty if self.mode == ProcurementMode.DATABASE_AWARE else self.total_needed_qty,
+            "needed_qty": self.shortage_qty,
             "in_stock": self.db_stock_qty,
             "current_stock": self.db_stock_qty,
             "db_stock_qty": self.db_stock_qty,
@@ -309,7 +321,7 @@ class BOMItem:
 
 
 class BOMAuditResult:
-    """Stores the complete analysis outcome of an Altium BOM audit against inventory or direct BOM."""
+    """Stores the complete analysis outcome of an Altium BOM audit against inventory."""
 
     def __init__(
         self,
@@ -327,23 +339,18 @@ class BOMAuditResult:
         self.shortage_count: int = 0
         self.not_in_db_count: int = 0
         self.invalid_count: int = 0
+        self.blank_link_count: int = 0
 
     @property
     def ready_for_assembly(self) -> bool:
-        if self.mode == ProcurementMode.DIRECT_BOM:
-            return self.total_items_count > 0 and self.invalid_count == 0
         return self.shortage_count == 0 and self.not_in_db_count == 0 and self.invalid_count == 0
 
     def get_all_shortages(self) -> List[Dict[str, Any]]:
         """Return list of all shortage/orderable items with their procurement classification."""
         shortages = []
         for it in self.items:
-            if self.mode == ProcurementMode.DIRECT_BOM:
-                if it.is_valid and it.shortage_qty > 0:
-                    shortages.append(it.to_dict())
-            else:
-                if it.status == "SHORTAGE" and it.shortage_qty > 0 and it.is_valid:
-                    shortages.append(it.to_dict())
+            if it.status == "SHORTAGE" and it.shortage_qty > 0 and it.is_valid:
+                shortages.append(it.to_dict())
         return shortages
 
     def get_orderable_shortages(self) -> List[Dict[str, Any]]:
@@ -358,7 +365,7 @@ class BOMAuditResult:
 class BOMAuditor:
     """
     Parses Altium BOM spreadsheets conforming to DOC-OMNIX-ALTIUM-CONTRACT-001
-    and executes deterministic audit under Mode A (Database-Aware) or Mode B (Direct BOM).
+    and executes deterministic audit under Mode A (Database-Aware Stock Reconciliation).
     """
 
     @staticmethod
@@ -371,11 +378,22 @@ class BOMAuditor:
     ) -> Tuple[bool, str, Optional[BOMAuditResult]]:
         """
         Parse Altium BOM Excel file, validate all 20 canonical parameters, and evaluate
-        shortages and procurement requirements according to the selected mode.
+        shortages and procurement requirements under Mode A (Database-Aware).
         """
         bom_name = os.path.basename(bom_file_path) if bom_file_path else "Unknown"
         if isinstance(mode, str) and not isinstance(mode, ProcurementMode):
-            mode = ProcurementMode(mode)
+            try:
+                mode = ProcurementMode(mode)
+            except ValueError:
+                raise ValueError(
+                    f"Unsupported procurement mode '{mode}'. "
+                    "Mode A (DATABASE_AWARE) is the sole supported procurement workflow."
+                )
+        if mode != ProcurementMode.DATABASE_AWARE:
+            raise ValueError(
+                f"Unsupported procurement mode '{mode}'. "
+                "Mode A (DATABASE_AWARE) is the sole supported procurement workflow."
+            )
 
         tracker = track_operation("BOM", f"BOM audit for '{bom_name}' (Mode: {mode.value}, Multiplier: {board_multiplier})")
         tracker.__enter__()
@@ -435,7 +453,7 @@ class BOMAuditor:
 
             result = BOMAuditResult(bom_file_path, board_multiplier, mode=mode)
 
-            # Build fast lookup indexes from inventory database ONLY if in Mode A
+            # Build fast lookup indexes from inventory database
             exact_inv_map: Dict[str, Any] = {}
             is_repo = False
             inv_part_name_col: Optional[int] = None
@@ -654,108 +672,104 @@ class BOMAuditor:
                     result.items.append(bom_item)
                     continue
 
-                if mode == ProcurementMode.DIRECT_BOM:
-                    # Mode B: 100% Inventory-Independent Turnkey Sourcing
-                    bom_item.db_stock_qty = 0
-                    bom_item.shortage_qty = bom_item.total_needed_qty
-                    bom_item.status = "SHORTAGE"
-                    bom_item.link = ""
-                    result.shortage_count += 1
-                else:
-                    # Mode A: Database-Aware Shortage Reconciliation
-                    norm_part_num = normalize_string(part_number)
+                # Mode A: Database-Aware Shortage Reconciliation
+                norm_part_num = normalize_string(part_number)
 
-                    if is_repo:
-                        matched_prod = None
-                        if norm_part_num and norm_part_num in exact_inv_map:
-                            prods = exact_inv_map[norm_part_num]
-                            if len(prods) == 1:
+                if is_repo:
+                    matched_prod = None
+                    if norm_part_num and norm_part_num in exact_inv_map:
+                        prods = exact_inv_map[norm_part_num]
+                        if len(prods) == 1:
+                            matched_prod = prods[0]
+                        else:
+                            norm_bom_mfg = normalize_string(raw_mfg)
+                            for p in prods:
+                                if norm_bom_mfg and normalize_string(p.manufacturer) == norm_bom_mfg:
+                                    matched_prod = p
+                                    break
+                            if not matched_prod:
                                 matched_prod = prods[0]
-                            else:
-                                norm_bom_mfg = normalize_string(raw_mfg)
-                                for p in prods:
-                                    if norm_bom_mfg and normalize_string(p.manufacturer) == norm_bom_mfg:
-                                        matched_prod = p
-                                        break
-                                if not matched_prod:
-                                    matched_prod = prods[0]
 
-                        if matched_prod:
-                            bom_item.matched_db_row = matched_prod
-                            bom_item.db_part_name = matched_prod.mpn
-                            bom_item.db_stock_qty = int(matched_prod.quantity_in_stock or 0)
-                            bom_item.link = matched_prod.purchase_link or ""
+                    if matched_prod:
+                        bom_item.matched_db_row = matched_prod
+                        bom_item.db_part_name = matched_prod.mpn
+                        bom_item.db_stock_qty = int(matched_prod.quantity_in_stock or 0)
+                        bom_item.link = matched_prod.purchase_link or ""
 
-                            if deduct_stock:
-                                if bom_item.db_stock_qty >= bom_item.total_needed_qty:
-                                    bom_item.status = "IN_STOCK"
-                                    bom_item.shortage_qty = 0
-                                    result.in_stock_count += 1
-                                else:
-                                    bom_item.status = "SHORTAGE"
-                                    bom_item.shortage_qty = bom_item.total_needed_qty - bom_item.db_stock_qty
-                                    result.shortage_count += 1
+                        if deduct_stock:
+                            if bom_item.db_stock_qty >= bom_item.total_needed_qty:
+                                bom_item.status = "IN_STOCK"
+                                bom_item.shortage_qty = 0
+                                result.in_stock_count += 1
                             else:
                                 bom_item.status = "SHORTAGE"
-                                bom_item.shortage_qty = bom_item.total_needed_qty
+                                bom_item.shortage_qty = bom_item.total_needed_qty - bom_item.db_stock_qty
                                 result.shortage_count += 1
+                                if not bom_item.link or not bom_item.link.strip():
+                                    result.blank_link_count += 1
                         else:
-                            bom_item.status = "NOT_IN_DB"
-                            bom_item.db_stock_qty = 0
+                            bom_item.status = "SHORTAGE"
                             bom_item.shortage_qty = bom_item.total_needed_qty
-                            bom_item.link = ""
-                            result.not_in_db_count += 1
-
+                            result.shortage_count += 1
+                            if not bom_item.link or not bom_item.link.strip():
+                                result.blank_link_count += 1
                     else:
-                        # Legacy ExcelDataLoader path: strictly match MPN without Comment/Description fallbacks
-                        match_found = None
-                        if norm_part_num and norm_part_num in exact_inv_map:
-                            match_found = exact_inv_map[norm_part_num]
+                        bom_item.status = "NOT_IN_DB"
+                        bom_item.db_stock_qty = 0
+                        bom_item.shortage_qty = bom_item.total_needed_qty
+                        bom_item.link = ""
+                        result.not_in_db_count += 1
 
-                        if match_found:
-                            orig_idx, inv_cells = match_found
-                            bom_item.matched_db_row = match_found
-                            bom_item.db_part_name = (
-                                inv_cells[inv_part_name_col]
-                                if inv_part_name_col is not None and inv_part_name_col < len(inv_cells)
-                                else ""
-                            )
+                else:
+                    # Legacy ExcelDataLoader path: strictly match MPN without Comment/Description fallbacks
+                    match_found = None
+                    if norm_part_num and norm_part_num in exact_inv_map:
+                        match_found = exact_inv_map[norm_part_num]
 
-                            stock_str = (
-                                inv_cells[inv_stock_col]
-                                if inv_stock_col is not None and inv_stock_col < len(inv_cells)
-                                else "0"
-                            )
-                            try:
-                                bom_item.db_stock_qty = int(float(stock_str)) if stock_str else 0
-                            except ValueError:
-                                bom_item.db_stock_qty = 0
+                    if match_found:
+                        orig_idx, inv_cells = match_found
+                        bom_item.matched_db_row = match_found
+                        bom_item.db_part_name = (
+                            inv_cells[inv_part_name_col]
+                            if inv_part_name_col is not None and inv_part_name_col < len(inv_cells)
+                            else ""
+                        )
 
-                            bom_item.link = (
-                                inv_cells[inv_link_col]
-                                if inv_link_col is not None and inv_link_col < len(inv_cells)
-                                else ""
-                            )
+                        stock_str = (
+                            inv_cells[inv_stock_col]
+                            if inv_stock_col is not None and inv_stock_col < len(inv_cells)
+                            else "0"
+                        )
+                        try:
+                            bom_item.db_stock_qty = int(float(stock_str)) if stock_str else 0
+                        except ValueError:
+                            bom_item.db_stock_qty = 0
 
-                            if deduct_stock:
-                                if bom_item.db_stock_qty >= bom_item.total_needed_qty:
-                                    bom_item.status = "IN_STOCK"
-                                    bom_item.shortage_qty = 0
-                                    result.in_stock_count += 1
-                                else:
-                                    bom_item.status = "SHORTAGE"
-                                    bom_item.shortage_qty = bom_item.total_needed_qty - bom_item.db_stock_qty
-                                    result.shortage_count += 1
+                        bom_item.link = (
+                            inv_cells[inv_link_col]
+                            if inv_link_col is not None and inv_link_col < len(inv_cells)
+                            else ""
+                        )
+
+                        if deduct_stock:
+                            if bom_item.db_stock_qty >= bom_item.total_needed_qty:
+                                bom_item.status = "IN_STOCK"
+                                bom_item.shortage_qty = 0
+                                result.in_stock_count += 1
                             else:
                                 bom_item.status = "SHORTAGE"
-                                bom_item.shortage_qty = bom_item.total_needed_qty
+                                bom_item.shortage_qty = bom_item.total_needed_qty - bom_item.db_stock_qty
                                 result.shortage_count += 1
                         else:
-                            bom_item.status = "NOT_IN_DB"
-                            bom_item.db_stock_qty = 0
+                            bom_item.status = "SHORTAGE"
                             bom_item.shortage_qty = bom_item.total_needed_qty
-                            bom_item.link = ""
-                            result.not_in_db_count += 1
+                            result.shortage_count += 1
+                    else:
+                        bom_item.status = "NOT_IN_DB"
+                        bom_item.db_stock_qty = 0
+                        bom_item.shortage_qty = bom_item.total_needed_qty
+                        bom_item.link = ""
+                        result.not_in_db_count += 1
 
                 result.items.append(bom_item)
 

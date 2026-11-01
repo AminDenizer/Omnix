@@ -138,7 +138,7 @@ class TestAltiumContractIngestion:
             full_20_param_bom_file,
             inventory=None,
             board_multiplier=1,
-            mode=ProcurementMode.DIRECT_BOM,
+            mode=ProcurementMode.DATABASE_AWARE,
         )
         assert ok is True
         assert res is not None
@@ -218,7 +218,7 @@ class TestAltiumContractIngestion:
                 path,
                 inventory=None,
                 board_multiplier=1,
-                mode=ProcurementMode.DIRECT_BOM,
+                mode=ProcurementMode.DATABASE_AWARE,
             )
             assert ok is True
             assert res is not None
@@ -268,7 +268,7 @@ class TestAltiumContractIngestion:
                 path,
                 inventory=None,
                 board_multiplier=1,
-                mode=ProcurementMode.DIRECT_BOM,
+                mode=ProcurementMode.DATABASE_AWARE,
             )
             assert ok is True
             assert res.total_items_count == 6
@@ -321,7 +321,7 @@ class TestAltiumContractIngestion:
         wb.close()
 
         try:
-            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
+            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DATABASE_AWARE)
             assert ok is True
             assert res.total_items_count == 1
             it = res.items[0]

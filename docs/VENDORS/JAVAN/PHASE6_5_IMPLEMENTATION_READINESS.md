@@ -27,7 +27,7 @@ The objective is to verify that the specification is 100% complete, mathematical
 
 ### Key Verification Verdicts:
 1. **Zero Production Code Modified:** Production files (`main.py`, `lion_automator.py`, `bom_auditor.py`, `excel_loader.py`) and datasets (`Inventory.xlsx`) remain 100% untouched.
-2. **Core / Adapter Boundary Integrity:** The boundary between Omnix Core (BOM parsing, Mode A / Mode B, shortage calculation, vendor ranking) and the Javan Vendor Adapter (Javan routes, selectors, DOM extraction, volume tier pricing extraction, form POST cart actions) is strictly maintained.
+2. **Core / Adapter Boundary Integrity:** The boundary between Omnix Core (BOM parsing, Mode A, shortage calculation, vendor ranking) and the Javan Vendor Adapter (Javan routes, selectors, DOM extraction, volume tier pricing extraction, form POST cart actions) is strictly maintained.
 3. **Volume Tier Pricing Decoupling:** The adapter extracts raw `price_tiers` list and lowest tier `packaging_step_raw` directly from the PDP table. Bracket matching and discount evaluation are owned exclusively by Core.
 4. **Network & Form Realism:** `POST /shoppingcarts/createindex` is formally specified as an internal browser form submission action within the active browser session (`INTERNAL_BROWSER_AJAX / FORM_POST`), preventing invalid headless REST API assumptions.
 5. **Error Taxonomy Rigor:** All 13 normalized error categories are verified across their actual technical detection sources (DOM alert, HTTP status, transport event, security container, JS exception), preserving the distinction between operational and defensive categories.
@@ -68,7 +68,6 @@ The 13 conceptual interface operations defined in `ADAPTER_SPECIFICATION.md` wer
 │ Inventory Spreadsheet Matching          │     YES      │      NO       │
 │ Shortage Calculation & Demand Sizing    │     YES      │      NO       │
 │ Mode A (Inventory-Based Procurement)    │     YES      │      NO       │
-│ Mode B (BOM-Direct Procurement)         │     YES      │      NO       │
 │ Multi-Vendor Discovery & Sourcing       │     YES      │      NO       │
 │ Vendor Price Comparison & Ranking       │     YES      │      NO       │
 │ Volume Bracket Discount Matching        │     YES      │      NO       │

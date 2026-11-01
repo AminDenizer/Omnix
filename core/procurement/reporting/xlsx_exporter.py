@@ -85,80 +85,9 @@ class ProcurementXLSXExporter:
         )
         ws["A2"].font = font_sub
 
-        # 2. KPI Summary Cards (Row 4 & 5)
-        kpis = [
-            ("Total Line Items", str(report.total_line_items)),
-            ("Ready / Sourced", str(report.resolved_line_items)),
-            ("Unresolved Items", str(report.unresolved_line_items)),
-            ("Total Estimated Cost", f"{report.total_estimated_cost_irr:,} IRR"),
-        ]
-        if report.report_type == ReportType.POST_STAGING_FINAL:
-            kpis.append(("Actual Staged Cost", f"{report.total_actual_staged_cost_irr:,} IRR"))
+        curr_row = 4
 
-        for k_idx, (lbl, val) in enumerate(kpis, start=1):
-            col_start = (k_idx - 1) * 3 + 1
-            col_end = col_start + 2
-            start_cell = ws.cell(row=4, column=col_start, value=lbl)
-            start_cell.font = font_kpi_lbl
-            start_cell.alignment = align_center
-            start_cell.fill = fill_kpi
-
-            val_cell = ws.cell(row=5, column=col_start, value=val)
-            val_cell.font = font_kpi_val
-            val_cell.alignment = align_center
-            val_cell.fill = fill_kpi
-
-            ws.merge_cells(start_row=4, start_column=col_start, end_row=4, end_column=col_end)
-            ws.merge_cells(start_row=5, start_column=col_start, end_row=5, end_column=col_end)
-
-        # 3. Multi-Vendor Allocation Table (Row 7..N)
-        ws.cell(row=7, column=1, value="Multi-Vendor Sourcing Allocation Breakdown:").font = font_bold
-
-        v_headers = ["Vendor ID", "Vendor Name", "Allocated Line Items", "Total Order Pieces", "Subtotal Cost (IRR)"]
-        if report.report_type == ReportType.POST_STAGING_FINAL:
-            v_headers.extend(["Actual Staged Pieces", "Staging Status", "Error / Response Details"])
-
-        v_hdr_row = 8
-        for c_idx, h in enumerate(v_headers, start=1):
-            cell = ws.cell(row=v_hdr_row, column=c_idx, value=h)
-            cell.font = font_hdr
-            cell.fill = fill_v_hdr
-            cell.alignment = align_center
-            cell.border = thin_border
-
-        curr_row = 9
-        for vs in report.vendor_summaries:
-            row_data = [
-                vs.vendor_id,
-                vs.vendor_name,
-                vs.item_count,
-                vs.total_pieces,
-                vs.subtotal_cost_irr,
-            ]
-            if report.report_type == ReportType.POST_STAGING_FINAL:
-                row_data.extend([
-                    vs.actual_staged_pieces,
-                    vs.staging_status,
-                    vs.error_message,
-                ])
-
-            for c_idx, val in enumerate(row_data, start=1):
-                cell = ws.cell(row=curr_row, column=c_idx, value=val)
-                cell.font = font_data
-                cell.border = thin_border
-                if c_idx in (3, 4, 6):
-                    cell.alignment = align_center
-                    cell.number_format = "#,##0"
-                elif c_idx == 5:
-                    cell.alignment = align_right
-                    cell.number_format = '#,##0 "IRR"'
-                else:
-                    cell.alignment = align_left
-            curr_row += 1
-
-        curr_row += 1
-
-        # 4. Sourced Line Items Table (Header at curr_row)
+        # 2. Sourced Line Items Table (Header at curr_row)
         ws.cell(row=curr_row, column=1, value="Sourced Line Items Procurement Schedule:").font = font_bold
         curr_row += 1
         tbl_hdr_row = curr_row

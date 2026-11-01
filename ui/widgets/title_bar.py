@@ -5,19 +5,15 @@ Governing Requirement: Clean Native Title Bar with 'OMNIX | Settings ▾' Menu
 Provides a top-level custom title bar for the application window containing:
 - Application branding text 'OMNIX'.
 - Subtle separator '|'.
-- 'Settings ▾' dropdown menu button hosting:
-  * General (opens general platform settings)
-  * Plugins (opens plugin & vendor settings)
-  * Reference Data (opens canonical reference data manager)
-  * Export Excel (triggers customer-facing Excel export)
-- Standard window management controls (Minimize, Maximize / Restore, Close).
+- Navigation Toggle hamburger button.
+- Modern window management controls (Minimize, Maximize / Restore, Close) with clean vector icons.
 - Native system window dragging via startSystemMove() and double-click maximize toggle.
 """
 
 from typing import Optional
 import os
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QMouseEvent, QFont, QColor, QAction
+from PyQt6.QtCore import Qt, QPoint, QRectF, QPointF, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap, QMouseEvent, QFont, QColor, QAction, QPainter, QPen
 from PyQt6.QtWidgets import (
     QWidget,
     QFrame,
@@ -31,17 +27,169 @@ from PyQt6.QtWidgets import (
 )
 
 
+class CaptionButton(QToolButton):
+    """
+    Modern minimal line-based window caption button:
+    - Minimize: crisp horizontal stroke (10px).
+    - Maximize: crisp square frame (10x10px).
+    - Restore: dual overlapping square frames (distinct from Maximize).
+    - Close: crisp diagonal cross (10x10px) with restrained dark crimson hover.
+    Provides accessible naming, zero tooltips, and external hover state control for Win32 DWM.
+    """
+
+    def __init__(self, role: str, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.role = role  # "minimize", "maximize", "restore", "close"
+        self._is_hovered = False
+        self._is_pressed = False
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setToolTip("")
+
+        if role == "close":
+            self.setObjectName("titleBarCloseBtn")
+            self.setFixedSize(46, 36)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        elif role == "minimize":
+            self.setObjectName("titleBarMinimizeBtn")
+            self.setFixedSize(40, 36)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setObjectName("titleBarMaximizeBtn")
+            self.setFixedSize(40, 36)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+        self._update_accessibility()
+
+    def set_role(self, role: str):
+        """Update button role (e.g. between maximize and restore)."""
+        if self.role != role:
+            self.role = role
+            self._update_accessibility()
+            self.update()
+
+    def _update_accessibility(self):
+        names = {
+            "minimize": "Minimize",
+            "maximize": "Maximize",
+            "restore": "Restore Down",
+            "close": "Close",
+        }
+        self.setAccessibleName(names.get(self.role, ""))
+
+    def text(self) -> str:
+        """Standard Unicode glyph fallback for backward compatibility with tests."""
+        symbols = {
+            "minimize": "—",
+            "maximize": "🗖",
+            "restore": "🗗",
+            "close": "✕",
+        }
+        return symbols.get(self.role, "")
+
+    def setHovered(self, hovered: bool):
+        """Allow native hit-testing to drive hover styling (e.g. for HTMAXBUTTON)."""
+        if self._is_hovered != hovered:
+            self._is_hovered = hovered
+            self.update()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self._is_hovered = True
+        self.update()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self._is_hovered = False
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_pressed = True
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_pressed = False
+            self.update()
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        w = self.width()
+        h = self.height()
+        cx = w / 2.0
+        cy = h / 2.0
+
+        is_hover = self._is_hovered or self.underMouse()
+        is_press = self._is_pressed or self.isDown()
+
+        # 1. Background rendering
+        if self.role == "close":
+            if is_press:
+                painter.fillRect(0, 0, w, h, QColor("#991b1b"))  # Restrained dark crimson pressed
+            elif is_hover:
+                painter.fillRect(0, 0, w, h, QColor("#c42b1c"))  # Modern Windows 11 restrained close hover
+        else:
+            if is_press:
+                painter.fillRect(0, 0, w, h, QColor(255, 255, 255, 36))
+            elif is_hover:
+                painter.fillRect(0, 0, w, h, QColor(255, 255, 255, 20))
+
+        # 2. Icon Stroke Color
+        if is_hover or is_press or (self.role == "close" and is_hover):
+            icon_color = QColor("#ffffff")
+        else:
+            icon_color = QColor("#94a3b8")
+
+        pen = QPen(icon_color, 1.0)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+        painter.setPen(pen)
+
+        # 3. Vector Icon Geometry
+        if self.role == "minimize":
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.drawLine(QPointF(cx - 5.0, cy), QPointF(cx + 5.0, cy))
+
+        elif self.role == "maximize":
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.drawRect(QRectF(cx - 5.0, cy - 5.0, 10.0, 10.0))
+
+        elif self.role == "restore":
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            # Back square (top-right, showing top & right edges)
+            painter.drawLine(QPointF(cx - 2.0, cy - 5.0), QPointF(cx + 5.0, cy - 5.0))
+            painter.drawLine(QPointF(cx + 5.0, cy - 5.0), QPointF(cx + 5.0, cy + 2.0))
+            painter.drawLine(QPointF(cx + 3.0, cy + 2.0), QPointF(cx + 5.0, cy + 2.0))
+            painter.drawLine(QPointF(cx - 2.0, cy - 5.0), QPointF(cx - 2.0, cy - 3.0))
+
+            # Front square (bottom-left)
+            front_rect = QRectF(cx - 5.0, cy - 3.0, 8.0, 8.0)
+            # Fill front square with current background color to cleanly occlude the back square
+            if self.role == "close":
+                bg_color = QColor("#c42b1c") if is_hover else QColor("#0b101b")
+            else:
+                bg_color = QColor(255, 255, 255, 20) if is_hover else QColor("#0b101b")
+            painter.fillRect(front_rect, bg_color)
+            painter.drawRect(front_rect)
+
+        elif self.role == "close":
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            pen.setWidthF(1.1)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(cx - 4.5, cy - 4.5), QPointF(cx + 4.5, cy + 4.5))
+            painter.drawLine(QPointF(cx - 4.5, cy + 4.5), QPointF(cx + 4.5, cy - 4.5))
+
+        painter.end()
+
+
 class WindowTitleBar(QFrame):
     """
     Top-level desktop window title bar hosting 'OMNIX | Settings ▾' menu alongside
     minimize, maximize/restore, and close controls.
     """
 
-    generalRequested = pyqtSignal()
-    pluginsRequested = pyqtSignal()
-    referenceDataRequested = pyqtSignal()
-    exportExcelRequested = pyqtSignal()
-    providersRequested = pyqtSignal()
     sidebarToggleRequested = pyqtSignal()
 
     def __init__(self, parent: Optional[QMainWindow] = None):
@@ -108,135 +256,18 @@ class WindowTitleBar(QFrame):
         self.hamburger_btn.clicked.connect(self.sidebarToggleRequested.emit)
         layout.addWidget(self.hamburger_btn)
 
-        # Retain hidden settings_btn and menu for test/backward compatibility
-        self.settings_btn = QPushButton("Settings", self)
-        self.settings_btn.setObjectName("titleBarSettingsBtn")
-        self.settings_btn.setVisible(False)
-
-        # Create dark-themed Dropdown Menu
-        self.settings_menu = QMenu(self)
-        self.settings_menu.setObjectName("titleBarSettingsMenu")
-        self.settings_menu.setStyleSheet("""
-            QMenu {
-                background-color: #0f172a;
-                border: 1px solid #334155;
-                border-radius: 6px;
-                padding: 4px;
-                color: #e2e8f0;
-                font-size: 11px;
-                font-family: 'Segoe UI', sans-serif;
-            }
-            QMenu::item {
-                padding: 6px 20px 6px 12px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #1e293b;
-                color: #38bdf8;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: #334155;
-                margin: 4px 6px;
-            }
-        """)
-
-        self.action_general = QAction("General", self)
-        self.action_general.setObjectName("actionGeneral")
-        self.action_general.triggered.connect(self.generalRequested.emit)
-        self.settings_menu.addAction(self.action_general)
-
-        self.action_plugins = QAction("Plugins", self)
-        self.action_plugins.setObjectName("actionPlugins")
-        self.action_plugins.triggered.connect(self.pluginsRequested.emit)
-        self.settings_menu.addAction(self.action_plugins)
-
-        self.settings_menu.addSeparator()
-
-        self.action_reference_data = QAction("Reference Data", self)
-        self.action_reference_data.setObjectName("actionReferenceData")
-        self.action_reference_data.triggered.connect(self.referenceDataRequested.emit)
-        self.settings_menu.addAction(self.action_reference_data)
-
-        self.action_providers = QAction("Supplier Directory", self)
-        self.action_providers.setObjectName("actionProviders")
-        self.action_providers.triggered.connect(self.providersRequested.emit)
-        self.settings_menu.addAction(self.action_providers)
-
-        self.action_export_excel = QAction("Export Excel", self)
-        self.action_export_excel.setObjectName("actionExportExcel")
-        self.action_export_excel.triggered.connect(self.exportExcelRequested.emit)
-        self.settings_menu.addAction(self.action_export_excel)
-
-        self.settings_btn.setMenu(self.settings_menu)
-        layout.addWidget(self.settings_btn)
-
-        # Backward compatibility proxy buttons (for existing test suites and references)
-        self.manage_reference_btn = QPushButton("Reference Data")
-        self.manage_reference_btn.setObjectName("titleBarReferenceBtn")
-        self.manage_reference_btn.setVisible(False)
-        self.manage_reference_btn.clicked.connect(self.referenceDataRequested.emit)
-
-        self.export_excel_btn = QPushButton("Export Excel")
-        self.export_excel_btn.setObjectName("titleBarExportBtn")
-        self.export_excel_btn.setVisible(False)
-        self.export_excel_btn.clicked.connect(self.exportExcelRequested.emit)
-
         layout.addStretch(1)
 
         # 3. Standard Window Controls (Rightmost)
-        win_ctrl_style = """
-            QToolButton {
-                background-color: transparent;
-                color: #94a3b8;
-                border: none;
-                font-size: 12px;
-                font-family: 'Segoe UI', 'Consolas', sans-serif;
-            }
-            QToolButton:hover {
-                background-color: #1e293b;
-                color: #f8fafc;
-            }
-            QToolButton:pressed {
-                background-color: #334155;
-            }
-            QToolButton#titleBarCloseBtn:hover {
-                background-color: #e11d48;
-                color: #ffffff;
-            }
-            QToolButton#titleBarCloseBtn:pressed {
-                background-color: #be123c;
-                color: #ffffff;
-            }
-        """
-
-        self.btn_minimize = QToolButton()
-        self.btn_minimize.setObjectName("titleBarMinimizeBtn")
-        self.btn_minimize.setText("—")
-        self.btn_minimize.setToolTip("Minimize")
-        self.btn_minimize.setFixedSize(40, 36)
-        self.btn_minimize.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_minimize.setStyleSheet(win_ctrl_style)
+        self.btn_minimize = CaptionButton("minimize", parent=self)
         self.btn_minimize.clicked.connect(self._on_minimize_clicked)
         layout.addWidget(self.btn_minimize)
 
-        self.btn_maximize = QToolButton()
-        self.btn_maximize.setObjectName("titleBarMaximizeBtn")
-        self.btn_maximize.setText("🗖")
-        self.btn_maximize.setToolTip("Maximize")
-        self.btn_maximize.setFixedSize(40, 36)
-        self.btn_maximize.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_maximize.setStyleSheet(win_ctrl_style)
+        self.btn_maximize = CaptionButton("maximize", parent=self)
         self.btn_maximize.clicked.connect(self._on_maximize_clicked)
         layout.addWidget(self.btn_maximize)
 
-        self.btn_close = QToolButton()
-        self.btn_close.setObjectName("titleBarCloseBtn")
-        self.btn_close.setText("✕")
-        self.btn_close.setToolTip("Close")
-        self.btn_close.setFixedSize(44, 36)
-        self.btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_close.setStyleSheet(win_ctrl_style)
+        self.btn_close = CaptionButton("close", parent=self)
         self.btn_close.clicked.connect(self._on_close_clicked)
         layout.addWidget(self.btn_close)
 
@@ -272,13 +303,11 @@ class WindowTitleBar(QFrame):
             self.update_maximize_state(True)
 
     def update_maximize_state(self, is_maximized: bool):
-        """Update maximize button glyph and tooltip according to window state."""
+        """Update maximize button state and glyph according to window state."""
         if is_maximized:
-            self.btn_maximize.setText("🗗")
-            self.btn_maximize.setToolTip("Restore Down")
+            self.btn_maximize.set_role("restore")
         else:
-            self.btn_maximize.setText("🗖")
-            self.btn_maximize.setToolTip("Maximize")
+            self.btn_maximize.set_role("maximize")
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:

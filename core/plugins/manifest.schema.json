@@ -116,19 +116,18 @@
           "MPN_SEARCH",
           "LIVE_STOCK_PROBE",
           "TIERED_PRICING",
-          "MODE_A_STAGING",
-          "MODE_B_STAGING"
+          "MODE_A_STAGING"
         ]
       },
       "uniqueItems": true
     },
     "supported_modes": {
-      "description": "Procurement modes supported by this plugin. Plugins may support Mode A only, Mode B only, or both.",
+      "description": "Procurement modes supported by this plugin. Plugins support Mode A.",
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "string",
-        "enum": ["MODE_A", "MODE_B"]
+        "enum": ["MODE_A"]
       },
       "uniqueItems": true
     },

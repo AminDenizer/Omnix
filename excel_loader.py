@@ -292,7 +292,17 @@ class ExcelDataLoader:
                             link_type = entry.vendor_label
                             effective_link = entry.url
                             vendor_links = {entry.vendor_id: entry.url}
-                            is_orderable = True
+                            reg = registry
+                            if reg is None:
+                                try:
+                                    from core.procurement.registry import VendorRegistry
+                                    reg = VendorRegistry.get_default_registry()
+                                except Exception:
+                                    reg = None
+                            if reg is not None and hasattr(reg, "has_vendor") and hasattr(reg, "is_vendor_enabled"):
+                                is_orderable = reg.has_vendor(entry.vendor_id) and reg.is_vendor_enabled(entry.vendor_id)
+                            else:
+                                is_orderable = True
                             try:
                                 from urllib.parse import urlparse
                                 p = urlparse(entry.url)
@@ -303,7 +313,17 @@ class ExcelDataLoader:
                             link_type = "MULTI"
                             is_multi_vendor = True
                             vendor_links = {vid: e.url for vid, e in parsed.links.items()}
-                            is_orderable = True
+                            reg = registry
+                            if reg is None:
+                                try:
+                                    from core.procurement.registry import VendorRegistry
+                                    reg = VendorRegistry.get_default_registry()
+                                except Exception:
+                                    reg = None
+                            if reg is not None and hasattr(reg, "has_vendor") and hasattr(reg, "is_vendor_enabled"):
+                                is_orderable = any(reg.has_vendor(vid) and reg.is_vendor_enabled(vid) for vid in parsed.links.keys())
+                            else:
+                                is_orderable = True
                             vendor_id = None
                             link_domain = "multi-vendor"
                         else:

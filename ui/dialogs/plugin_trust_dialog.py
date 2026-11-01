@@ -55,9 +55,9 @@ class PluginTrustDialog(QDialog):
         )
         self.setWindowTitle(f"Trust & Install — {disp_name}")
         self.setModal(True)
-        self.setMinimumWidth(560)
-        self.setMaximumWidth(700)
-        self.resize(580, 520)
+        self.setMinimumWidth(600)
+        self.setMaximumWidth(750)
+        self.resize(640, 560)
 
         apply_dark_window_frame(self)
         self._init_ui()
@@ -164,9 +164,32 @@ class PluginTrustDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: transparent;")
+        scroll.setMinimumHeight(240)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QWidget#details_container {
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: #0f172a;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #334155;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #38bdf8;
+            }
+        """)
 
         details_container = QWidget()
+        details_container.setObjectName("details_container")
         details_layout = QVBoxLayout(details_container)
         details_layout.setContentsMargins(0, 0, 0, 0)
         details_layout.setSpacing(10)
@@ -204,36 +227,6 @@ class PluginTrustDialog(QDialog):
             d_desc.setStyleSheet("color: #94a3b8; font-size: 11px; font-style: italic;")
         d_layout.addWidget(d_desc)
         details_layout.addWidget(domains_frame)
-
-        # Capabilities Section
-        caps_frame = QFrame()
-        caps_frame.setStyleSheet("""
-            QFrame {
-                background-color: #0f172a;
-                border: 1px solid #1e293b;
-                border-radius: 6px;
-                padding: 10px 12px;
-            }
-        """)
-        c_layout = QVBoxLayout(caps_frame)
-        c_layout.setContentsMargins(10, 8, 10, 8)
-        c_layout.setSpacing(4)
-
-        c_title = QLabel("Declared Capabilities")
-        c_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #f8fafc;")
-        c_layout.addWidget(c_title)
-
-        caps = self.inspection.manifest_metadata.get("capabilities", []) if self.inspection.manifest_metadata else []
-        if caps:
-            caps_str = " &nbsp;•&nbsp; ".join(caps)
-            c_desc = QLabel(f"<span style='color: #94a3b8; font-size: 11px;'>{caps_str}</span>")
-            c_desc.setTextFormat(Qt.TextFormat.RichText)
-            c_desc.setWordWrap(True)
-        else:
-            c_desc = QLabel("Standard adapter procurement capabilities")
-            c_desc.setStyleSheet("color: #94a3b8; font-size: 11px; font-style: italic;")
-        c_layout.addWidget(c_desc)
-        details_layout.addWidget(caps_frame)
 
         scroll.setWidget(details_container)
         layout.addWidget(scroll, 1)

@@ -30,7 +30,7 @@ Every requirement and gap in Omnix is classified under one of the following stri
 |---|---|
 | **`VERIFIED`** | Code is implemented, tested with unit/contract tests, and validated in test suite. |
 | **`IMPLEMENTED`** | Code is fully written and integrated, awaiting full formal certification. |
-| **`PARTIAL`** | Subsystem is partially implemented (e.g. Core logic present, UI missing; or Mode A working, Mode B unwritten). |
+| **`PARTIAL`** | Subsystem is partially implemented (e.g. Core logic present, UI missing). |
 | **`MISSING`** | Subsystem or feature is completely unwritten in the current codebase. |
 | **`DEFERRED`** | Architectural evolution item explicitly deferred to post-release milestones (e.g., gated on Open Decisions). |
 | **`OUT_OF_SCOPE`** | Feature or capability explicitly excluded from Omnix boundaries. |
@@ -50,7 +50,7 @@ The table below catalogs the complete set of **exactly 18 canonical GAPs** gover
 
 | ID | Title | Domain / Layer | Current Code State | Blocking? | Task Target | Dependencies | Status |
 |---|---|---|---|:---:|:---:|---|:---:|
-| **`GAP-01`** | Dual Procurement Modes (Mode A vs Mode B) | `UI / WORKFLOW` | Mode A (database-aware shortage calculation) and Mode B (100% inventory-independent turnkey BOM sourcing) fully implemented and UI-switchable. | **YES** | `TASK-A3` | `GAP-04`, `GAP-06` | `VERIFIED` |
+| **`GAP-01`** | Canonical Procurement Architecture (Mode A) | `UI / WORKFLOW` | Mode A (database-aware shortage calculation against inventory) fully implemented as sole canonical procurement workflow. | **YES** | `TASK-A3` | `GAP-04`, `GAP-06` | `VERIFIED` |
 | **`GAP-02`** | Direct MPN Procurement Quick Order Dialog | `UI` | Standalone QuickOrderDialog tab implemented with brand rules, stepper, vendor filtering, candidate table, and cart delta staging. | No | `TASK-A5` | `GAP-04`, `GAP-07` | `VERIFIED` |
 | **`GAP-03`** | Direct URL Procurement Quick Order Dialog | `UI` | Standalone QuickOrderDialog tab implemented with strict PDP regex validation, live inspection, constraint extraction, and cart delta staging. | No | `TASK-A5` | `GAP-13` | `VERIFIED` |
 | **`GAP-04`** | Package & Footprint Hard Constraints (`OD-001` OPEN) | `CORE_ENGINE` | Fully implemented in Core models and orchestrator with conservative normalization. | **YES** | `TASK-A1` | None | `VERIFIED` |
@@ -79,7 +79,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 ├──────────┬─────────────────────────────────────────────┬──────────────┬──────────────────────────┤
 │ GAP ID   │ Title                                       │ Target Task  │ Current Status           │
 ├──────────┼─────────────────────────────────────────────┼──────────────┼──────────────────────────┤
-│ GAP-01   │ Dual Procurement Modes (Mode A vs Mode B)   │ TASK-A3      │ VERIFIED (Mode Verified) │
+│ GAP-01   │ Canonical Procurement Mode A Architecture   │ TASK-A3      │ VERIFIED (Mode Verified) │
 │ GAP-04   │ Package & Footprint Hard Constraints        │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-05   │ UNKNOWN_REQUIRED_PARAMETER & Spec Engine    │ TASK-A1      │ VERIFIED (Core Verified) │
 │ GAP-06   │ Manufacturer / Brand Constraint Engine      │ TASK-A1      │ VERIFIED (Core Verified) │
@@ -109,7 +109,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 ### 4.3 Task A3 Verification Evidence (GAP-01, GAP-16)
 | GAP ID | Implemented Features | Source Code Location | Forensic Verification |
 |---|---|---|---|
-| **`GAP-01`** | • `ProcurementMode` enum (`DATABASE_AWARE` vs `DIRECT_BOM`)<br>• Mode A: stock subtraction $\Delta Q = \max(0, (\text{unit\_qty} \times M) - \text{db\_stock\_qty})$ using authoritative store link<br>• Mode B: 100% inventory-independent turnkey sourcing ($Q = \text{unit\_qty} \times M$, DB ignored)<br>• Mode-explicit branching in `ProcurementBridge.item_to_request`<br>• Interactive Mode A/B switcher ribbon in `BOMAuditWidget` | [`core/procurement/models.py:32-39`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L32-L39)<br>[`bom_auditor.py:10-380`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10-L380)<br>[`core/procurement/bridge.py:100-190`](file:///d:/management-elec/autom/atom/core/procurement/bridge.py#L100-L190)<br>[`ui/widgets/bom_audit_widget.py`](file:///d:/management-elec/autom/atom/ui/widgets/bom_audit_widget.py) | Passed 4 dedicated dual procurement mode tests in [`tests/test_dual_procurement_modes.py`](file:///d:/management-elec/autom/atom/tests/test_dual_procurement_modes.py). |
+| **`GAP-01`** | • `ProcurementMode` enum (`DATABASE_AWARE` as sole supported workflow; unsupported modes rejected fail-closed)<br>• Mode A: stock subtraction $\Delta Q = \max(0, (\text{unit\_qty} \times M) - \text{db\_stock\_qty})$ using authoritative store link<br>• Canonical Mode A single pipeline in `ProcurementBridge.item_to_request`<br>• Dedicated Mode A audit table and order dialog in `BOMAuditWidget` | [`core/procurement/models.py:32-39`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L32-L39)<br>[`bom_auditor.py:10-380`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10-L380)<br>[`core/procurement/bridge.py:100-190`](file:///d:/management-elec/autom/atom/core/procurement/bridge.py#L100-L190)<br>[`ui/widgets/bom_audit_widget.py`](file:///d:/management-elec/autom/atom/ui/widgets/bom_audit_widget.py) | Passed dedicated procurement mode tests in [`tests/test_dual_procurement_modes.py`](file:///d:/management-elec/autom/atom/tests/test_dual_procurement_modes.py). |
 | **`GAP-16`** | • Full 20-parameter Altium contract parser conforming to `DOC-OMNIX-ALTIUM-CONTRACT-001`<br>• Strict MPN validation (missing/blank MPN $\to$ `INVALID_REQUIRED_PARAMETER` / non-orderable; never falls back to `Comment`)<br>• Strict quantity validation (rejection of zero, negative, non-integer, and malformed strings)<br>• Separate `ManufacturerRule` (`EXACT`, `APPROVED_LIST`, `ANY`) and `ManufacturerDataState`<br>• Technical specs bundling (`Value`, `Tolerance`, `Voltage_Rating`, `Current_Rating`, `Power_Rating`) | [`bom_auditor.py:10-380`](file:///d:/management-elec/autom/atom/bom_auditor.py#L10-L380)<br>[`core/procurement/models.py:41-60`](file:///d:/management-elec/autom/atom/core/procurement/models.py#L41-L60) | Passed 4 dedicated Altium contract tests in [`tests/test_altium_contract_ingestion.py`](file:///d:/management-elec/autom/atom/tests/test_altium_contract_ingestion.py) and 7 brand selection tests in [`tests/test_bom_brand_selection.py`](file:///d:/management-elec/autom/atom/tests/test_bom_brand_selection.py). |
 
 ### 4.4 Task A4 Verification Evidence (GAP-13)
@@ -137,7 +137,7 @@ Forensic verification confirms that **EXACTLY 8 GAPS** are strictly classified a
 flowchart TD
     A1["TASK-A1 [VERIFIED]: Core Technical Matching, Package/Footprint & Brand Rules (GAP-04, GAP-05, GAP-06)"]
     A2["TASK-A2 [VERIFIED]: Multi-Vendor Settings, Universal Challenge Handler & Interactive Auth (GAP-11, GAP-17, GAP-09)"]
-    A3["TASK-A3 [VERIFIED]: Dual Procurement Modes & Altium Parameter Ingestion (GAP-01, GAP-16)"]
+    A3["TASK-A3 [VERIFIED]: Canonical Procurement Architecture (Mode A) & Altium Parameter Ingestion (GAP-01, GAP-16)"]
     A4["TASK-A4 [VERIFIED]: Multi-Vendor Cart Idempotency & Delta Synchronization (GAP-13)"]
     A5["TASK-A5 [VERIFIED]: Desktop UI Workflows & Multi-Candidate Preview (GAP-07, GAP-02, GAP-03)"]
     A6["TASK-A6 [VERIFIED]: Multi-Vendor Deterministic Export Pipeline (GAP-18)"]

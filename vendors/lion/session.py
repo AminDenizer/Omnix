@@ -13,7 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from core.models import AdapterConfig
-from core.procurement.challenge_handler import SessionContinuityMode, SessionPromotionResult
+from core.models import SessionContinuityMode, SessionPromotionResult
 try:
     from .selectors import LionSelectors
 except ImportError:
@@ -36,40 +36,19 @@ class LionSessionManager:
         )
         self.driver: Optional[webdriver.Chrome] = None
 
-    def create_driver(self) -> webdriver.Chrome:
-        """Create and configure Chrome WebDriver according to configuration."""
-        options = Options()
+    def create_driver(self) -> Any:
+        """Create and configure WebDriver according to global settings and adapter configuration."""
+        from core.browser_detection import BrowserFactory
+        eff_headless = self.config.headless
+        if eff_headless is True:
+            eff_headless = BrowserFactory.resolve_headless(None)
 
-        is_headless = self.config.headless
-        try:
-            from settings_manager import settings
-            if settings.get("show_browser", False):
-                is_headless = False
-        except Exception:
-            pass
-
-        if is_headless:
-            options.add_argument("--headless=new")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-        else:
-            options.add_experimental_option("detach", True)
-            options.add_argument("--start-maximized")
-
-        ua = self.config.user_agent or (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
+        driver = BrowserFactory.create_driver(
+            browser_type=getattr(self.config, "browser_type", None),
+            headless=eff_headless,
+            timeout_seconds=self.config.timeout_seconds,
+            user_agent=self.config.user_agent,
         )
-        options.add_argument(f"user-agent={ua}")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
-
-        driver = webdriver.Chrome(options=options)
-        driver.implicitly_wait(self.config.timeout_seconds / 2.0)
         self.driver = driver
         return driver
 
@@ -92,7 +71,7 @@ class LionSessionManager:
         Transition session from headless to visible/headful mode for interactive user resolution.
         Governing Invariant: GAP-09 Session Continuity.
         """
-        if self.driver is not None and not self.config.headless:
+        if self.driver is not None and self.config.headless is False:
             return SessionPromotionResult(
                 success=True,
                 continuity_mode=SessionContinuityMode.SAME_CONTEXT_PRESERVED,

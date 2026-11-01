@@ -35,9 +35,9 @@ class LionSelectors:
     BTN_INQUIRY_PRIMARY = "button.add-inquiry, button.save-btn"
 
     # Shopping Cart
-    CART_CONTAINER = ".order-cart-view, .cart-items"
+    CART_CONTAINER = ".order-cart-view, .cart-items, .cart-item, .checkout-item"
     CART_ITEMS_TABLE = "table.table, .cart-table"
-    CART_ITEM_ROWS = "table.table tbody tr, .cart-table tbody tr"
+    CART_ITEM_ROWS = ".cart-item, .checkout-item, table.table tbody tr, .cart-table tbody tr"
 
     # Authentication
     LOGIN_FORM = "login-form"

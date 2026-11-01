@@ -46,7 +46,7 @@ class TestManufacturerRuleDataStateSeparation:
         wb.close()
 
         try:
-            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
+            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DATABASE_AWARE)
             assert ok is True
             it = res.items[0]
             assert it.manufacturer_rule == ManufacturerRule.EXACT
@@ -69,7 +69,7 @@ class TestManufacturerRuleDataStateSeparation:
         wb.close()
 
         try:
-            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
+            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DATABASE_AWARE)
             assert ok is True
             it = res.items[0]
             assert it.manufacturer_rule == ManufacturerRule.APPROVED_LIST
@@ -92,7 +92,7 @@ class TestManufacturerRuleDataStateSeparation:
         wb.close()
 
         try:
-            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
+            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DATABASE_AWARE)
             assert ok is True
             it = res.items[0]
             assert it.manufacturer_rule == ManufacturerRule.ANY
@@ -115,7 +115,7 @@ class TestManufacturerRuleDataStateSeparation:
         wb.close()
 
         try:
-            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DIRECT_BOM)
+            ok, msg, res = BOMAuditor.audit_bom(path, inventory=None, mode=ProcurementMode.DATABASE_AWARE)
             assert ok is True
             it = res.items[0]
             assert it.manufacturer_rule == ManufacturerRule.ANY

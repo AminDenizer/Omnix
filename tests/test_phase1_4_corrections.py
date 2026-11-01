@@ -365,9 +365,15 @@ class TestMpnCopyNotificationDeduplication:
 class TestVendorPluginsLayoutUnclipped:
     """Tests that VendorPluginsWidget uses proper layout margins and unclipped card."""
 
-    def test_vendor_plugins_card_margins_and_no_css_padding_clipping(self, qapp):
+    def test_vendor_plugins_card_margins_and_no_css_padding_clipping(self, qapp, tmp_path):
         from PyQt6.QtWidgets import QFrame
-        widget = VendorPluginsWidget()
+        from core.procurement.registry import VendorRegistry
+        from core.plugins.plugin_store import PluginStore
+        from core.plugins.plugin_lifecycle_manager import PluginLifecycleManager
+        empty_reg = VendorRegistry()
+        empty_store = PluginStore(plugins_root=tmp_path / "empty_plugins")
+        mgr = PluginLifecycleManager(store=empty_store, registry=empty_reg)
+        widget = VendorPluginsWidget(registry=empty_reg, lifecycle_mgr=mgr)
         widget.resize(1000, 700)
         widget.show()
         qapp.processEvents()
@@ -387,9 +393,15 @@ class TestVendorPluginsLayoutUnclipped:
 
         widget.close()
 
-    def test_vendor_plugins_empty_state_rendered_exactly_once_after_multiple_refreshes(self, qapp):
+    def test_vendor_plugins_empty_state_rendered_exactly_once_after_multiple_refreshes(self, qapp, tmp_path):
         from PyQt6.QtWidgets import QFrame
-        widget = VendorPluginsWidget()
+        from core.procurement.registry import VendorRegistry
+        from core.plugins.plugin_store import PluginStore
+        from core.plugins.plugin_lifecycle_manager import PluginLifecycleManager
+        empty_reg = VendorRegistry()
+        empty_store = PluginStore(plugins_root=tmp_path / "empty_plugins")
+        mgr = PluginLifecycleManager(store=empty_store, registry=empty_reg)
+        widget = VendorPluginsWidget(registry=empty_reg, lifecycle_mgr=mgr)
         assert len(widget.findChildren(QFrame, "cardFrame")) == 1
 
         for _ in range(5):
@@ -520,19 +532,22 @@ class TestPhase1_5PrintRemovalAndWindowManagement:
 
             assert win.isMaximized() is False
             assert win.isMinimized() is False
-            assert win.title_bar.btn_maximize.toolTip() == "Maximize"
+            assert win.title_bar.btn_maximize.toolTip() == ""
+            assert win.title_bar.btn_maximize.accessibleName() == "Maximize"
 
             # Maximize click
             win.title_bar.btn_maximize.click()
             qapp.processEvents()
             assert win.isMaximized() is True
-            assert win.title_bar.btn_maximize.toolTip() == "Restore Down"
+            assert win.title_bar.btn_maximize.toolTip() == ""
+            assert win.title_bar.btn_maximize.accessibleName() == "Restore Down"
 
             # Restore click
             win.title_bar.btn_maximize.click()
             qapp.processEvents()
             assert win.isMaximized() is False
-            assert win.title_bar.btn_maximize.toolTip() == "Maximize"
+            assert win.title_bar.btn_maximize.toolTip() == ""
+            assert win.title_bar.btn_maximize.accessibleName() == "Maximize"
 
             # Minimize click
             win.title_bar.btn_minimize.click()
@@ -546,7 +561,8 @@ class TestPhase1_5PrintRemovalAndWindowManagement:
 
             win.setWindowState(win.windowState() | Qt.WindowState.WindowMaximized)
             qapp.processEvents()
-            assert win.title_bar.btn_maximize.toolTip() == "Restore Down"
+            assert win.title_bar.btn_maximize.toolTip() == ""
+            assert win.title_bar.btn_maximize.accessibleName() == "Restore Down"
 
             win._is_force_closing = True
             win.close()

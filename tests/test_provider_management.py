@@ -39,11 +39,11 @@ class TestProviderReferenceDataCRUD:
 
     def test_default_seeded_providers(self, clean_repo):
         providers = clean_repo.get_all_providers(include_inactive=True)
-        # Should have seeded default providers: Lion, Javan, RoboEq, Generic
+        # Should have seeded default providers: Lion, Javan, Generic
         p_ids = {p.provider_id for p in providers}
         assert "vendor_lion" in p_ids
         assert "vendor_javan" in p_ids
-        assert "vendor_roboeq" in p_ids
+        assert "generic" in p_ids
         assert "generic" in p_ids
 
     def test_add_custom_provider(self, clean_repo):
@@ -129,7 +129,7 @@ class TestProviderReferenceDataCRUD:
         dlg.show()
         qapp.processEvents()
 
-        assert dlg.table.rowCount() >= 4
+        assert dlg.table.rowCount() >= 3
         assert dlg.add_btn.isEnabled() is True
         assert dlg.edit_btn.isEnabled() is False
 

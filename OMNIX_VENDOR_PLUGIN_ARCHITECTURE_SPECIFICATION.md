@@ -19,13 +19,13 @@ This specification governs:
 1. **Architectural Triad**: The strict separation of responsibilities among **Omnix Core**, **Vendor Plugins**, and the **Shared Procurement Pipeline**.
 2. **Three-Layer Validation Model**:
    - **Layer A (Static Manifest Validation)**: Deterministic, offline, zero network requests, zero code execution, validating strict JSON schema, syntax, capabilities, routes, and metadata.
-   - **Layer B (Controlled Mock/Simulator Testing)**: Mandatory offline verification of contracts, declared capabilities, security properties, and Mode A / Mode B Add-to-Cart staging inside a headless mock simulator with zero live network calls.
+   - **Layer B (Controlled Mock/Simulator Testing)**: Mandatory offline verification of contracts, declared capabilities, security properties, and Mode A Add-to-Cart staging inside a headless mock simulator with zero live network calls.
    - **Layer C (Live Vendor Integration Testing)**: Explicitly initiated, controlled online testing of vendor connectivity, live site structure, authentication workflows (`LOGIN_TEST`), CAPTCHA detection and human-assisted resolution, catalog product discovery without direct URLs (`LIVE_PRODUCT_DISCOVERY_TEST`), general MOQ and order-multiple quantity validation (`LIVE_PROCUREMENT_QUANTITY_TEST`), and optional explicitly authorized live cart staging (`LIVE_ADD_TO_CART_TEST`).
 3. **Installable Package Format (`.xpl`)**: The logical structure, manifest schema, signature encapsulation, and file layout of installable plugin archives.
 4. **Vendor Adapter Contract (`IVendorAdapter`)**: The unified Python interface, method contracts, type definitions, and fail-closed behaviors.
 5. **Plugin Lifecycle & State Machine**: Discovery, validation, manual installation, staged transactional update, verified rollback, and dynamic activation/deactivation.
 6. **Publisher Trust & Verification**: Cryptographic signing, package-hash integrity binding, publisher identity classification (Official vs. Third-Party Verified vs. Unsigned), and revocation enforcement.
-7. **Capability & Procurement Mode Model**: Fine-grained capability declaration (`PRODUCT_URL_RECOGNITION`, `PRODUCT_INSPECTION`, `CART_URL_RESOLUTION`, `MPN_SEARCH`, `MODE_A_STAGING`, `MODE_B_STAGING`, `LIVE_CONNECTIVITY_TEST`, `LIVE_STRUCTURE_TEST`, `LOGIN_TEST`, `CAPTCHA_DETECTION`, `CAPTCHA_HUMAN_ASSIST`, `LIVE_PRODUCT_DISCOVERY`, `LIVE_QUANTITY_VALIDATION`, `LIVE_ADD_TO_CART`) and procurement mode rules (single-mode support permitted).
+7. **Capability & Procurement Mode Model**: Fine-grained capability declaration (`PRODUCT_URL_RECOGNITION`, `PRODUCT_INSPECTION`, `CART_URL_RESOLUTION`, `MPN_SEARCH`, `MODE_A_STAGING`, `LIVE_CONNECTIVITY_TEST`, `LIVE_STRUCTURE_TEST`, `LOGIN_TEST`, `CAPTCHA_DETECTION`, `CAPTCHA_HUMAN_ASSIST`, `LIVE_PRODUCT_DISCOVERY`, `LIVE_QUANTITY_VALIDATION`, `LIVE_ADD_TO_CART`) and procurement mode rules (sole canonical mode: `MODE_A`).
 8. **Preservation of Canonical Domain Rules**: Canonical inventory policy math, conservative MPN/package normalization, tri-state evidence matching (`MATCH`, `MISMATCH`, `UNKNOWN`) with separate applicability scope (`NOT_APPLICABLE`), and GAP-13 cart delta synchronization ($\Delta Q = \max(0, \text{target} - \text{existing})$).
 9. **Canonical Component Identity & Excel Data Model**: The strict dual-key component identity (`Manufacturer + MPN`) and its reconciliation against the authoritative two-sheet inventory schema (`Stock Policy` and `Inventory`), preserving real workbook fields without invented datasheet columns, and strictly separating canonical identity from the 5-dimension Stock Policy grouping key.
 10. **Release 1 MVP Delivery Scope Reconciliation**: Reconciles the architecture specification with Release 1 MVP delivery constraints:
@@ -37,13 +37,12 @@ This specification governs:
     - Bounded in-process execution strictly for verified trusted packages (OD-010).
     - Windows DPAPI credential protection at rest with verified fallback migration (OD-002), separating credentials from package archives.
     - Declarative `config_schema` in plugin manifests for dynamic UI generation.
-    - Operational Mode A with Phase 3 atomic snapshot URL dispatch.
-    - Mode B deferred with UI "Coming Soon" badge and backend rejection specifically guarded by `DIRECT_BOM` mode.
+    - Sole Canonical Procurement Architecture (Mode A) with Phase 3 atomic snapshot URL dispatch.
 
 ### 1.3 Non-Goals
 The following areas are explicitly outside the scope of this specification and must not be altered:
 - **No Implementation in Documentation Phase**: This phase is strictly limited to architectural definition, reconciliation, and specification alignment; no live runner code, UI widgets, package loaders, schema changes, or test alterations are implemented in this turn.
-- **No Revision of Procurement Business Math**: Mode A exact link pinning, Mode B 5-tier deterministic cost ranking, and canonical inventory threshold evaluations remain untouched.
+- **No Revision of Procurement Business Math**: Mode A exact link pinning and canonical inventory threshold evaluations remain untouched.
 - **No Mandatory Empty-Cart Preflight in this Phase**: Pre-order cart clearing or empty-cart blocking is intentionally deferred.
 - **No BOM Deduplication / Consolidation Alterations**: Repeated BOM line item handling and multi-BOM order consolidation remain as previously defined.
 - **No Live Purchasing, Payments, or Automated Checkout**: Testing and Add-to-Cart validation are strictly bounded. Even under explicitly authorized Layer C live cart staging, live checkout, monetary payments, and final order submissions are strictly prohibited.
@@ -135,7 +134,7 @@ Omnix Core is 100% vendor-agnostic and owns all business rules, mathematical cal
 - **Inventory Replenishment Math**: Pure non-negative integer math ($\text{replenishment} = \text{target} - \text{current}$ when $\text{current} < \text{min}$).
 - **Canonical Quantity Calculation**: Constraint-aware quantity engine determining $Q_{\text{vendor\_min}}$ from requested quantity $Q$, vendor MOQ $M$, and verified multiple $S$ under `ABSOLUTE_MULTIPLE`, `MOQ_BASED_INCREMENT`, or MOQ-only rules without duplicate rounding.
 - **Component Matching**: Tri-state evidence matching (`MATCH`, `MISMATCH`, `UNKNOWN`) with separate applicability scope (`NOT_APPLICABLE` for unconstrained parameters), where $UNKNOWN \neq MISMATCH$ (missing data is not an explicit contradiction) but $UNKNOWN \neq MATCH$ (missing essential data cannot satisfy an active procurement constraint).
-- **Sourcing Strategy Dispatch**: Routing `EXACT_INVENTORY_LINK` (Mode A) versus `MULTI_VENDOR_DISCOVERY` (Mode B).
+- **Sourcing Strategy Dispatch**: Routing `EXACT_INVENTORY_LINK` (Mode A).
 - **Candidate Ranking**: Deterministic 5-tier hierarchy (Cost $\rightarrow$ Stock $\rightarrow$ MOQ $\rightarrow$ `vendor_id` $\rightarrow$ `vendor_sku`).
 - **Plugin Lifecycle & Security Governance**: Validation of manifests (Layer A), signature checking, mock test orchestration (Layer B), activation, transactional update, and rollback.
 - **Registry Management**: Dynamic mapping of vendor IDs and storefront domains to validated, active plugin instances.
@@ -216,11 +215,9 @@ Omnix establishes a strict 1-to-1 canonical relationship between an `.xpl` packa
 2. **Canonical Single-Vendor Packages**: Lion Electronic (`com.omnix.vendor.lion`, `vendor_lion`) and Javan Electronic (`com.omnix.vendor.javan`, `vendor_javan`) must be packaged and distributed as completely separate, independent `.xpl` archives (`lion.xpl` and `javan.xpl`).
 3. **Single Active Version per Vendor**: A vendor integration has exactly one user-facing entry in Omnix and at most one active version registered in `VendorRegistry` at any time. When multiple versions are installed or archived on disk for rollback, exactly one version is active; older versions remain inactive and do not appear as separate active integrations or duplicate routing entries.
 
-### 3.7 Procurement Modes in Release 1 (Mode A Operational vs. Mode B Deferred)
-1. **Mode A (Explicit Product URL Procurement)**: Fully operational in Release 1. Omnix Core routes candidate URLs to active vendor adapters via Phase 3 version-aware atomic route dispatch (`resolve_adapter_for_url`). Staging executes idempotent cart delta synchronization ($\Delta Q = \max(0, \text{target} - \text{existing})$).
-2. **Mode B (Direct BOM / Part Number Procurement) Deferred**: In Release 1, Mode B is not available for procurement execution. The user interface displays Mode B with a visible **"Coming Soon"** badge and disables user selection. If an incoming procurement batch requests `DIRECT_BOM` mode (or its equivalent mode flag), the orchestrator immediately rejects it with `MODE_NOT_SUPPORTED`.
-3. **Fail-Closed Mode Guarding**: The backend rejection must specifically check the requested procurement mode (`DIRECT_BOM`), not merely the absence of a URL (since valid Mode B procurement by definition operates on component part numbers rather than pre-pinned storefront URLs).
-4. **Preservation of Mode B Architecture**: The full Mode B mathematical specification (5-tier candidate ranking, multi-vendor discovery, and staging contracts) is preserved in this architecture specification for downstream delivery.
+### 3.7 Sole Canonical Procurement Architecture (Mode A)
+1. **Mode A (Explicit Product URL Procurement)**: Sole operational procurement architecture in Omnix. Omnix Core routes candidate URLs to active vendor adapters via Phase 3 version-aware atomic route dispatch (`resolve_adapter_for_url`). Staging executes idempotent cart delta synchronization ($\Delta Q = \max(0, \text{target} - \text{existing})$).
+2. **Sole Canonical Architecture**: Mode A is the sole supported procurement architecture in Omnix. Any non-Mode A procurement request is immediately rejected fail-closed.
 
 ## 4. Plugin Package Format (`.xpl`)
 
@@ -327,12 +324,10 @@ The plugin manifest is strictly named **`manifest.json`** and serialized in JSON
     "PRODUCT_INSPECTION",
     "CART_URL_RESOLUTION",
     "MPN_SEARCH",
-    "MODE_A_STAGING",
-    "MODE_B_STAGING"
+    "MODE_A_STAGING"
   ],
   "supported_modes": [
-    "MODE_A",
-    "MODE_B"
+    "MODE_A"
   ],
   "routes": {
     "base_url": "https://lionelectronic.ir",
@@ -398,7 +393,7 @@ The plugin manifest is strictly named **`manifest.json`** and serialized in JSON
 | `publisher.type` | `string` | `"OFFICIAL"`, `"THIRD_PARTY_VERIFIED"`, `"COMMUNITY"`. | Reject package: Unrecognized publisher type. |
 | `publisher.key_id` | `string` | Matches an approved public key identifier in the Core trust store. (Note: Manifest examples use illustrative placeholder `'ed25519-official-placeholder-key1'`; authoritative keys must be provisioned via an administrative release process). | Reject package: Unknown or unapproved publisher key. |
 | `capabilities` | `list[string]`| Valid canonical capability IDs (Section 7). | Reject package: Invalid capability declared. |
-| `supported_modes` | `list[string]`| Subset of `["MODE_A", "MODE_B"]`. Non-empty. | Reject package: No supported modes declared. |
+| `supported_modes` | `list[string]`| Must be `["MODE_A"]`. Non-empty. | Reject package: Invalid or unsupported modes declared. |
 | `routes.base_url` | `string` | Valid absolute URL (`http://` or `https://`). | Reject package: Invalid base URL. |
 | `routes.cart_url` | `string` | Valid absolute URL (`http://` or `https://`). | Reject package: Invalid cart URL. |
 | `routes.domains` | `list[string]`| Non-empty list of valid hostnames without ports/paths. | Reject package: Empty or invalid domain routes.|
@@ -561,7 +556,6 @@ Capabilities represent fine-grained functional features exposed by a plugin:
 | `LIVE_STOCK_PROBE` | Layer B | Plugin provides an optimized real-time stock availability check via `inspect_stock()`. |
 | `TIERED_PRICING` | Layer B | Plugin extracts and reports structured quantity price tiers (`min_qty`, `unit_price`). |
 | `MODE_A_STAGING` | Layer B | Plugin supports Mode A exact inventory link staging via `add_to_cart()`. |
-| `MODE_B_STAGING` | Layer B | Plugin supports Mode B multi-vendor discovery staging via `add_to_cart()`. |
 | `LIVE_CONNECTIVITY_TEST` | Layer C | Plugin declares support for online endpoint probe (DNS, TLS, HTTP reachability). |
 | `LIVE_STRUCTURE_TEST` | Layer C | Plugin declares selectors that match the live supplier storefront DOM structure. |
 | `LOGIN_TEST` | Layer C | Plugin supports live authentication testing using user-authorized credentials. |
@@ -605,11 +599,11 @@ For live interactive challenge evaluation, Omnix tracks fine-grained operational
 > `PASSED`, `FAILED`, `NOT_RUN`, `NOT_SUPPORTED`, and `BLOCKED` are distinct, mutually exclusive operational states and must never be conflated. Furthermore, a successful challenge detection must never be equated to successful login or authentication.
 
 ### 7.4 Procurement Mode Support Rules
-1. **Single-Mode Plugins Permitted**: A plugin that implements only Mode A (e.g. pinned URL staging) is fully valid and accepted, provided it declares `["MODE_A"]` and does not claim Mode B.
-2. **No False Advertising**: A plugin must pass mandatory Add-to-Cart validation for every mode it declares. If a plugin claims `["MODE_A", "MODE_B"]`, but fails Mode B validation, the update/installation is rejected.
-3. **Core Mode Guarding**: Omnix Core inspects `supported_modes` before dispatching procurement batches. If a BOM requires Mode B discovery, plugins supporting only Mode A are bypassed automatically without error.
-4. **Release 1 Mode A Operational Status**: Mode A (explicit product URL procurement) is fully operational in Release 1. Storefront URLs are resolved atomically via Phase 3 `resolve_adapter_for_url()` without TOCTOU race conditions.
-5. **Release 1 Mode B Deferred ("Coming Soon")**: In Release 1, Mode B (direct BOM / part number procurement) is presented in the UI with a "Coming Soon" badge and disabled from user execution. Any procurement request specifying `DIRECT_BOM` mode is rejected fail-closed by the backend with `MODE_NOT_SUPPORTED`. The backend guard must specifically evaluate the requested mode flag (`DIRECT_BOM`), not merely the absence of a URL (since valid Mode B procurement by definition operates on component part numbers rather than pre-pinned storefront URLs).
+1. **Canonical Mode Enforcement**: All vendor plugins must declare `["MODE_A"]` as their supported procurement mode in `manifest.json`.
+2. **Mandatory Add-to-Cart Validation**: A plugin must pass mandatory Mode A Add-to-Cart validation during Layer B verification.
+3. **Core Mode Guarding**: Omnix Core strictly requires Mode A (`DATABASE_AWARE`) procurement. Any request with an unsupported or missing mode is rejected fail-closed.
+4. **Mode A Operational Status**: Mode A (explicit product URL procurement) is the sole operational procurement workflow in Omnix. Storefront URLs are resolved atomically via Phase 3 `resolve_adapter_for_url()` without TOCTOU race conditions.
+5. **Sole Procurement Workflow**: All capabilities, enums, UI controls, and code strictly enforce Mode A as the sole procurement workflow.
 
 ---
 
@@ -773,8 +767,7 @@ Omnix enforces a strict, four-tier cryptographic model that completely eliminate
          "integration_tests": "PASS",
          "workflow_tests": "PASS",
          "security_tests": "PASS",
-         "mode_a_add_to_cart": "PASS",
-         "mode_b_add_to_cart": "PASS"
+         "mode_a_add_to_cart": "PASS"
        },
        "attester": "Omnix Automated Certification Pipeline"
      }
@@ -984,13 +977,13 @@ Every candidate package must traverse five fail-closed verification gates in str
 3. **Gate C: Manifest & Compatibility Gate**:
    - Validate `manifest.json` against canonical JSON schema (`ManifestValidator`), including optional `config_schema`.
    - Verify three-way compatibility: `omnix_contract_version` exact major match, host application version in `[min_omnix_version, max_omnix_version]`, host Python runtime in `dependencies.python`.
-   - Verify non-empty `supported_modes` (subset of `["MODE_A", "MODE_B"]`).
+   - Verify non-empty `supported_modes` (must be `["MODE_A"]`).
    - *Static inspection only; zero Python code executed.*
 
 4. **Gate D: Automated Test Harness & Sandbox Execution Gate (Layer B)**:
-   - Execute all 8 test tiers (Section 12) inside the headless Mock/Simulator environment.
+   - Execute all applicable test tiers (Section 12) inside the headless Mock/Simulator environment.
    - Enforce hard execution timeouts (30s suite, 5s per test) and network socket interception (blocking all non-mock outbound internet traffic).
-   - Verify every declared capability passes. Single-mode plugins (`["MODE_A"]` or `["MODE_B"]`) only need to pass tests for their declared mode.
+   - Verify every declared capability passes. Mode A plugins (`["MODE_A"]`) pass tests for their declared capabilities and Mode A workflows.
    - On full success: generate external test attestation `<package_hash>.attestation.json` and persist it to `~/.omnix/plugins/attestations/`.
 
 5. **Gate E: Atomic Registry Activation Gate**:
@@ -1091,11 +1084,10 @@ Omnix establishes three independent, complementary validation layers:
 | **8.2 Capability Tests** | Independent verification of declared features. | Layer B | Omnix Core | Gate D | No (Mock DOM) |
 | **8.3 Contract Tests** | Compliance with 13 `IVendorAdapter` operations. | Layer B | Omnix Core | Gate D | No (Mock DOM) |
 | **8.4 Integration Tests** | Registry discovery, initialization, domain routing. | Layer B | Omnix Core | Gate D | No (Mock Session)|
-| **8.5 Workflow Tests** | End-to-end Mode A and Mode B mock procurement. | Layer B | Omnix Core | Gate D | No (Simulator) |
+| **8.5 Workflow Tests** | End-to-end Mode A mock procurement. | Layer B | Omnix Core | Gate D | No (Simulator) |
 | **8.6 Security Tests** | Zip-slip checks, AST import scanning, signatures. | Layer A/B | Omnix Core | Gates A, B, C | No (Static) |
 | **8.7 Add-to-Cart (Mode A)**| Exact component selection and mock cart staging. | Layer B | Omnix Core | Gate D | No (Simulator) |
-| **8.8 Add-to-Cart (Mode B)**| Candidate selection and mock cart staging. | Layer B | Omnix Core | Gate D | No (Simulator) |
-| **8.9 Live Connectivity** | DNS, TLS, reachability, status code probe. | Layer C | Integration Runner | Diagnostic | **Yes (Live)** |
+| **8.8 Live Connectivity** | DNS, TLS, reachability, status code probe. | Layer C | Integration Runner | Diagnostic | **Yes (Live)** |
 | **8.10 Live Site Structure**| Live DOM selector matching & drift detection. | Layer C | Integration Runner | Diagnostic | **Yes (Live)** |
 | **8.11 Live Login Test** | Safe authentication flow with user credentials. | Layer C | Integration Runner | Diagnostic | **Yes (Live)** |
 | **8.12 CAPTCHA Detection** | Challenge recognition & human-assisted handoff. | Layer C | Integration Runner | Diagnostic | **Yes (Live)** |
@@ -1447,7 +1439,7 @@ Where vendor pages or authoritative references provide constraint data, the runn
 > [!IMPORTANT]
 > **Omnix Core owns all procurement quantity calculations.**
 > - Vendor plugins do **not** implement custom quantity rounding algorithms. Plugins are responsible solely for extracting and exposing verified vendor constraints through `OrderConstraints`.
-> - The Shared Procurement Pipeline (`UniversalProcurementOrchestrator`) applies canonical domain formulas uniformly across Mode A, Mode B, and live integration tests.
+> - The Shared Procurement Pipeline (`UniversalProcurementOrchestrator`) applies canonical domain formulas uniformly across Mode A procurement workflows and live integration tests.
 > - The `VendorIntegrationTestRunner` validates that the effective quantity computed by the Core pipeline complies with the live vendor's enforced constraints without introducing a secondary rounding algorithm.
 
 ### 19.2 Vendor-Specific Constraints & Standard Terminology

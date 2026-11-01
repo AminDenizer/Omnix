@@ -291,6 +291,12 @@ class AssemblyPreparationWidget(QWidget):
         self.preview_btn.clicked.connect(self.open_preview)
         top_layout.addWidget(self.preview_btn)
 
+        self.matrix_btn = QPushButton("📊 Export Matrix Labels (.xlsx)")
+        self.matrix_btn.setObjectName("secondaryBtn")
+        self.matrix_btn.setToolTip("Export transposed component matrix with dashed cut guides (.xlsx)")
+        self.matrix_btn.clicked.connect(self.export_matrix_labels)
+        top_layout.addWidget(self.matrix_btn)
+
         self.pdf_btn = QPushButton("📥 Export Assembly PDF")
         self.pdf_btn.setStyleSheet("""
             QPushButton {
@@ -415,3 +421,44 @@ class AssemblyPreparationWidget(QWidget):
                     "Export Error",
                     f"Failed to export Assembly PDF:\n{str(e)}"
                 )
+
+    def export_matrix_labels(self):
+        """Exports the active BOM into a transposed matrix worksheet (.xlsx / .pdf) with cut lines."""
+        if not self.bom_items:
+            QMessageBox.warning(self, "No BOM Loaded", "Please load an Altium BOM project first.")
+            return
+
+        from ui.printing.matrix_label_engine import MatrixLabelEngine
+
+        clean_name = AssemblyPrintEngine.extract_project_name(self.project_name)
+        default_name = f"{clean_name}_Matrix_Labels.xlsx"
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Transposed Component Labels",
+            default_name,
+            "Excel Matrix (*.xlsx);;Printable Cut-Labels PDF (*.pdf)"
+        )
+        if not file_path:
+            return
+
+        try:
+            if file_path.lower().endswith(".pdf") or "pdf" in selected_filter.lower():
+                if not file_path.lower().endswith(".pdf"):
+                    file_path += ".pdf"
+                saved = MatrixLabelEngine.export_pdf(self.bom_items, self.project_name, file_path)
+            else:
+                if not file_path.lower().endswith(".xlsx"):
+                    file_path += ".xlsx"
+                saved = MatrixLabelEngine.export_excel(self.bom_items, self.project_name, file_path)
+
+            QMessageBox.information(
+                self,
+                "Labels Exported",
+                f"Transposed Component Labels saved successfully to:\n{saved}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"Failed to export Component Labels:\n{str(e)}"
+            )

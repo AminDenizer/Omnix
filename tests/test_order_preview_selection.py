@@ -12,7 +12,7 @@ Covers all 11 required scenarios:
 8. Selected multi-vendor items retain existing vendor-selection behavior.
 9. MOQ/order-step and existing procurement tests remain unchanged.
 10. The selection UI does not mutate local inventory quantities.
-11. Existing Quick Order and Mode B behavior remain unchanged.
+11. OrderPreviewDialog operates strictly in Mode A architecture.
 """
 
 import os
@@ -39,7 +39,6 @@ from core.procurement.models import (
 from core.procurement.registry import VendorRegistry
 from core.vendor_interface import IVendorAdapter
 from ui.dialogs.order_preview_dialog import OrderPreviewDialog, OrderWorkerThread, VendorSelectionDialog
-from ui.dialogs.quick_order_dialog import QuickOrderDialog
 
 
 @pytest.fixture(scope="session")
@@ -268,7 +267,7 @@ class TestOrderPreviewSelection:
 
         # Order button reflects count
         assert dlg.order_btn.isEnabled() is True
-        assert "Order 2 Items" in dlg.order_btn.text()
+        assert "Add 2 Items to Cart" in dlg.order_btn.text()
 
     def test_2_invalid_blank_missing_items_cannot_be_selected(self, qapp, mock_registry, sample_shortages):
         """Scenario 2: Items with invalid or blank links must remain unselected and non-selectable."""
@@ -316,7 +315,7 @@ class TestOrderPreviewSelection:
         selected = dlg.get_selected_orderable_items()
         assert len(selected) == 2
         assert dlg.order_btn.isEnabled() is True
-        assert "Order 2 Items" in dlg.order_btn.text()
+        assert "Add 2 Items to Cart" in dlg.order_btn.text()
 
     def test_4_deselect_all_clears_all_orderable_selections(self, qapp, mock_registry, sample_shortages):
         """Scenario 4: 'Deselect All' clears all orderable selections and disables the order action."""
@@ -342,7 +341,7 @@ class TestOrderPreviewSelection:
         ]
         dlg = OrderPreviewDialog(all_shortages=shortages, registry=mock_registry)
         assert len(dlg.get_selected_orderable_items()) == 3
-        assert "Order 3 Items on Lion Electronic" in dlg.order_btn.text()
+        assert "Add 3 Items to Cart" in dlg.order_btn.text()
 
         # Uncheck item B (row 1)
         dlg.table.item(1, dlg.COL_SELECT).setCheckState(Qt.CheckState.Unchecked)
@@ -350,14 +349,14 @@ class TestOrderPreviewSelection:
         selected = dlg.get_selected_orderable_items()
         assert len(selected) == 2
         assert [it["part_name"] for it in selected] == ["A", "C"]
-        assert "Order 2 Items on Lion Electronic" in dlg.order_btn.text()
+        assert "Add 2 Items to Cart" in dlg.order_btn.text()
 
         # Re-check item B
         dlg.table.item(1, dlg.COL_SELECT).setCheckState(Qt.CheckState.Checked)
         selected_after = dlg.get_selected_orderable_items()
         assert len(selected_after) == 3
         assert [it["part_name"] for it in selected_after] == ["A", "B", "C"]
-        assert "Order 3 Items on Lion Electronic" in dlg.order_btn.text()
+        assert "Add 3 Items to Cart" in dlg.order_btn.text()
 
     def test_6_execute_order_dispatches_only_selected_items(self, qapp, mock_registry):
         """Scenario 6: _execute_mode_a_order() dispatches only selected items to OrderWorkerThread."""
@@ -525,15 +524,8 @@ class TestOrderPreviewSelection:
         assert c1.quantity_in_stock == 42
         assert c2.quantity_in_stock == 100
 
-    def test_11_quick_order_and_mode_b_remain_unchanged(self, qapp, mock_registry):
-        """Scenario 11: Quick Order remains single-item and Mode B retains its structure."""
-        # 11a. QuickOrderDialog remains single-item
-        qo_dlg = QuickOrderDialog(registry=mock_registry)
-        assert not hasattr(qo_dlg, "select_all_btn")
-        assert not hasattr(qo_dlg, "deselect_all_btn")
-        assert not hasattr(qo_dlg, "COL_SELECT")
-
-        # 11b. OrderPreviewDialog in Mode B uses master-detail multi-candidate preview
+    def test_11_order_preview_operates_solely_in_mode_a(self, qapp, mock_registry):
+        """Scenario 11: OrderPreviewDialog operates solely in Mode A architecture even if plan is supplied."""
         cand = VendorProcurementCandidate(
             vendor_id="vendor_lion",
             part_number="NE555P",
@@ -563,12 +555,12 @@ class TestOrderPreviewSelection:
         )
         plan = BOMProcurementPlan(results=[result])
 
-        mode_b_dlg = OrderPreviewDialog(plan=plan, registry=mock_registry)
-        assert mode_b_dlg.is_mode_b_preview is True
-        assert hasattr(mode_b_dlg, "master_table")
-        assert hasattr(mode_b_dlg, "detail_table")
-        assert not hasattr(mode_b_dlg, "select_all_btn")
-        assert not hasattr(mode_b_dlg, "deselect_all_btn")
+        dlg = OrderPreviewDialog(plan=plan, registry=mock_registry)
+        assert hasattr(dlg, "table")
+        assert hasattr(dlg, "select_all_btn")
+        assert hasattr(dlg, "deselect_all_btn")
+        assert not hasattr(dlg, "master_table")
+        assert not hasattr(dlg, "detail_table")
 
     def test_12_single_direct_export_staging_results_action(self, qapp, mock_registry, sample_shortages):
         """Verify exactly one direct export action exists: Export Staging Results (.xlsx)."""
@@ -586,8 +578,8 @@ class TestOrderPreviewSelection:
         # 3. Account Settings button is absent
         assert not hasattr(dlg, "settings_btn")
 
-    def test_13_no_account_settings_in_mode_b_preview(self, qapp, mock_registry):
-        """Verify Mode B preview also contains single direct export and no Account Settings button."""
+    def test_13_no_account_settings_in_order_preview(self, qapp, mock_registry):
+        """Verify preview dialog contains single direct export and no Account Settings button."""
         dlg = OrderPreviewDialog(all_shortages=[], registry=mock_registry)
         assert not hasattr(dlg, "settings_btn")
         assert hasattr(dlg, "export_post_operation_btn")

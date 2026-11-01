@@ -23,7 +23,7 @@ In Phase 9 Steps 1 through 5, a vendor-neutral procurement core was created:
 - Full integration test coverage (165 passing tests)
 
 **Step 6 Objective:**  
-Construct the bridge (`core/procurement/bridge.py`) that connects the existing procurement workflows (Mode A: Inventory Shortages, Mode B: Altium BOM Assembly) to the universal procurement core **without modifying**:
+Construct the bridge (`core/procurement/bridge.py`) that connects the existing procurement workflows (Mode A: Inventory Shortages, BOM Inventory Shortages) to the universal procurement core **without modifying**:
 - Mathematical formulas for BOM requirements (`total_needed_qty = unit_qty * board_multiplier`)
 - Mathematical formulas for inventory shortages (`needed_qty = max(target - curr, min - curr, 1)`)
 - `Inventory.xlsx` schema and column structure
@@ -56,7 +56,7 @@ The bridge layer sits between legacy spreadsheet parsing/UI threads and the univ
 ```
 ┌─────────────────────────────────────────────────────────┐
 │              Mode A: Inventory.xlsx                      │
-│             Mode B: Altium BOM Import                   │
+│              Altium BOM Import                          │
 └────────────────────────────┬────────────────────────────┘
                              │
                              ▼

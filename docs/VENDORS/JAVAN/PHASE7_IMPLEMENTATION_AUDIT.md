@@ -52,7 +52,7 @@ This audit performs an independent, rigorous quality assurance check on the impl
 - The adapter strictly communicates through `core.models`, `core.errors`, and `core.vendor_interface`.
 
 ### 3.2 Volume Pricing & Constraints Integrity
-- Verified that `inspect_product` and `determine_order_constraints` extract raw tier minima from the pricing table without applying client-side rounding or Mode A / Mode B heuristics.
+- Verified that `inspect_product` and `determine_order_constraints` extract raw tier minima from the pricing table without applying client-side rounding or procurement heuristics.
 - Unit tests `test_extract_price_tiers` and `test_raw_packaging_step_preserved_as_is` confirm exact data preservation.
 
 ### 3.3 Test Verification & Code Integrity

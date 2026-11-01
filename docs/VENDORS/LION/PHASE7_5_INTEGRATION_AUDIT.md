@@ -83,7 +83,6 @@ The code in `autom/atom/vendors/lion/` was audited for architectural leakage of 
 | Inventory Spreadsheet Matching | **NO** | Core | **PASS** |
 | Shortage Demand Sizing Calculation | **NO** | Core | **PASS** |
 | Mode A (Inventory-Based Procurement) | **NO** | Core | **PASS** |
-| Mode B (BOM-Direct Procurement) | **NO** | Core | **PASS** |
 | Multi-Vendor Ranking & Selection | **NO** | Core | **PASS** |
 | Cross-Vendor Price Comparison | **NO** | Core | **PASS** |
 | Step Rounding Formula (`ceil(needed/step)*step`) | **NO** | Core | **PASS** |

@@ -78,7 +78,7 @@ class SiteMapGraphValidator:
     ]
 
     CORE_LEAKAGE_TERMS = [
-        "mode_a", "mode_b", "shortage_calc", "bom_parsing",
+        "mode_a", "shortage_calc", "bom_parsing",
         "pricing_rank", "procurement_optimization", "ceil("
     ]
 

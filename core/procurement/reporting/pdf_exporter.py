@@ -162,11 +162,7 @@ class ProcurementPDFExporter:
             </div>
             """
 
-        mode_badge = (
-            '<span style="background-color:#0284c7; color:#ffffff; padding:2px 6px; border-radius:3px; font-weight:bold;">Mode B (Turnkey Direct BOM)</span>'
-            if report.procurement_mode.value == "DIRECT_BOM"
-            else '<span style="background-color:#059669; color:#ffffff; padding:2px 6px; border-radius:3px; font-weight:bold;">Mode A (Database-Aware Shortages)</span>'
-        )
+        procurement_tag = '<span style="background-color:#059669; color:#ffffff; padding:2px 6px; border-radius:3px; font-weight:bold;">Mode A (Database-Aware Shortages)</span>'
 
         html_content = f"""<!DOCTYPE html>
 <html>
@@ -194,7 +190,7 @@ class ProcurementPDFExporter:
         <h1>Omnix Multi-Vendor Procurement Order Report</h1>
         <div class="meta">
             <b>Project:</b> {report.report_title} &nbsp;|&nbsp;
-            <b>Procurement Mode:</b> {mode_badge} &nbsp;|&nbsp;
+            <b>Procurement Mode:</b> {procurement_tag} &nbsp;|&nbsp;
             <b>Batch Multiplier:</b> {report.board_multiplier} Board(s) &nbsp;|&nbsp;
             <b>Date:</b> {report.created_at} &nbsp;|&nbsp;
             <b>Currency:</b> {report.currency}

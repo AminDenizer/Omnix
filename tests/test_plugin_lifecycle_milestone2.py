@@ -188,6 +188,11 @@ def make_test_manifest(
 @pytest.fixture
 def isolated_env():
     """Create an isolated filesystem environment with store, loader, and registry."""
+    import sys
+    for mod in list(sys.modules.keys()):
+        if mod.startswith("omnix_plugins."):
+            sys.modules.pop(mod, None)
+
     temp_dir = Path(tempfile.mkdtemp(prefix="omnix_test_m2_"))
     plugins_root = temp_dir / "data" / "plugins"
     plugins_root.mkdir(parents=True, exist_ok=True)
@@ -197,19 +202,23 @@ def isolated_env():
     registry = VendorRegistry()
     manager = PluginLifecycleManager(store=store, loader=loader, registry=registry)
 
-    yield {
-        "temp_dir": temp_dir,
-        "plugins_root": plugins_root,
-        "store": store,
-        "loader": loader,
-        "registry": registry,
-        "manager": manager,
-    }
-
     try:
-        shutil.rmtree(temp_dir)
-    except Exception:
-        pass
+        yield {
+            "temp_dir": temp_dir,
+            "plugins_root": plugins_root,
+            "store": store,
+            "loader": loader,
+            "registry": registry,
+            "manager": manager,
+        }
+    finally:
+        try:
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass
+        for mod in list(sys.modules.keys()):
+            if mod.startswith("omnix_plugins."):
+                sys.modules.pop(mod, None)
 
 
 def helper_create_installed_plugin(
