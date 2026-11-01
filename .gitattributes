@@ -1,0 +1,8 @@
+# Git attributes to preserve exact binary integrity and line endings
+# Installed plugins have SHA-256 digests verified by PluginIntegrityVerifier on startup.
+# Git line-ending conversions (CRLF <-> LF) must not touch installed plugin files or archives.
+data/plugins/installed/** -text
+data/plugins/installed/** binary
+*.xpl binary
+*.obk binary
+*.db binary

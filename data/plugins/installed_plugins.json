@@ -1,26 +1,26 @@
 {
   "schema_version": "1.0.0",
-  "updated_at": "2026-11-01T11:38:15.549025+00:00",
+  "updated_at": "2026-11-01T12:04:03.749352+00:00",
   "plugins": {
     "vendor_lion": {
       "vendor_id": "vendor_lion",
       "plugin_id": "ir.lionelectronic.adapter",
       "display_name": "Lion Electronic",
       "active_version": "1.0.0",
-      "enabled": false,
+      "enabled": true,
       "installed_versions": {
         "1.0.0": {
           "version": "1.0.0",
           "install_path": "D:\\omnix\\omnix\\data\\plugins\\installed\\vendor_lion\\1.0.0",
           "package_hash": "26027790bba4c80e4fbc5e437de7224abec648fb8fbe01cb7ee4b71e7492df4c",
-          "installed_at": "2026-11-01T03:41:28.001647+00:00",
+          "installed_at": "2026-11-01T11:57:06.409382+00:00",
           "entry_point": "vendors.lion.adapter:LionVendorAdapter",
           "publisher": {
             "name": "Omnix Core Engineering",
             "type": "OFFICIAL",
             "key_id": "core-official-key-01"
           },
-          "status": "TAMPERED_FILES_DETECTED",
+          "status": "INSTALLED",
           "manifest": {
             "manifest_version": "1.0.0",
             "plugin_id": "ir.lionelectronic.adapter",
@@ -98,7 +98,7 @@
               ]
             }
           },
-          "error_message": "Digest mismatch for installed file 'vendors/lion/__init__.py': expected e604702d781499c0b78721bddc9a86e15d316ba7de78c7ff3f395b3d9b04403a, got 5a459e5ea71f619e9ad192d8f2437d503a0e4c5ecf005f1b31ed1c74dae85d00",
+          "error_message": null,
           "file_digests": {
             "vendors/lion/adapter.py": "bb082bbbf0dbf3b19b90b0514508ccf120f8876e767d101a4fca7a478ed66bd9",
             "vendors/lion/errors.py": "2390387f10f39a936b3c38aebc3ee6da645729c7a35ef2fdecc955067ca93e67",
