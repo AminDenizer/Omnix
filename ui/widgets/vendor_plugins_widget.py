@@ -43,6 +43,7 @@ from core.plugins.plugin_lifecycle_manager import (
     get_lifecycle_manager,
 )
 from core.plugins.package_inspector import PackageInspector
+from ui.widgets.number_stepper import NumberStepperWidget
 from core.plugins.manifest_validator import SemanticVersion
 from settings_manager import settings
 from core.models import VendorSettings
@@ -968,84 +969,14 @@ class PluginConfigDialog(QDialog):
                 init_val = getattr(self.v_cfg, key, None)
                 if init_val is None:
                     init_val = self.v_cfg.extra_options.get(key, default_val or 10)
-
-                spin = QSpinBox()
-                spin.setRange(1, 600)
                 try:
-                    spin.setValue(int(init_val))
+                    init_int = int(init_val)
                 except (ValueError, TypeError):
-                    spin.setValue(10)
-                spin.setFixedHeight(32)
-                spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-                spin.setStyleSheet("""
-                    QSpinBox {
-                        background-color: #1e293b;
-                        color: #f8fafc;
-                        border: 1px solid #334155;
-                        border-radius: 4px;
-                        padding: 4px 8px;
-                        font-family: Consolas;
-                        font-size: 13px;
-                    }
-                    QSpinBox:focus {
-                        border-color: #38bdf8;
-                    }
-                """)
-
-                stepper_box = QHBoxLayout()
-                stepper_box.setSpacing(4)
-                stepper_box.setContentsMargins(0, 0, 0, 0)
-                stepper_box.addWidget(spin, 1)
-
-                btn_vbox = QVBoxLayout()
-                btn_vbox.setSpacing(1)
-                btn_vbox.setContentsMargins(0, 0, 0, 0)
-
-                s_btn_style = """
-                    QToolButton {
-                        background-color: #1e293b;
-                        border: 1px solid #334155;
-                        border-radius: 3px;
-                        color: #94a3b8;
-                    }
-                    QToolButton:hover {
-                        background-color: #334155;
-                        border-color: #38bdf8;
-                        color: #38bdf8;
-                    }
-                    QToolButton:pressed {
-                        background-color: #0284c7;
-                        color: #ffffff;
-                    }
-                """
-                up_btn = QToolButton()
-                up_btn.setArrowType(Qt.ArrowType.UpArrow)
-                up_btn.setFixedSize(26, 15)
-                up_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                up_btn.setAutoRepeat(True)
-                up_btn.setAutoRepeatDelay(350)
-                up_btn.setAutoRepeatInterval(80)
-                up_btn.setStyleSheet(s_btn_style)
-                up_btn.clicked.connect(spin.stepUp)
-
-                down_btn = QToolButton()
-                down_btn.setArrowType(Qt.ArrowType.DownArrow)
-                down_btn.setFixedSize(26, 15)
-                down_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                down_btn.setAutoRepeat(True)
-                down_btn.setAutoRepeatDelay(350)
-                down_btn.setAutoRepeatInterval(80)
-                down_btn.setStyleSheet(s_btn_style)
-                down_btn.clicked.connect(spin.stepDown)
-
-                btn_vbox.addWidget(up_btn)
-                btn_vbox.addWidget(down_btn)
-                stepper_box.addLayout(btn_vbox)
-
-                form_layout.addRow(lbl_widget, stepper_box)
-                self.field_widgets[key] = (spin, f_def)
+                    init_int = 10
+                stepper = NumberStepperWidget(value=init_int, min_val=1, max_val=600)
+                stepper.setFixedHeight(32)
+                form_layout.addRow(lbl_widget, stepper)
+                self.field_widgets[key] = (stepper, f_def)
 
             elif f_type == "boolean":
                 init_val = getattr(self.v_cfg, key, None)
