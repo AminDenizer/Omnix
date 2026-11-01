@@ -339,6 +339,14 @@ QSpinBox {
     font-size: 14px;
     font-weight: 600;
     font-family: 'Consolas', 'Segoe UI', Tahoma, monospace;
+    qproperty-alignment: 'AlignLeft | AlignVCenter';
+}
+
+QSpinBox::editor {
+    color: #f8fafc;
+    selection-background-color: #0284c7;
+    selection-color: #ffffff;
+    padding-left: 2px;
 }
 
 QSpinBox:hover, QSpinBox:focus {

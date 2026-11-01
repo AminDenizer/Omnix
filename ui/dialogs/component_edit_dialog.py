@@ -595,6 +595,13 @@ class ComponentEditDialog(QDialog):
                 padding: 4px 34px 4px 10px;
                 min-height: 20px;
                 font-size: 11px;
+                qproperty-alignment: 'AlignLeft | AlignVCenter';
+            }}
+            QSpinBox::editor {{
+                color: #f8fafc;
+                selection-background-color: #0284c7;
+                selection-color: #ffffff;
+                padding-left: 2px;
             }}
             QSpinBox:hover {{
                 border-color: #334155;
