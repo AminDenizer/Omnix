@@ -13,7 +13,7 @@ on:
       release_name:
         description: 'Release Title'
         required: true
-        default: 'Omnix v1.0.0 — Electronic Inventory, BOM Auditor & Multi-Vendor Procurement Engine'
+        default: 'Omnix v1.0.0 — Electronic Inventory, Altium BOM Auditor & Multi-Vendor Procurement Engine'
       is_draft:
         description: 'Create as Draft Release'
         type: boolean
@@ -61,6 +61,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path "Omnix-Release" | Out-Null
           Copy-Item -Path "dist/Omnix.exe" -Destination "Omnix-Release/Omnix.exe"
           Copy-Item -Path "README.md" -Destination "Omnix-Release/README.md"
+
+          # Include signed Lion vendor plugin package
+          if (Test-Path "vendors/lion.xpl") {
+              New-Item -ItemType Directory -Force -Path "Omnix-Release/vendors" | Out-Null
+              Copy-Item -Path "vendors/lion.xpl" -Destination "Omnix-Release/vendors/lion.xpl"
+          }
+
           if (Test-Path "data/starter_backup.obk") {
               New-Item -ItemType Directory -Force -Path "Omnix-Release/data" | Out-Null
               Copy-Item -Path "data/starter_backup.obk" -Destination "Omnix-Release/data/starter_backup.obk"
@@ -73,21 +80,46 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
-          name: ${{ github.ref_type == 'tag' && format('Omnix {0} — Electronic Inventory, BOM Auditor & Procurement Engine', github.ref_name) || inputs.release_name }}
+          name: ${{ github.ref_type == 'tag' && format('Omnix {0} — Electronic Inventory, Altium BOM Auditor & Procurement Engine', github.ref_name) || inputs.release_name }}
           draft: ${{ inputs.is_draft || false }}
           prerelease: false
           files: |
             ${{ env.ZIP_NAME }}
             dist/Omnix.exe
+            vendors/lion.xpl
           body: |
-            ## Omnix v1.0.0 — Production Release (Mode A)
+            ## Omnix v1.0.0 — Official Production Release (Mode A)
 
-            Welcome to the official **v1.0.0** release of **Omnix** — the unified desktop platform for electronic component warehouse management, Altium Designer BOM auditing, and automated multi-vendor procurement.
+            We are pleased to announce the official **v1.0.0** production release of **Omnix** — an enterprise-grade desktop workstation engineered for electronic warehouse management, Altium Designer BOM auditing, matrix label printing, and multi-vendor procurement automation.
 
-            ### 🚀 What's New & Core Capabilities
-            - **Canonical Mode A Inventory Engine**: Complete SQLite database architecture with atomic transactions, multi-drawer physical bin tracking, and backup/restore/merge workflows.
-            - **Altium Designer BOM Auditor**: Board production multiplier scaling, live stock comparison, shortages detection, and A4/A5 assembly worksheets.
-            - **Matrix Label Printing Engine**: Automatic printable component labels with cut lines and visual borders optimized for B&W thermal and laser printing.
-            - **Multi-Vendor Procurement Engine**: Decoupled vendor architecture with modular XPL plugins (Lion Electronic, Javan, RoboEq) with cart synchronization and validation safeguards.
-            - **100% Automated Test Coverage**: All 1,284 tests passing across inventory, procurement, and UI layers.
-            - **Clean & Standalone**: Portable Windows executable (`Omnix.exe`) with no external runtime dependencies.
+            ---
+
+            ### 🚀 What's New & Highlights
+
+            #### 1. Database-Aware Warehouse Inventory (Mode A)
+            - **ACID-Compliant SQLite Core**: Seamless local inventory operations with zero-lag search across Part Names, Part Numbers, Descriptions, and Footprints.
+            - **Multi-Drawer Bin Tracking**: Assign and deduct stock across individual drawer bins with smart picking allocation.
+            - **Encrypted Backups & Merging**: Backup and restore `.obk` archives with cryptographic integrity checks, alongside interactive database merge tools.
+
+            #### 2. Altium Designer BOM Assembly Auditor
+            - **Multi-Board Scaling**: Automatic shortage calculation scaled by batch board multipliers.
+            - **Printable Assembly Worksheets**: Export clean, structured assembly sheets directly to A4 and A5 Landscape PDF.
+
+            #### 3. Matrix Component Label Printing Engine
+            - **Scissors Cut Guidelines**: Formatted with standard `✂ - - - -` dashed borders for fast manual cutting.
+            - **Black & White Optimization**: Pure high-contrast typography and clear borders designed specifically for standard laser and thermal printers without color tint issues.
+
+            #### 4. Decoupled Multi-Vendor Procurement & Plugins
+            - **Signed XPL Plugins**: Standalone modular packages cryptographically verified via Ed25519 digital signatures (`vendors/lion.xpl` included).
+            - **Automated Cart Placement**: Intelligent packaging step rounding (MOQ), live PDP inspection, and fail-closed cart synchronization for **Lion Electronic**, **Javan**, and **RoboEq**.
+
+            #### 5. Quality & Stability
+            - **1,284 Passed Automated Tests**: 100% test pass rate across 78 test suites.
+            - **Standalone Windows Executable**: Portable single-binary distribution (`Omnix.exe`) bundled with native dark theme and all core assets.
+
+            ---
+
+            ### 📦 Included Release Assets
+            - **`Omnix-v1.0.0-Windows-x64.zip`**: Complete portable bundle containing `Omnix.exe`, `vendors/lion.xpl`, starter backup, and documentation.
+            - **`Omnix.exe`**: Portable standalone executable for 64-bit Windows.
+            - **`lion.xpl`**: Officially signed Lion Electronic vendor plugin package.
