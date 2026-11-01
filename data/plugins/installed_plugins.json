@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0.0",
-  "updated_at": "2026-11-01T06:58:31.097574+00:00",
+  "updated_at": "2026-11-01T11:38:15.549025+00:00",
   "plugins": {
     "vendor_lion": {
       "vendor_id": "vendor_lion",
       "plugin_id": "ir.lionelectronic.adapter",
       "display_name": "Lion Electronic",
       "active_version": "1.0.0",
-      "enabled": true,
+      "enabled": false,
       "installed_versions": {
         "1.0.0": {
           "version": "1.0.0",
@@ -20,7 +20,7 @@
             "type": "OFFICIAL",
             "key_id": "core-official-key-01"
           },
-          "status": "INSTALLED",
+          "status": "TAMPERED_FILES_DETECTED",
           "manifest": {
             "manifest_version": "1.0.0",
             "plugin_id": "ir.lionelectronic.adapter",
@@ -98,7 +98,7 @@
               ]
             }
           },
-          "error_message": null,
+          "error_message": "Digest mismatch for installed file 'vendors/lion/__init__.py': expected e604702d781499c0b78721bddc9a86e15d316ba7de78c7ff3f395b3d9b04403a, got 5a459e5ea71f619e9ad192d8f2437d503a0e4c5ecf005f1b31ed1c74dae85d00",
           "file_digests": {
             "vendors/lion/adapter.py": "bb082bbbf0dbf3b19b90b0514508ccf120f8876e767d101a4fca7a478ed66bd9",
             "vendors/lion/errors.py": "2390387f10f39a936b3c38aebc3ee6da645729c7a35ef2fdecc955067ca93e67",

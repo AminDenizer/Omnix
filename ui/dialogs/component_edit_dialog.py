@@ -572,7 +572,7 @@ class ComponentEditDialog(QDialog):
             return line
 
         input_style = f"""
-            QLineEdit, QSpinBox {{
+            QLineEdit {{
                 background-color: #0b101b;
                 color: #f8fafc;
                 border: 1px solid #1e293b;
@@ -580,10 +580,26 @@ class ComponentEditDialog(QDialog):
                 padding: 4px 8px;
                 font-size: 11px;
             }}
-            QLineEdit:hover, QSpinBox:hover {{
+            QLineEdit:hover {{
                 border-color: #334155;
             }}
-            QLineEdit:focus, QSpinBox:focus {{
+            QLineEdit:focus {{
+                border-color: #38bdf8;
+                background-color: #090e18;
+            }}
+            QSpinBox {{
+                background-color: #0b101b;
+                color: #f8fafc;
+                border: 1px solid #1e293b;
+                border-radius: 5px;
+                padding: 4px 34px 4px 10px;
+                min-height: 20px;
+                font-size: 11px;
+            }}
+            QSpinBox:hover {{
+                border-color: #334155;
+            }}
+            QSpinBox:focus {{
                 border-color: #38bdf8;
                 background-color: #090e18;
             }}

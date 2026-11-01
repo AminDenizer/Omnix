@@ -122,7 +122,8 @@ class PolicyEditDialog(QDialog):
                 color: #f8fafc;
                 border: 1px solid #334155;
                 border-radius: 6px;
-                padding: 6px 10px;
+                padding: 4px 34px 4px 14px;
+                min-height: 24px;
                 font-family: 'Consolas', monospace;
                 font-size: 13px;
                 font-weight: bold;
