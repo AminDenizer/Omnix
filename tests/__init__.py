@@ -1,1 +1,0 @@
-"""Omnix Automated Pytest Suite"""
