@@ -1,28 +1,30 @@
-﻿# Omnix — Electronic Inventory, Altium BOM Auditor & Procurement Engine
+# Omnix — Electronic Inventory, Altium BOM Auditor & Multi-Vendor Procurement Engine
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://riverbankcomputing.com/software/pyqt/)
 [![Selenium](https://img.shields.io/badge/Automation-Selenium-orange.svg)](https://www.selenium.dev/)
-[![Tests](https://img.shields.io/badge/Tests-PyTest%2013%2F13%20Passed-brightgreen.svg)](https://pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-1284%20Passed-brightgreen.svg)](https://pytest.org/)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-blue.svg)](https://github.com/AminDenizer/Omnix/releases)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)]()
 
-**Omnix** is a high-performance, matte dark desktop application engineered for electronic hardware design and assembly workflows. It combines:
-1. **Dynamic Warehouse Inventory Management** (`Inventory.xlsx`) with two-way spreadsheet synchronization.
-2. **Altium Designer BOM Assembly Auditor** with multi-board scaling multipliers and PDF shortage reporting.
-3. **Automated Lion Electronic Procurement Engine** with 7-layer validation, smart packaging step rounding, and zero-risk stock updates.
+**Omnix** is an enterprise-grade, high-performance desktop workstation engineered for electronic hardware design laboratories and assembly lines. It integrates:
+1. **Canonical Mode A Inventory Engine**: High-speed SQLite database with multi-drawer bin tracking, stock policies, and encrypted backups.
+2. **Altium Designer BOM Auditor**: Real-time shortage auditing, board multiplier scaling, and printable A4/A5 assembly worksheets.
+3. **Matrix Label Printing Engine**: Component box/reel labeling with scissors cut guides and high-contrast B&W thermal/laser printing.
+4. **Decoupled Multi-Vendor Procurement**: Extensible XPL plugin architecture supporting automated cart placement, PDP validation, and order reconciliation for Lion Electronic, Javan, and RoboEq.
 
 ---
 
 ## 📑 Table of Contents
 - [✨ Key Features](#-key-features)
-- [📦 System Architecture & Core Logics](#-system-architecture--core-logics)
-- [🖥️ User Manual & Workflow Guide](#️-user-manual--workflow-guide)
-  - [1. Warehouse Inventory Management](#1-warehouse-inventory-management)
-  - [2. Altium BOM Assembly Shortage Audit](#2-altium-bom-assembly-shortage-audit)
-  - [3. Automated Purchasing on Lion Electronic](#3-automated-purchasing-on-lion-electronic)
+- [📦 System Architecture](#-system-architecture)
+- [🖥️ Core Workflows](#️-core-workflows)
+  - [1. Warehouse & Stock Management (Mode A)](#1-warehouse--stock-management-mode-a)
+  - [2. Altium BOM Assembly & Shortage Audit](#2-altium-bom-assembly--shortage-audit)
+  - [3. Matrix Component Label Printing](#3-matrix-component-label-printing)
+  - [4. Multi-Vendor Procurement & Plugin Engine](#4-multi-vendor-procurement--plugin-engine)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
-- [📊 Database & BOM Schema Specifications](#-database--bom-schema-specifications)
-- [🧪 Automated Test Suite](#-automated-test-suite)
+- [🧪 Automated Test Suite (1,284 Tests)](#-automated-test-suite-1284-tests)
 - [🛠️ Build Standalone Executable (Omnix.exe)](#️-build-standalone-executable-omnixexe)
 - [👨‍💻 Author & Credits](#-author--credits)
 
@@ -30,81 +32,72 @@
 
 ## ✨ Key Features
 
-- **Strict Single-Source Database Loading**: Automatically and exclusively detects `Inventory.xlsx` located alongside the executable. If missing, prompts with instructions and hotkey `[F5]` reload.
-- **Altium BOM Multi-Board Scaler**: Calculates exact required component quantities scaled by production board count ($TotalNeeded = QtyPerBoard \times Multiplier$).
-- **Intelligent Inventory Matching**: Robust multi-field matching engine supporting exact Part Number, normalized text, Comment, Footprint, and Description.
-- **7-Layer Automated Procurement Safeguards**:
-  - **Layer 1**: 404 & Dead link prevention.
-  - **Layer 2**: Inquiry-only and closed-sale detection.
-  - **Layer 3**: Out-of-stock and coming-soon text analysis.
-  - **Layer 4**: Buy button state and inquiry modal detection.
-  - **Layer 5**: Smart packaging step / pack multiple calculation.
-  - **Layer 6**: Strict store stock availability check (aborts on insufficient stock).
-  - **Layer 7**: SweetAlert / store error toast capture.
-- **Smart Packaging Multiple Rounding**:
-  - Small multiples ($2, 5, 10$): Rounds up to the next multiple of $10$ (e.g. $45 \rightarrow 50$) to satisfy store batch rules and eliminate checkout errors.
-  - Large package steps ($25, 50, 100$): Rounds up to the exact packaging step ($23 \rightarrow 25, 85 \rightarrow 100$).
-  - Single-piece parts ($1$): Retains exact count ($11 \rightarrow 11$).
-- **Strict No-Partial-Stock Policy**: If the store has fewer units than required ($11 < 20$), purchase is halted and flagged as `⚠️ Low Site Stock` without adding incomplete items to the cart.
-- **Two-Way Database Stock Updates**: Post-purchase confirmation strictly updates only successfully ordered items in `Inventory.xlsx`.
-- **Engineered Matte Dark UI**: High-contrast, left-to-right (LTR) layout with glowing microchip splash screen and multi-resolution Windows icons.
+- **Database-Aware Inventory (Mode A)**: Fast, ACID-compliant local database storing component attributes, drawer locations, thresholds, and multi-supplier links.
+- **Altium BOM Multi-Board Scaler**: Calculates required quantities scaled by production board count ($TotalNeeded = QtyPerBoard \times Multiplier$).
+- **Matrix Label Engine**:
+  - Scissors cut guidelines (`✂ - - - -`) for fast manual cutting.
+  - Clear, readable typography and visual borders with zero-highlight design for crisp black-and-white printing.
+- **Multi-Vendor XPL Plugin Architecture**:
+  - Modular, sandboxed vendor adapters (`.xpl`) verified with Ed25519 digital signatures.
+  - Multi-candidate preview dialogs with automatic MOQ and packaging step arithmetic.
+  - Cart synchronization, idempotency keys, and delta verification.
+- **Backup, Restore & Merge Pipeline**:
+  - Export and import encrypted, timestamped backups (`.obk`).
+  - Merge secondary databases with interactive conflict resolution.
+- **Engineered Matte Dark UI**: Sleek, high-contrast PyQt6 desktop interface with custom title bar, responsive keyboard navigation, and live logging.
 
 ---
 
-## 📦 System Architecture & Core Logics
+## 📦 System Architecture
 
 ```
 Omnix/
-├── main.py                     # Application entry point & High-DPI Qt runtime
-├── config.py                   # App metadata, bundle directory, and path resolvers
-├── excel_loader.py             # Inventory.xlsx loader, normalizer, and 2-way sync
-├── bom_auditor.py              # Altium BOM parser, multiplier engine, and PDF generator
-├── lion_automator.py           # Selenium automation engine with 7-layer validation
-├── settings_manager.py         # Credentials manager (settings.json)
+├── main.py                     # High-DPI application entry point & Qt runner
+├── config.py                   # Centralized application constants & path resolvers
+├── bom_auditor.py              # Altium BOM parser, multiplier engine & report generator
+├── excel_loader.py             # Excel import/export synchronization engine
+├── core/
+│   ├── inventory/              # Database models, SQLite repository, backup & merge engine
+│   ├── procurement/            # Universal procurement orchestrator, bridge & vendor registry
+│   ├── plugins/                # Modular XPL plugin installer, trust store & verification engine
+│   └── discovery/              # Vendor web discovery, evidence capturing & site mapping
 ├── ui/
-│   ├── main_window.py          # Dual-tab main window container & hotkeys
-│   ├── splash_screen.py        # Glowing IC startup animation
-│   ├── styles.py               # Slate/matte dark stylesheet
-│   ├── widgets/
-│   │   ├── inventory_table.py  # Interactive spreadsheet table & cell editor
-│   │   ├── stats_ribbon.py     # Live KPIs & shortage counters
-│   │   └── bom_audit_widget.py # Altium BOM drop zone & audit results
-│   ├── dialogs/
-│   │   ├── order_preview_dialog.py # Procurement modal & live progress tracker
-│   │   └── settings_dialog.py      # Account settings & credentials modal
-│   └── icons/                  # Multi-resolution ICO (16-256px) and UI assets
-└── tests/                      # Comprehensive 13-test PyTest test suite
+│   ├── main_window.py          # Unified desktop workstation & layout orchestration
+│   ├── native_window.py        # Windows frameless native window event handling
+│   ├── styles.py               # Modern matte dark design system
+│   ├── printing/               # Matrix label engine & A4/A5 assembly worksheet print engine
+│   ├── widgets/                # Table views, sidebar, live log ribbon & audit panels
+│   └── dialogs/                # Settings, order preview, component edit & merge modals
+├── vendors/                    # Modular vendor packages (Lion, Javan, RoboEq)
+└── tests/                      # Full test suite (78 files, 1,284 automated tests)
 ```
 
 ---
 
-## 🖥️ User Manual & Workflow Guide
+## 🖥️ Core Workflows
 
-### 1. Warehouse Inventory Management
-1. Place your inventory file named **`Inventory.xlsx`** in the same folder as `Omnix.exe`.
-2. Launch `Omnix.exe`. The inventory is loaded automatically.
-3. Use the search bar (`/`) for multi-term instant filtering (e.g., typing `Timer DIP-8` finds `NE555P`).
-4. Double-click on any cell in **Min Stock** or **Target Stock** to edit thresholds directly. Changes are automatically saved back to `Inventory.xlsx`.
-5. Press `[F5]` at any time to reload data from disk.
+### 1. Warehouse & Stock Management (Mode A)
+1. Launch **Omnix**. The local database is initialized automatically.
+2. Use the live search bar (`/`) to filter components across Part Name, Part Number, Description, or Footprint.
+3. Edit component drawer allocations, threshold levels, and supplier links in the component editor.
+4. Back up or merge warehouse databases seamlessly via the **Backup & Restore** tab.
 
-### 2. Altium BOM Assembly Shortage Audit
-1. Switch to the **BOM Assembly Auditor** tab (Tab 2).
-2. Drag and drop your Altium BOM export (`.xlsx` or `.xls`) or click to browse.
-3. Set the **Boards Multiplier** (e.g., $10$ boards for a production run of 10 boards).
-4. Review the breakdown:
-   - ✅ **Fully Available**: Total needed $\le$ warehouse stock.
-   - ⚠️ **Shortages**: Total needed $>$ warehouse stock.
-   - 🔴 **Not in Database**: Unregistered components.
-5. Click **📄 Export Missing & Shortages Report** to generate a clean PDF report.
+### 2. Altium BOM Assembly & Shortage Audit
+1. Navigate to the **BOM Assembly Auditor** tab.
+2. Drop an Altium BOM spreadsheet (`.xlsx` or `.xls`).
+3. Set the **Board Multiplier** for your production run.
+4. Omnix automatically cross-references your warehouse inventory and highlights shortages, available parts, and missing catalog items.
+5. Export detailed A4/A5 Assembly Worksheets directly to PDF.
 
-### 3. Automated Purchasing on Lion Electronic
-1. Click **⚙️ Account Settings** to configure your `lionelectronic.ir` username and password.
-2. Click **🛒 Order Shortages on Lion Electronic**.
-3. Review the items in the **Procurement & Order Confirmation** dialog.
-4. Click **🛒 Order Items on Lion Electronic**.
-5. The automation opens Chrome, logs in, checks store stock, applies packaging steps, and adds valid items to your cart.
-6. Once the batch finishes, finalize payment in Chrome.
-7. Return to Omnix and click **💰 Confirm Payment & Add Stock**. Only successfully purchased items are incremented in `Inventory.xlsx`.
+### 3. Matrix Component Label Printing
+1. In the **Assembly Preparation** tab, select components or load from your BOM.
+2. Click **Print Matrix Labels** to preview and export cut-ready component labels.
+3. Designed specifically for standard office laser or thermal B&W printers with dotted cut lines.
+
+### 4. Multi-Vendor Procurement & Plugin Engine
+1. Review candidate shortages across supported suppliers (**Lion Electronic**, **Javan**, **RoboEq**).
+2. Configure vendor credentials in **Account Settings** (stored securely on your local machine).
+3. The automated procurement engine validates product availability, adjusts for packaging steps (MOQ), and places items safely into your vendor cart.
 
 ---
 
@@ -112,58 +105,38 @@ Omnix/
 
 | Shortcut | Action | Description |
 | :---: | :--- | :--- |
-| **`/`** | Focus Search Bar | Jumps to live multi-term search input |
-| **`Esc`** | Smart Escape Navigation | Defocuses search $\rightarrow$ Clears query $\rightarrow$ Prompts exit confirmation |
-| **`F5`** | Reload Database | Reloads `Inventory.xlsx` directly from disk |
-| **`Ctrl + Q`** | Exit Application | Safely closes the application |
-| **`Double Click`** | Open Store / Datasheet Link | Opens product URL in default browser |
+| **`/`** | Focus Search Bar | Jumps directly to multi-term component search |
+| **`Esc`** | Smart Escape Navigation | Clears search input $\rightarrow$ Defocuses table $\rightarrow$ Prompts exit |
+| **`F5`** | Refresh View | Reloads data from the local database |
+| **`Ctrl + Q`** | Safe Exit | Safely closes the application |
+| **`Double Click`** | Open Store / Details | Opens product URL or opens component detail dialog |
 
 ---
 
-## 📊 Database & BOM Schema Specifications
+## 🧪 Automated Test Suite (1,284 Tests)
 
-### Standard `Inventory.xlsx` Headers
-
-| Column Header | Type | Description |
-| :--- | :---: | :--- |
-| `PART NAME` | String | Primary component name or designator identifier |
-| `DISCRIPTION` | String | Technical specifications, package type, rating |
-| `Quantity in Stock` | Integer | Current available stock quantity in warehouse |
-| `FOOTPRINT` | String | PCB footprint (e.g., `DIP-8`, `SOIC-8`, `TO-220`) |
-| `PART NUMBER` | String | Manufacturer part number (e.g., `NE555P`, `LM358N`) |
-| `LINK` | URL | Direct store URL (e.g., `https://lionelectronic.ir/products/...`) |
-| `Min Stock` | Integer | Minimum threshold (triggers shortage when $Current \le Min$) |
-| `Target Stock` | Integer | Restock target quantity ($Needed = Target - Current$) |
-
----
-
-## 🧪 Automated Test Suite
-
-Run the full automated test suite using `pytest`:
+Omnix includes an extensive end-to-end test suite covering all business logic, database migrations, UI rendering, vendor adapters, and procurement workflows:
 
 ```bash
 python -m pytest -v
 ```
 
-### Coverage (13 Tests):
-- `test_excel_loader.py`: Strict file matching, Persian/Arabic string normalization, fuzzy column mapping, shortage calculations, live filtering, and atomic stock increment.
-- `test_lion_rules.py`: Smart packaging step arithmetic, MOQ enforcement, and site stock threshold validation.
-- `test_bom_auditor.py`: Multi-board quantity multiplication, database matching, and shortage list generation.
-- `test_dialog_and_edge_cases.py`: Mixed successful and failed order processing and stock increment safety.
-- `test_settings_and_config.py`: Settings persistence and path resolution.
+```
+===================== 1284 passed in 251.46s =====================
+```
 
 ---
 
 ## 🛠️ Build Standalone Executable (Omnix.exe)
 
-To compile the single-file portable Windows executable with embedded multi-layer icons:
+To compile the single-file portable Windows executable including all signed plugins, UI assets, and seed data:
 
 ```bash
 pip install -r requirements.txt
-python -m PyInstaller --noconfirm --onefile --windowed --name "Omnix" --icon "ui/icons/app_logo.ico" --add-data "ui;ui" main.py
+python -m PyInstaller Omnix.spec
 ```
 
-The output standalone file is generated at `dist/Omnix.exe`.
+The resulting standalone executable is generated at `dist/Omnix.exe`.
 
 ---
 
