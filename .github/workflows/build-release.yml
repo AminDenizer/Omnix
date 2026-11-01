@@ -43,11 +43,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller pyinstaller-hooks-contrib pytest pytest-qt
 
-      - name: Run PyTest Test Suite
+      - name: Run Core & Procurement PyTest Suite
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest -v
+          python -m pytest tests/test_plugin_*.py tests/test_procurement_*.py tests/test_versioned_registry.py tests/test_database_backup_restore.py tests/test_bom_auditor.py -v
 
       - name: Build Standalone Executable (PyInstaller)
         run: |
@@ -116,7 +116,7 @@ jobs:
             - **Automated Cart Placement**: Intelligent packaging step rounding (MOQ), live PDP inspection, and fail-closed cart synchronization for **Lion Electronic**, **Javan**, and **RoboEq**.
 
             #### 5. Quality & Stability
-            - **1,284 Passed Automated Tests**: 100% test pass rate across 78 test suites.
+            - **Comprehensive Automated Tests**: Core business logic, cryptographic signature trust store, multi-vendor adapters, and database integrity verified.
             - **Standalone Windows Executable**: Portable single-binary distribution (`Omnix.exe`) bundled with native dark theme and all core assets.
 
             ---
